@@ -9,6 +9,7 @@ import os from "os"
 import { Global } from "../../global"
 import { Plugin } from "../../plugin"
 import { Instance } from "../../project/instance"
+import { Config } from "../../config/config"
 
 export const AuthCommand = cmd({
   command: "auth",
@@ -139,6 +140,44 @@ export const AuthLoginCommand = cmd({
 
         if (prompts.isCancel(provider)) throw new UI.CancelledError()
 
+        // Model selection step - integrated into the auth flow
+        let selectedModel: string | undefined
+        if (provider !== "other" && provider !== "amazon-bedrock" && provider !== "google-vertex") {
+          const providerData = providers[provider]
+          if (providerData && providerData.models && Object.keys(providerData.models).length > 0) {
+            const modelOptions = pipe(
+              providerData.models,
+              values(),
+              sortBy(
+                (x) => (x.status === "alpha" || x.status === "beta" ? 1 : 0),
+                (x) => -x.release_date,
+              ),
+              map((model) => {
+                const contextWindow = model.limit.context ? ` (${(model.limit.context / 1000).toFixed(0)}K context)` : ""
+                const status = model.status ? ` [${model.status}]` : ""
+                return {
+                  label: model.name + contextWindow + status,
+                  value: model.id,
+                  hint: model.experimental ? "experimental" : undefined,
+                }
+              }),
+            )
+
+            if (modelOptions.length > 0) {
+              const modelChoice = await prompts.autocomplete({
+                message: `Select default model for ${providerData.name}`,
+                maxItems: 10,
+                options: modelOptions,
+              })
+
+              if (!prompts.isCancel(modelChoice)) {
+                selectedModel = `${provider}/${modelChoice}`
+                prompts.log.success(`Default model: ${providerData.models[modelChoice]?.name}`)
+              }
+            }
+          }
+        }
+
         const plugin = await Plugin.list().then((x) => x.find((x) => x.auth?.provider === provider))
         if (plugin && plugin.auth) {
           let index = 0
@@ -221,6 +260,17 @@ export const AuthLoginCommand = cmd({
                 prompts.log.success("Login successful")
               }
             }
+
+            // Save selected model to config if chosen
+            if (selectedModel) {
+              try {
+                await Config.update({ model: selectedModel })
+                prompts.log.info(`Saved default model: ${selectedModel}`)
+              } catch (err) {
+                prompts.log.warn("Could not save model preference to config")
+              }
+            }
+
             prompts.outro("Done")
             return
           }
@@ -272,6 +322,16 @@ export const AuthLoginCommand = cmd({
           type: "api",
           key,
         })
+
+        // Save selected model to config if chosen
+        if (selectedModel) {
+          try {
+            await Config.update({ model: selectedModel })
+            prompts.log.info(`Saved default model: ${selectedModel}`)
+          } catch (err) {
+            prompts.log.warn("Could not save model preference to config")
+          }
+        }
 
         prompts.outro("Done")
       },

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@opencode-ai/sdk",
+  "name": "@groeimetai/snowcode-sdk",
   "version": "0.15.14",
   "type": "module",
   "scripts": {
