@@ -28,6 +28,43 @@ const TOOL: Record<string, [string, string]> = {
   websearch: ["Search", UI.Style.TEXT_DIM_BOLD],
 }
 
+/**
+ * Format tool output for display
+ * MCP tools often return large JSON strings - format them nicely like Claude Code does
+ */
+function formatToolOutput(output: string, toolName: string): string {
+  if (!output || !output.trim()) return ""
+
+  // Try to parse as JSON and format it
+  try {
+    const parsed = JSON.parse(output)
+    // Pretty print JSON with 2-space indentation
+    return JSON.stringify(parsed, null, 2)
+  } catch {
+    // Not JSON, return as-is
+    return output
+  }
+}
+
+/**
+ * Determine if tool output should be displayed
+ * Some tools have verbose output that should always be shown (like bash, MCP tools)
+ * Others are better represented by their title only
+ */
+function shouldShowToolOutput(toolName: string): boolean {
+  const alwaysShow = ["bash"]
+  const neverShow = ["edit", "write", "glob", "grep", "read"] // These show file paths in title
+
+  if (alwaysShow.includes(toolName)) return true
+  if (neverShow.includes(toolName)) return false
+
+  // Show output for all MCP tools (they typically have useful structured data)
+  // MCP tools are prefixed with server name, e.g., "servicenow_unified_snow_query_table"
+  if (toolName.includes("_")) return true
+
+  return false
+}
+
 export const RunCommand = cmd({
   command: "run [message..]",
   describe: "run opencode with a message",
@@ -203,23 +240,100 @@ export const RunCommand = cmd({
 
       const messageID = Identifier.ascending("message")
 
+      // Track streaming output for each tool call
+      const streamingOutputs = new Map<string, { lastOutput: string; linesPrinted: number }>()
+
       Bus.subscribe(MessageV2.Event.PartUpdated, async (evt) => {
         if (evt.properties.part.sessionID !== session.id) return
         if (evt.properties.part.messageID === messageID) return
         const part = evt.properties.part
 
+        // Handle tool running state - show streaming output like Claude Code
+        if (part.type === "tool" && part.state.status === "running") {
+          const [tool, color] = TOOL[part.tool] ?? [part.tool, UI.Style.TEXT_INFO_BOLD]
+
+          // Only print the event header once when the tool starts
+          if (!streamingOutputs.has(part.callID)) {
+            const title =
+              part.state.title ||
+              (Object.keys(part.state.input).length > 0 ? JSON.stringify(part.state.input) : "Unknown")
+            printEvent(color, tool, title)
+            streamingOutputs.set(part.callID, { lastOutput: "", linesPrinted: 0 })
+          }
+
+          // Stream output for tools that should show it
+          if (shouldShowToolOutput(part.tool) && part.state.metadata?.output) {
+            const output = part.state.metadata.output as string
+            const tracker = streamingOutputs.get(part.callID)!
+
+            // Only show new output (incremental)
+            if (output !== tracker.lastOutput) {
+              const newContent = output.substring(tracker.lastOutput.length)
+              const lines = newContent.split('\n')
+
+              // Show last 3 lines like Claude Code does
+              const lastThreeLines = lines.slice(-3).filter(line => line.trim())
+              if (lastThreeLines.length > 0) {
+                // Clear previous lines if we've printed before
+                if (tracker.linesPrinted > 0) {
+                  process.stdout.write('\x1b[' + tracker.linesPrinted + 'A') // Move cursor up
+                  process.stdout.write('\x1b[J') // Clear from cursor to end
+                }
+
+                // Print the last 3 lines with dimmed styling
+                for (const line of lastThreeLines) {
+                  UI.println(UI.Style.TEXT_DIM + '  ' + line)
+                }
+
+                tracker.lastOutput = output
+                tracker.linesPrinted = lastThreeLines.length
+              }
+            }
+          }
+        }
+
         if (part.type === "tool" && part.state.status === "completed") {
           if (outputJsonEvent("tool_use", { part })) return
+
           const [tool, color] = TOOL[part.tool] ?? [part.tool, UI.Style.TEXT_INFO_BOLD]
           const title =
             part.state.title ||
             (Object.keys(part.state.input).length > 0 ? JSON.stringify(part.state.input) : "Unknown")
 
-          printEvent(color, tool, title)
+          // Clear streaming output if it exists
+          const tracker = streamingOutputs.get(part.callID)
+          if (tracker && tracker.linesPrinted > 0) {
+            process.stdout.write('\x1b[' + tracker.linesPrinted + 'A') // Move cursor up
+            process.stdout.write('\x1b[J') // Clear from cursor to end
+          }
 
-          if (part.tool === "bash" && part.state.output && part.state.output.trim()) {
+          // Print final event header if not already printed
+          if (!streamingOutputs.has(part.callID)) {
+            printEvent(color, tool, title)
+          }
+
+          // Clean up tracking
+          streamingOutputs.delete(part.callID)
+
+          // Show final output for tools that benefit from it (bash, MCP tools, etc.)
+          if (shouldShowToolOutput(part.tool) && part.state.output && part.state.output.trim()) {
             UI.println()
-            UI.println(part.state.output)
+            const formattedOutput = formatToolOutput(part.state.output, part.tool)
+
+            // For very large outputs (> 500 lines), show truncated version
+            const lines = formattedOutput.split('\n')
+            if (lines.length > 500) {
+              UI.println(UI.Style.TEXT_DIM + `[Output truncated - showing first 100 and last 50 lines of ${lines.length} total]`)
+              UI.println()
+              UI.println(lines.slice(0, 100).join('\n'))
+              UI.println()
+              UI.println(UI.Style.TEXT_DIM + `[... ${lines.length - 150} lines hidden ...]`)
+              UI.println()
+              UI.println(lines.slice(-50).join('\n'))
+            } else {
+              UI.println(formattedOutput)
+            }
+            UI.println()
           }
         }
 
