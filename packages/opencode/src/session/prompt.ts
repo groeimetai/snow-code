@@ -588,10 +588,6 @@ export namespace SessionPrompt {
           },
         )
         const result = await execute(args, opts)
-        const output = result.content
-          .filter((x: any) => x.type === "text")
-          .map((x: any) => x.text)
-          .join("\n\n")
         await Plugin.trigger(
           "tool.execute.after",
           {
@@ -601,6 +597,10 @@ export namespace SessionPrompt {
           },
           result,
         )
+        const output = result.content
+          .filter((x: any) => x.type === "text")
+          .map((x: any) => x.text)
+          .join("\n\n")
 
         return {
           title: "",

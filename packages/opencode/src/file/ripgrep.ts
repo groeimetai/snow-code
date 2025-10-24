@@ -204,6 +204,17 @@ export namespace Ripgrep {
   }
 
   export async function* files(input: { cwd: string; glob?: string[] }) {
+    // Bun.spawn should throw this, but it incorrectly reports that the
+    // executable does not exist.
+    // See https://github.com/oven-sh/bun/issues/24012
+    if (!(await fs.stat(input.cwd).catch(() => undefined))?.isDirectory()) {
+      throw Object.assign(new Error(`No such file or directory: '${input.cwd}'`), {
+        code: "ENOENT",
+        errno: -2,
+        path: input.cwd,
+      });
+    }
+
     const args = [await filepath(), "--files", "--follow", "--hidden", "--glob=!.git/*"]
     if (input.glob) {
       for (const g of input.glob) {
