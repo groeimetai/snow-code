@@ -3,7 +3,18 @@ set -e
 
 # SnowCode: Use tsx to run TypeScript directly
 # No need for platform-specific binaries
-script_dir="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Get the real path of this script, resolving any symlinks
+script_path="$0"
+while [ -L "$script_path" ]; do
+    link_target="$(readlink "$script_path")"
+    case "$link_target" in
+        /*) script_path="$link_target" ;;
+        *) script_path="$(dirname "$script_path")/$link_target" ;;
+    esac
+done
+script_dir="$(dirname "$script_path")"
+script_dir="$(cd "$script_dir/.." && pwd)"
 
 # Handle SIGINT gracefully
 trap '' INT
