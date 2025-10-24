@@ -4,7 +4,21 @@
   "name": "@snow-flow/snowcode",
   "description": "SnowCode - AI-powered ServiceNow development CLI (OpenCode fork enhanced for Snow-Flow)",
   "type": "module",
-  "private": true,
+  "author": "Snow-Flow Team",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/groeimetai/snowcode.git"
+  },
+  "homepage": "https://github.com/groeimetai/snowcode",
+  "keywords": [
+    "servicenow",
+    "ai",
+    "cli",
+    "mcp",
+    "development",
+    "automation"
+  ],
   "scripts": {
     "typecheck": "tsgo --noEmit",
     "test": "bun test",
