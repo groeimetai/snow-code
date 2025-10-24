@@ -1,7 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "version": "0.15.14",
-  "name": "opencode",
+  "name": "@snow-flow/snowcode",
+  "description": "SnowCode - AI-powered ServiceNow development CLI (OpenCode fork enhanced for Snow-Flow)",
   "type": "module",
   "private": true,
   "scripts": {
@@ -11,7 +12,8 @@
     "dev": "bun run ./src/index.ts"
   },
   "bin": {
-    "opencode": "./bin/opencode"
+    "snowcode": "./bin/snowcode",
+    "opencode": "./bin/snowcode"
   },
   "exports": {
     "./*": "./src/*.ts"

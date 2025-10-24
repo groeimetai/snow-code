@@ -57,7 +57,7 @@ export namespace Config {
     const directories = [
       Global.Path.config,
       ...(await Array.fromAsync(
-        Filesystem.up({ targets: [".opencode"], start: Instance.directory, stop: Instance.worktree }),
+        Filesystem.up({ targets: [".snowcode", ".opencode"], start: Instance.directory, stop: Instance.worktree }),
       )),
     ]
 
@@ -167,7 +167,7 @@ export namespace Config {
       if (!md.data) continue
 
       const name = (() => {
-        const patterns = ["/.opencode/command/", "/command/"]
+        const patterns = ["/.snowcode/command/", "/.opencode/command/", "/command/"]
         const pattern = patterns.find((p) => item.includes(p))
 
         if (pattern) {
@@ -203,11 +203,13 @@ export namespace Config {
 
       // Extract relative path from agent folder for nested agents
       let agentName = path.basename(item, ".md")
-      const agentFolderPath = item.includes("/.opencode/agent/")
-        ? item.split("/.opencode/agent/")[1]
-        : item.includes("/agent/")
-          ? item.split("/agent/")[1]
-          : agentName + ".md"
+      const agentFolderPath = item.includes("/.snowcode/agent/")
+        ? item.split("/.snowcode/agent/")[1]
+        : item.includes("/.opencode/agent/")
+          ? item.split("/.opencode/agent/")[1]
+          : item.includes("/agent/")
+            ? item.split("/agent/")[1]
+            : agentName + ".md"
 
       // If agent is in a subfolder, include folder path in name
       if (agentFolderPath.includes("/")) {
