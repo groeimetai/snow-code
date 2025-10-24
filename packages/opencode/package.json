@@ -87,5 +87,14 @@
     "xdg-basedir": "5.1.0",
     "yargs": "17.7.2",
     "zod": "4.1.8"
+  },
+  "optionalDependencies": {
+    "@groeimetai/snowcode-darwin-arm64": "0.15.18",
+    "@groeimetai/snowcode-darwin-x64": "0.15.18",
+    "@groeimetai/snowcode-darwin-x64-baseline": "0.15.18",
+    "@groeimetai/snowcode-linux-arm64": "0.15.18",
+    "@groeimetai/snowcode-linux-x64": "0.15.18",
+    "@groeimetai/snowcode-linux-x64-baseline": "0.15.18",
+    "@groeimetai/snowcode-windows-x64": "0.15.18"
   }
 }
