@@ -6,7 +6,6 @@ import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessag
 import { Identifier } from "../id/id"
 import { LSP } from "../lsp"
 import { Snapshot } from "@/snapshot"
-import { fn } from "@/util/fn"
 
 export namespace MessageV2 {
   export const OutputLengthError = NamedError.create("MessageOutputLengthError", z.object({}))
@@ -163,6 +162,7 @@ export namespace MessageV2 {
 
   export const StepFinishPart = PartBase.extend({
     type: z.literal("step-finish"),
+    reason: z.string(),
     snapshot: z.string().optional(),
     cost: z.number(),
     tokens: z.object({
@@ -268,8 +268,9 @@ export namespace MessageV2 {
     }),
     summary: z
       .object({
+        title: z.string().optional(),
+        body: z.string().optional(),
         diffs: Snapshot.FileDiff.array(),
-        text: z.string(),
       })
       .optional(),
   }).meta({
@@ -358,6 +359,7 @@ export namespace MessageV2 {
       "message.part.updated",
       z.object({
         part: Part,
+        delta: z.string().optional(),
       }),
     ),
     PartRemoved: Bus.event(

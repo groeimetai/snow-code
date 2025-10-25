@@ -36,6 +36,11 @@ export namespace Session {
       projectID: z.string(),
       directory: z.string(),
       parentID: Identifier.schema("session").optional(),
+      summary: z
+        .object({
+          diffs: Snapshot.FileDiff.array(),
+        })
+        .optional(),
       share: z
         .object({
           url: z.string(),
@@ -335,10 +340,25 @@ export namespace Session {
     },
   )
 
-  export const updatePart = fn(MessageV2.Part, async (part) => {
+  const UpdatePartInput = z.union([
+    MessageV2.Part,
+    z.object({
+      part: MessageV2.TextPart,
+      delta: z.string(),
+    }),
+    z.object({
+      part: MessageV2.ReasoningPart,
+      delta: z.string(),
+    }),
+  ])
+
+  export const updatePart = fn(UpdatePartInput, async (input) => {
+    const part = "delta" in input ? input.part : input
+    const delta = "delta" in input ? input.delta : undefined
     await Storage.write(["part", part.messageID, part.id], part)
     Bus.publish(MessageV2.Event.PartUpdated, {
       part,
+      delta,
     })
     return part
   })
@@ -404,49 +424,6 @@ export namespace Session {
         ],
       })
       await Project.setInitialized(Instance.project.id)
-    },
-  )
-
-  export const diff = fn(
-    z.object({
-      sessionID: Identifier.schema("session"),
-      messageID: Identifier.schema("message").optional(),
-    }),
-    async (input) => {
-      const all = await messages(input.sessionID)
-      const index = !input.messageID ? 0 : all.findIndex((x) => x.info.id === input.messageID)
-      if (index === -1) return []
-
-      let from: string | undefined
-      let to: string | undefined
-
-      // scan assistant messages to find earliest from and latest to
-      // snapshot
-      for (let i = index + 1; i < all.length; i++) {
-        const item = all[i]
-
-        // if messageID is provided, stop at the next user message
-        if (input.messageID && item.info.role === "user") break
-
-        if (!from) {
-          for (const part of item.parts) {
-            if (part.type === "step-start" && part.snapshot) {
-              from = part.snapshot
-              break
-            }
-          }
-        }
-
-        for (const part of item.parts) {
-          if (part.type === "step-finish" && part.snapshot) {
-            to = part.snapshot
-            break
-          }
-        }
-      }
-
-      if (from && to) return Snapshot.diffFull(from, to)
-      return []
     },
   )
 }

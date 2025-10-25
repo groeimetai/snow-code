@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "0.15.21",
+  "version": "0.15.22",
   "name": "@groeimetai/snowcode",
   "description": "SnowCode - AI-powered ServiceNow development CLI (OpenCode fork enhanced for Snow-Flow)",
   "type": "module",
@@ -47,7 +47,8 @@
     "typescript": "5.8.2",
     "@typescript/native-preview": "7.0.0-dev.20251014.1",
     "vscode-languageserver-types": "3.17.5",
-    "zod-to-json-schema": "3.24.5"
+    "zod-to-json-schema": "3.24.5",
+    "@opencode-ai/script": "workspace:*"
   },
   "dependencies": {
     "@actions/core": "1.11.1",
@@ -61,6 +62,7 @@
     "@octokit/rest": "22.0.0",
     "@openauthjs/openauth": "0.0.0-20250322224806",
     "@parcel/watcher": "2.5.1",
+    "@pierre/precision-diffs": "catalog:",
     "@standard-community/standard-json": "0.3.1",
     "@standard-community/standard-openapi": "0.2.4",
     "@standard-schema/spec": "1.0.0",
@@ -85,8 +87,9 @@
     "vscode-jsonrpc": "8.2.1",
     "web-tree-sitter": "0.25.9",
     "xdg-basedir": "5.1.0",
-    "yargs": "17.7.2",
-    "zod": "4.1.8",
+    "yargs": "18.0.0",
+    "zod": "catalog:",
+    "zod-to-json-schema": "3.24.5",
     "tsx": "^4.19.2"
   }
 }
