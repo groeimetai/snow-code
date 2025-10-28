@@ -95,24 +95,83 @@ SnowCode is part of a comprehensive ServiceNow development platform:
 - Update Set workflow automation
 - Widget coherence checking
 
-### Enterprise Edition
+### 💰 Pricing & Plans
 
-**Unlocks 40+ Additional MCP Tools** for external platform integration:
+SnowCode is part of the Snow-Flow Suite with transparent 3-tier pricing:
 
-- **🔷 Azure DevOps** (10 tools) - Work item sync, pipeline automation, PR management
-- **🟦 Jira** (8 tools) - Backlog management, issue tracking, JQL queries, sprint sync
-- **📚 Confluence** (8 tools) - Documentation sync, page management, knowledge base
-- **🤖 Advanced ML** (15+ tools) - Predictive Intelligence, forecasting, anomaly detection
+#### 🆓 Open Source (Free Forever)
 
-**Additional Enterprise Features:**
-- ✅ **Fully managed SaaS** - Hosted on Google Cloud (europe-west4)
-- ✅ **License key activation** - Same codebase, enterprise servers unlocked
-- ✅ **Agent task automation** - Agents can fetch tasks from Jira/Azure/Confluence
-- ✅ **White-label portal** - Branded experience for service integrators
-- ✅ **Enterprise security** - KMS encryption, SOC 2/ISO 27001 ready
-- ✅ **24/7 priority support** - Dedicated support team
+**Snow-Flow MCP Framework** - 350+ ServiceNow tools, self-hosted
 
-**Pricing:** Custom enterprise pricing. Contact **sales@snow-flow.dev**
+- ✅ All ServiceNow MCP tools
+- ✅ Use with any AI IDE (Claude Desktop, OpenCode, etc.)
+- ✅ Self-host locally
+- ✅ Community support
+
+**SnowCode IDE:** Use OpenCode (free, open source) + Snow-Flow
+
+#### 👤 Individual Plan - $99/month
+
+**Everything in Open Source + enterprise tools + managed SaaS**
+
+- ✅ **40+ Enterprise MCP Tools:**
+  - 🔷 Azure DevOps (10 tools) - work items, pipelines, PRs
+  - 🟦 Jira (8 tools) - backlog sync, issue tracking
+  - 📚 Confluence (8 tools) - documentation sync
+  - 🤖 ML & Analytics (15+ tools) - predictive intelligence
+- ✅ **Fully managed SaaS** - hosted on Google Cloud (europe-west4)
+- ✅ **Zero maintenance** - automatic updates
+- ✅ **Email support** - 24h response time
+- ✅ **99.9% SLA** - enterprise reliability
+
+**Perfect for:** Freelance consultants, solo practitioners
+
+#### 👥 Teams Plan - $79/user/month
+
+**Everything in Individual + team collaboration**
+
+- ✅ All Individual plan features
+- ✅ **Team Dashboard** - centralized license management
+- ✅ **Usage Analytics** - track team tool usage
+- ✅ **Priority Support** - 4h response time, Slack channel
+- ✅ **Volume Discount** - save 20% vs Individual
+
+**Minimum:** 3 users
+**Perfect for:** Development teams, agencies, consulting firms
+
+#### 🏢 Enterprise (Service Integrators)
+
+**Wholesale pricing for service integrators**
+
+- ✅ All Teams plan features
+- ✅ **White-Label Portal** - branded customer experience
+- ✅ **Wholesale Pricing** - $49/seat/month (50+ seats)
+- ✅ **Partner Margins** - resell at $69-79/seat, keep 40-75% margin
+- ✅ **24/7 Priority Support** - dedicated support team
+- ✅ **Custom Integrations** - build custom MCP tools
+- ✅ **SOC 2 / ISO 27001** - enterprise compliance ready
+
+**Minimum:** 25 seats
+**Perfect for:** Service integrators (Capgemini, Accenture, etc.)
+
+**Contact:** [sales@snow-flow.dev](mailto:sales@snow-flow.dev)
+
+---
+
+### What is "Managed SaaS"?
+
+**Self-Hosted (Open Source):**
+- You run MCP servers locally on your machine
+- You manage updates and configuration
+- No monthly cost, but requires technical setup
+
+**Managed SaaS (Paid Plans):**
+- Snow-Flow hosts MCP servers on Google Cloud
+- Zero server maintenance - we handle everything
+- Automatic updates with zero downtime
+- Just add license key - enterprise tools activate instantly
+
+**Example:** With Individual plan, you install SnowCode locally, add your license key to config, and enterprise MCP servers (Jira/Azure/Confluence) connect automatically to our cloud infrastructure. No server setup required!
 
 ---
 
