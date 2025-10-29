@@ -1,9 +1,23 @@
 import path from "path"
-import { $ } from "bun"
+import { execSync } from "child_process"
 import z from "zod/v4"
 import { NamedError } from "../util/error"
 import { Bus } from "../bus"
 import { Log } from "../util/log"
+
+// Helper to execute shell commands (Node.js compatible replacement for Bun's $)
+function shell(command: string, env?: Record<string, string>) {
+  try {
+    const result = execSync(command, {
+      encoding: 'utf8',
+      stdio: 'pipe',
+      env: { ...process.env, ...env }
+    })
+    return { output: result, exitCode: 0, stdout: result, stderr: '' }
+  } catch (error: any) {
+    return { output: error.stdout || '', exitCode: error.status || 1, stdout: error.stdout || '', stderr: error.stderr || '' }
+  }
+}
 
 declare global {
   const OPENCODE_VERSION: string
@@ -57,23 +71,23 @@ export namespace Installation {
     const checks = [
       {
         name: "npm" as const,
-        command: () => $`npm list -g --depth=0`.throws(false).text(),
+        command: () => shell('npm list -g --depth=0').output,
       },
       {
         name: "yarn" as const,
-        command: () => $`yarn global list`.throws(false).text(),
+        command: () => shell('yarn global list').output,
       },
       {
         name: "pnpm" as const,
-        command: () => $`pnpm list -g --depth=0`.throws(false).text(),
+        command: () => shell('pnpm list -g --depth=0').output,
       },
       {
         name: "bun" as const,
-        command: () => $`bun pm ls -g`.throws(false).text(),
+        command: () => shell('bun pm ls -g').output,
       },
       {
         name: "brew" as const,
-        command: () => $`brew list --formula opencode-ai`.throws(false).text(),
+        command: () => shell('brew list --formula opencode-ai').output,
       },
     ]
 
@@ -103,37 +117,36 @@ export namespace Installation {
   )
 
   export async function upgrade(method: Method, target: string) {
-    const cmd = (() => {
+    const result = (() => {
       switch (method) {
         case "curl":
-          return $`curl -fsSL https://opencode.ai/install | bash`.env({
-            ...process.env,
+          return shell('curl -fsSL https://opencode.ai/install | bash', {
             VERSION: target,
           })
         case "npm":
-          return $`npm install -g opencode-ai@${target}`
+          return shell(`npm install -g opencode-ai@${target}`)
         case "pnpm":
-          return $`pnpm install -g opencode-ai@${target}`
+          return shell(`pnpm install -g opencode-ai@${target}`)
         case "bun":
-          return $`bun install -g opencode-ai@${target}`
+          return shell(`bun install -g opencode-ai@${target}`)
         case "brew":
-          return $`brew install sst/tap/opencode`.env({
+          return shell('brew install sst/tap/opencode', {
             HOMEBREW_NO_AUTO_UPDATE: "1",
           })
         default:
           throw new Error(`Unknown method: ${method}`)
       }
     })()
-    const result = await cmd.quiet().throws(false)
+
     log.info("upgraded", {
       method,
       target,
-      stdout: result.stdout.toString(),
-      stderr: result.stderr.toString(),
+      stdout: result.stdout,
+      stderr: result.stderr,
     })
     if (result.exitCode !== 0)
       throw new UpgradeFailedError({
-        stderr: result.stderr.toString("utf8"),
+        stderr: result.stderr,
       })
   }
 
