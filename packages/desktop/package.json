@@ -24,8 +24,8 @@
   },
   "dependencies": {
     "@kobalte/core": "catalog:",
-    "@opencode-ai/sdk": "workspace:*",
-    "@opencode-ai/ui": "workspace:*",
+    "@groeimetai/snowcode-sdk": "workspace:*",
+    "@groeimetai/snowcode-ui": "workspace:*",
     "@pierre/precision-diffs": "catalog:",
     "@shikijs/transformers": "3.9.2",
     "@solid-primitives/active-element": "2.1.3",

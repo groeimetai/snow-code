@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "0.15.26",
+  "version": "0.15.28",
   "name": "@groeimetai/snowcode",
   "description": "SnowCode - AI-powered ServiceNow development CLI (OpenCode fork enhanced for Snow-Flow)",
   "type": "module",
@@ -47,8 +47,7 @@
     "typescript": "5.8.2",
     "@typescript/native-preview": "7.0.0-dev.20251014.1",
     "vscode-languageserver-types": "3.17.5",
-    "zod-to-json-schema": "3.24.5",
-    "@opencode-ai/script": "workspace:*"
+    "zod-to-json-schema": "3.24.5"
   },
   "dependencies": {
     "@actions/core": "1.11.1",
@@ -90,6 +89,9 @@
     "yargs": "17.7.2",
     "zod": "3.25.76",
     "zod-to-json-schema": "3.24.5",
-    "tsx": "^4.19.2"
+    "tsx": "4.20.6"
+  },
+  "optionalDependencies": {
+    "@groeimetai/snowcode-darwin-arm64": "0.15.28"
   }
 }

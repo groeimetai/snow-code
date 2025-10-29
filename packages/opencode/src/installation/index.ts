@@ -20,8 +20,8 @@ function shell(command: string, env?: Record<string, string>) {
 }
 
 declare global {
-  const OPENCODE_VERSION: string
-  const OPENCODE_CHANNEL: string
+  const SNOWCODE_VERSION: string
+  const SNOWCODE_CHANNEL: string
 }
 
 export namespace Installation {
@@ -64,7 +64,7 @@ export namespace Installation {
   }
 
   export async function method() {
-    if (process.execPath.includes(path.join(".opencode", "bin"))) return "curl"
+    if (process.execPath.includes(path.join(".snowcode", "bin"))) return "curl"
     if (process.execPath.includes(path.join(".local", "bin"))) return "curl"
     const exec = process.execPath.toLowerCase()
 
@@ -87,7 +87,7 @@ export namespace Installation {
       },
       {
         name: "brew" as const,
-        command: () => shell('brew list --formula opencode-ai').output,
+        command: () => shell('brew list --formula @groeimetai/snowcode').output,
       },
     ]
 
@@ -101,7 +101,7 @@ export namespace Installation {
 
     for (const check of checks) {
       const output = await check.command()
-      if (output.includes("opencode-ai")) {
+      if (output.includes("@groeimetai/snowcode") || output.includes("snowcode")) {
         return check.name
       }
     }
@@ -120,17 +120,17 @@ export namespace Installation {
     const result = (() => {
       switch (method) {
         case "curl":
-          return shell('curl -fsSL https://opencode.ai/install | bash', {
+          return shell('curl -fsSL https://snow-flow.dev/install | bash', {
             VERSION: target,
           })
         case "npm":
-          return shell(`npm install -g opencode-ai@${target}`)
+          return shell(`npm install -g @groeimetai/snowcode@${target}`)
         case "pnpm":
-          return shell(`pnpm install -g opencode-ai@${target}`)
+          return shell(`pnpm install -g @groeimetai/snowcode@${target}`)
         case "bun":
-          return shell(`bun install -g opencode-ai@${target}`)
+          return shell(`bun install -g @groeimetai/snowcode@${target}`)
         case "brew":
-          return shell('brew install sst/tap/opencode', {
+          return shell('brew install groeimetai/tap/snowcode', {
             HOMEBREW_NO_AUTO_UPDATE: "1",
           })
         default:
@@ -150,12 +150,12 @@ export namespace Installation {
       })
   }
 
-  export const VERSION = typeof OPENCODE_VERSION === "string" ? OPENCODE_VERSION : "local"
-  export const CHANNEL = typeof OPENCODE_CHANNEL === "string" ? OPENCODE_CHANNEL : "local"
-  export const USER_AGENT = `opencode/${CHANNEL}/${VERSION}`
+  export const VERSION = typeof SNOWCODE_VERSION === "string" ? SNOWCODE_VERSION : "local"
+  export const CHANNEL = typeof SNOWCODE_CHANNEL === "string" ? SNOWCODE_CHANNEL : "local"
+  export const USER_AGENT = `snowcode/${CHANNEL}/${VERSION}`
 
   export async function latest() {
-    return fetch(`https://registry.npmjs.org/opencode-ai/${CHANNEL}`)
+    return fetch(`https://registry.npmjs.org/@groeimetai/snowcode/${CHANNEL}`)
       .then((res) => {
         if (!res.ok) throw new Error(res.statusText)
         return res.json()

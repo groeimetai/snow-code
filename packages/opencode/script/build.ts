@@ -5,7 +5,10 @@ process.chdir(dir)
 import { $ } from "bun"
 
 import pkg from "../package.json"
-import { Script } from "@opencode-ai/script"
+
+// SnowCode version from package.json
+const version = pkg.version
+const channel = "latest"
 
 const GOARCH: Record<string, string> = {
   arm64: "arm64",
@@ -13,61 +16,76 @@ const GOARCH: Record<string, string> = {
   "x64-baseline": "amd64",
 }
 
+// Test build - only current platform for now
 const targets = [
-  ["windows", "x64"],
-  ["linux", "arm64"],
-  ["linux", "x64"],
-  ["linux", "x64-baseline"],
-  ["darwin", "x64"],
-  ["darwin", "x64-baseline"],
   ["darwin", "arm64"],
 ]
+
+// Full targets for production build:
+// const targets = [
+//   ["windows", "x64"],
+//   ["linux", "arm64"],
+//   ["linux", "x64"],
+//   ["linux", "x64-baseline"],
+//   ["darwin", "x64"],
+//   ["darwin", "x64-baseline"],
+//   ["darwin", "arm64"],
+// ]
 
 await $`rm -rf dist`
 
 const binaries: Record<string, string> = {}
 for (const [os, arch] of targets) {
-  console.log(`building ${os}-${arch}`)
+  console.log(`Building SnowCode ${os}-${arch}...`)
   const name = `${pkg.name}-${os}-${arch}`
   await $`mkdir -p dist/${name}/bin`
-  await $`CGO_ENABLED=0 GOOS=${os} GOARCH=${GOARCH[arch]} go build -ldflags="-s -w -X main.Version=${Script.version}" -o ../opencode/dist/${name}/bin/tui ../tui/cmd/opencode/main.go`
-    .cwd("../tui")
-    .quiet()
+
+  // Note: TUI component skipped - SnowCode doesn't use Go TUI
+  // If needed in future, uncomment and adjust:
+  // await $`CGO_ENABLED=0 GOOS=${os} GOARCH=${GOARCH[arch]} go build -ldflags="-s -w -X main.Version=${version}" -o ../opencode/dist/${name}/bin/tui ../tui/cmd/snowcode/main.go`
+  //   .cwd("../tui")
+  //   .quiet()
 
   const watcher = `@parcel/watcher-${os === "windows" ? "win32" : os}-${arch.replace("-baseline", "")}${os === "linux" ? "-glibc" : ""}`
   await $`mkdir -p ../../node_modules/${watcher}`
-  await $`npm pack npm pack ${watcher}`.cwd(path.join(dir, "../../node_modules")).quiet()
+  await $`npm pack ${watcher}`.cwd(path.join(dir, "../../node_modules")).quiet()
   await $`tar -xf ../../node_modules/${watcher.replace("@parcel/", "parcel-")}-*.tgz -C ../../node_modules/${watcher} --strip-components=1`
 
   await Bun.build({
     sourcemap: "external",
     compile: {
       target: `bun-${os}-${arch}` as any,
-      outfile: `dist/${name}/bin/opencode`,
-      execArgv: [`--user-agent=opencode/${Script.version}`, `--env-file=""`, `--`],
+      outfile: `dist/${name}/bin/snowcode${os === "windows" ? ".exe" : ""}`,
+      execArgv: [`--user-agent=snowcode/${version}`, `--env-file=""`, `--`],
       windows: {},
     },
     entrypoints: ["./src/index.ts"],
     define: {
-      OPENCODE_VERSION: `'${Script.version}'`,
-      OPENCODE_CHANNEL: `'${Script.channel}'`,
-      OPENCODE_TUI_PATH: `'../../../dist/${name}/bin/tui'`,
+      SNOWCODE_VERSION: `'${version}'`,
+      SNOWCODE_CHANNEL: `'${channel}'`,
     },
   })
-  await $`rm -rf ./dist/${name}/bin/tui`
+
   await Bun.file(`dist/${name}/package.json`).write(
     JSON.stringify(
       {
         name,
-        version: Script.version,
+        version: version,
+        description: `SnowCode platform binary for ${os}-${arch}`,
         os: [os === "windows" ? "win32" : os],
-        cpu: [arch],
+        cpu: [arch === "x64-baseline" ? "x64" : arch],
+        bin: {
+          snowcode: `./bin/snowcode${os === "windows" ? ".exe" : ""}`,
+          opencode: `./bin/snowcode${os === "windows" ? ".exe" : ""}`,
+        },
       },
       null,
       2,
     ),
   )
-  binaries[name] = Script.version
+  binaries[name] = version
+  console.log(`✅ Built ${name}`)
 }
 
+console.log('\n🎉 All SnowCode platform binaries built successfully!')
 export { binaries }
