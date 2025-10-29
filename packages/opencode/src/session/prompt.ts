@@ -535,6 +535,7 @@ export namespace SessionPrompt {
               args,
             },
           )
+          item.parameters.parse(args)
           const result = await item.execute(args, {
             sessionID: input.sessionID,
             abort: options.abortSignal!,
