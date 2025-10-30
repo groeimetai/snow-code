@@ -37,17 +37,34 @@ export const AttachCommand = cmd({
     const platform = platformMap[process.platform] || process.platform
     const arch = archMap[process.arch] || process.arch
     const tuiExt = process.platform === "win32" ? ".exe" : ""
+    const platformPkgName = `@groeimetai/snowcode-${platform}-${arch}`
 
-    // Look for platform binary TUI in node_modules
-    const platformBinaryPath = path.join(
-      path.dirname(path.dirname(path.dirname(import.meta.dir))),
-      "node_modules",
-      `@groeimetai/snowcode-${platform}-${arch}`,
-      "bin",
-      `tui${tuiExt}`
-    )
+    // Try multiple possible locations for the platform binary
+    const possiblePaths = [
+      // Try using Node's module resolution (most reliable)
+      (() => {
+        try {
+          const pkgPath = require.resolve(`${platformPkgName}/package.json`)
+          return path.join(path.dirname(pkgPath), "bin", `tui${tuiExt}`)
+        } catch {
+          return null
+        }
+      })(),
+      // Relative to package root (calculated from import.meta.dir)
+      path.join(path.dirname(path.dirname(path.dirname(import.meta.dir))), "node_modules", platformPkgName, "bin", `tui${tuiExt}`),
+      // Relative to current executable
+      path.join(path.dirname(process.argv[1]), "..", "node_modules", platformPkgName, "bin", `tui${tuiExt}`),
+    ].filter(Boolean) as string[]
 
-    if (await Bun.file(platformBinaryPath).exists()) {
+    let platformBinaryPath: string | undefined
+    for (const tryPath of possiblePaths) {
+      if (await Bun.file(tryPath).exists()) {
+        platformBinaryPath = tryPath
+        break
+      }
+    }
+
+    if (platformBinaryPath) {
       cmd = [platformBinaryPath]
     } else {
       // Fallback: try embedded files (for development builds)
