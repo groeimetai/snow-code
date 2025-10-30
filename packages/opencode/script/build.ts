@@ -16,21 +16,18 @@ const GOARCH: Record<string, string> = {
   "x64-baseline": "amd64",
 }
 
-// Test build - only current platform for now
+// Build only current platform (cross-compilation requires native modules for each platform)
+// Full builds done via GitHub Actions CI/CD
 const targets = [
   ["darwin", "arm64"],
 ]
 
-// Full targets for production build:
-// const targets = [
-//   ["windows", "x64"],
-//   ["linux", "arm64"],
-//   ["linux", "x64"],
-//   ["linux", "x64-baseline"],
-//   ["darwin", "x64"],
-//   ["darwin", "x64-baseline"],
-//   ["darwin", "arm64"],
-// ]
+// Full targets (for GitHub Actions):
+// ["windows", "x64"],
+// ["linux", "arm64"],
+// ["linux", "x64"],
+// ["darwin", "x64"],
+// ["darwin", "arm64"],
 
 await $`rm -rf dist`
 
