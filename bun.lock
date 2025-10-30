@@ -165,7 +165,7 @@
     },
     "packages/opencode": {
       "name": "@groeimetai/snowcode",
-      "version": "0.15.28",
+      "version": "0.15.32",
       "bin": {
         "snowcode": "./bin/snowcode",
         "opencode": "./bin/snowcode",
@@ -228,6 +228,9 @@
         "typescript": "5.8.2",
         "vscode-languageserver-types": "3.17.5",
         "zod-to-json-schema": "3.24.5",
+      },
+      "optionalDependencies": {
+        "@groeimetai/snowcode-darwin-arm64": "0.15.32",
       },
     },
     "packages/plugin": {
@@ -665,6 +668,8 @@
     "@fontsource/inter": ["@fontsource/inter@5.2.8", "", {}, "sha512-P6r5WnJoKiNVV+zvW2xM13gNdFhAEpQ9dQJHt3naLvfg+LkF2ldgSLiF4T41lf1SQCM9QmkqPTn4TH568IRagg=="],
 
     "@groeimetai/snowcode": ["@groeimetai/snowcode@workspace:packages/opencode"],
+
+    "@groeimetai/snowcode-darwin-arm64": ["@groeimetai/snowcode-darwin-arm64@0.15.32", "", { "os": "darwin", "cpu": "arm64", "bin": { "snowcode": "bin/snowcode", "opencode": "bin/snowcode" } }, "sha512-p1nN8XpRt/MaTJsS5Xqe/e1+cQvwT2hijSX7/Y+qI2KqZv6o0i1YCtVW60dMYiWPZ/ofatVDYsgwU7dIrfFbeA=="],
 
     "@groeimetai/snowcode-plugin": ["@groeimetai/snowcode-plugin@workspace:packages/plugin"],
 
