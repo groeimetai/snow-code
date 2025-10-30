@@ -251,9 +251,23 @@ export const AuthLoginCommand = cmd({
             prompts.log.success("ServiceNow credentials saved")
           }
 
-          prompts.outro("Done")
-          await Instance.dispose()
-          return
+          // After ServiceNow setup, ask about Enterprise (optional)
+          prompts.log.message("")
+          const configureEnterprise = await prompts.confirm({
+            message: "Configure Snow-Flow Enterprise? (optional)",
+            initialValue: false,
+          })
+
+          if (prompts.isCancel(configureEnterprise) || !configureEnterprise) {
+            prompts.outro("Done")
+            await Instance.dispose()
+            return
+          }
+
+          // User wants Enterprise, set provider and fall through
+          prompts.log.message("")
+          provider = "enterprise"
+          // Fall through to Enterprise handler below
         }
 
         // Handle Enterprise authentication
@@ -461,36 +475,16 @@ export const AuthLoginCommand = cmd({
               }
             }
 
-            // Ask if user wants to configure ServiceNow/Enterprise after successful LLM auth
+            // Automatically continue to ServiceNow setup (required for snow-flow)
             prompts.log.message("")
-            const configureMore = await prompts.confirm({
-              message: "Configure ServiceNow or Enterprise integration?",
-              initialValue: true,
-            })
-
-            if (prompts.isCancel(configureMore) || !configureMore) {
-              prompts.outro("Done")
-              await Instance.dispose()
-              return
-            }
-
-            // User wants to configure ServiceNow/Enterprise, ask which one
+            prompts.log.step("ServiceNow Configuration")
+            prompts.log.info("Snow-Flow requires ServiceNow connection for development")
             prompts.log.message("")
-            provider = (await prompts.select({
-              message: "What would you like to configure?",
-              options: [
-                { value: "servicenow", label: "ServiceNow (OAuth/Basic)", hint: "recommended" },
-                { value: "enterprise", label: "Snow-Flow Enterprise" },
-              ],
-            })) as string
 
-            if (prompts.isCancel(provider)) {
-              prompts.outro("Done")
-              await Instance.dispose()
-              return
-            }
+            // Set provider to servicenow to fall through to ServiceNow handler
+            provider = "servicenow"
 
-            // Fall through to ServiceNow or Enterprise handlers below (don't return here!)
+            // Fall through to ServiceNow handler below (don't return here!)
           }
         }
 
