@@ -79,8 +79,6 @@
     "minimatch": "10.0.3",
     "open": "10.1.2",
     "remeda": "2.26.0",
-    "tree-sitter": "0.25.0",
-    "tree-sitter-bash": "0.25.0",
     "turndown": "7.2.0",
     "ulid": "3.0.1",
     "vscode-jsonrpc": "8.2.1",
@@ -92,6 +90,8 @@
     "tsx": "4.20.6"
   },
   "optionalDependencies": {
-    "@groeimetai/snowcode-darwin-arm64": "0.15.32"
+    "@groeimetai/snowcode-darwin-arm64": "0.15.32",
+    "tree-sitter": "0.25.0",
+    "tree-sitter-bash": "0.25.0"
   }
 }
