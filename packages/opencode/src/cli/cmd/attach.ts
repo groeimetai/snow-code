@@ -22,22 +22,51 @@ export const AttachCommand = cmd({
       }),
   handler: async (args) => {
     let cmd = [] as string[]
-    const tui = Bun.embeddedFiles.find((item) => (item as File).name.includes("tui")) as File
-    if (tui) {
-      let binaryName = tui.name
-      if (process.platform === "win32" && !binaryName.endsWith(".exe")) {
-        binaryName += ".exe"
-      }
-      const binary = path.join(Global.Path.cache, "tui", binaryName)
-      const file = Bun.file(binary)
-      if (!(await file.exists())) {
-        await Bun.write(file, tui, { mode: 0o755 })
-        if (process.platform !== "win32") await fs.chmod(binary, 0o755)
-      }
-      cmd = [binary]
+
+    // Platform binaries: TUI is in node_modules/@groeimetai/snowcode-{platform}-{arch}/bin/tui
+    const platformMap: Record<string, string> = {
+      darwin: "darwin",
+      linux: "linux",
+      win32: "win32"
     }
-    if (!tui) {
-      throw new Error("TUI binary not found - try reinstalling: npm install -g @groeimetai/snowcode")
+    const archMap: Record<string, string> = {
+      x64: "x64",
+      arm64: "arm64",
+      arm: "arm"
+    }
+    const platform = platformMap[process.platform] || process.platform
+    const arch = archMap[process.arch] || process.arch
+    const tuiExt = process.platform === "win32" ? ".exe" : ""
+
+    // Look for platform binary TUI in node_modules
+    const platformBinaryPath = path.join(
+      path.dirname(path.dirname(path.dirname(import.meta.dir))),
+      "node_modules",
+      `@groeimetai/snowcode-${platform}-${arch}`,
+      "bin",
+      `tui${tuiExt}`
+    )
+
+    if (await Bun.file(platformBinaryPath).exists()) {
+      cmd = [platformBinaryPath]
+    } else {
+      // Fallback: try embedded files (for development builds)
+      const tui = Bun.embeddedFiles.find((item) => (item as File).name.includes("tui")) as File
+      if (tui) {
+        let binaryName = tui.name
+        if (process.platform === "win32" && !binaryName.endsWith(".exe")) {
+          binaryName += ".exe"
+        }
+        const binary = path.join(Global.Path.cache, "tui", binaryName)
+        const file = Bun.file(binary)
+        if (!(await file.exists())) {
+          await Bun.write(file, tui, { mode: 0o755 })
+          if (process.platform !== "win32") await fs.chmod(binary, 0o755)
+        }
+        cmd = [binary]
+      } else {
+        throw new Error(`TUI binary not found at ${platformBinaryPath} - try reinstalling: npm install -g @groeimetai/snowcode`)
+      }
     }
     if (args.session) {
       cmd.push("--session", args.session)
