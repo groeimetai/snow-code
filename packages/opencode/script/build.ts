@@ -55,6 +55,7 @@ for (const [os, arch] of targets) {
 
   await Bun.build({
     sourcemap: "external",
+    external: ["tree-sitter", "tree-sitter-bash"],
     compile: {
       target: `bun-${os}-${arch}` as any,
       outfile: `dist/${name}/bin/snowcode${os === "windows" ? ".exe" : ""}`,
