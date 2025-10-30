@@ -48,16 +48,24 @@ async function updateEnvFile(updates: Array<{ key: string; value: string }>) {
 async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clientSecret: string) {
   const projectSnowCodeDir = path.join(process.cwd(), ".snowcode")
   const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
+  const globalConfigDir = path.join(os.homedir(), ".config", "snowcode")
 
   // Ensure instance is a full URL
   const instanceUrl = instance.startsWith("http") ? instance : `https://${instance}`
 
-  // Update both project-level and global configs
+  // Update both project-level and global configs (all possible locations)
   const configPaths = [
+    // Project-level (created by snow-flow init)
     path.join(projectSnowCodeDir, "opencode.json"),
     path.join(projectSnowCodeDir, "config.json"),
+    // Global SnowCode dirs
     path.join(globalSnowCodeDir, "opencode.json"),
     path.join(globalSnowCodeDir, "snowcode.json"),
+    path.join(globalSnowCodeDir, "config.json"),
+    // Global OpenCode standard location (~/.config/snowcode/)
+    path.join(globalConfigDir, "opencode.json"),
+    path.join(globalConfigDir, "snowcode.json"),
+    path.join(globalConfigDir, "config.json"),
   ]
 
   for (const configPath of configPaths) {
@@ -94,6 +102,13 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
             }
             if (serverConfig.environment.SNOW_CLIENT_SECRET !== undefined) {
               serverConfig.environment.SNOW_CLIENT_SECRET = clientSecret
+            }
+            // Also update username/password if present (for basic auth)
+            if (serverConfig.environment.SERVICENOW_USERNAME !== undefined) {
+              serverConfig.environment.SERVICENOW_USERNAME = ""
+            }
+            if (serverConfig.environment.SERVICENOW_PASSWORD !== undefined) {
+              serverConfig.environment.SERVICENOW_PASSWORD = ""
             }
           }
         }
