@@ -125,10 +125,10 @@ export const TuiCommand = cmd({
           cmd = [binary]
         }
         if (!tui) {
-          const dir = Bun.fileURLToPath(new URL("../../../../tui/cmd/opencode", import.meta.url))
-          let binaryName = `./dist/tui${process.platform === "win32" ? ".exe" : ""}`
-          await $`go build -o ${binaryName} ./main.go`.cwd(dir)
-          cmd = [path.join(dir, binaryName)]
+          // SnowCode doesn't use TUI component (platform binaries only)
+          UI.error("TUI mode is not available in SnowCode")
+          UI.println("Use 'snowcode' command directly for CLI mode")
+          return "done"
         }
         Log.Default.info("tui", {
           cmd,
