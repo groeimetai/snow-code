@@ -28,7 +28,41 @@ export namespace Auth {
     })
     .meta({ ref: "WellKnownAuth" })
 
-  export const Info = z.discriminatedUnion("type", [Oauth, Api, WellKnown]).meta({ ref: "Auth" })
+  export const ServiceNowOAuth = z
+    .object({
+      type: z.literal("servicenow-oauth"),
+      instance: z.string(),
+      clientId: z.string(),
+      clientSecret: z.string(),
+      accessToken: z.string().optional(),
+      refreshToken: z.string().optional(),
+      expiresAt: z.number().optional(),
+    })
+    .meta({ ref: "ServiceNowOAuth" })
+
+  export const ServiceNowBasic = z
+    .object({
+      type: z.literal("servicenow-basic"),
+      instance: z.string(),
+      username: z.string(),
+      password: z.string(),
+    })
+    .meta({ ref: "ServiceNowBasic" })
+
+  export const Enterprise = z
+    .object({
+      type: z.literal("enterprise"),
+      licenseKey: z.string(),
+      enterpriseUrl: z.string().optional(),
+      jiraBaseUrl: z.string().optional(),
+      jiraEmail: z.string().optional(),
+      jiraApiToken: z.string().optional(),
+    })
+    .meta({ ref: "Enterprise" })
+
+  export const Info = z
+    .discriminatedUnion("type", [Oauth, Api, WellKnown, ServiceNowOAuth, ServiceNowBasic, Enterprise])
+    .meta({ ref: "Auth" })
   export type Info = z.infer<typeof Info>
 
   const filepath = path.join(Global.Path.data, "auth.json")
