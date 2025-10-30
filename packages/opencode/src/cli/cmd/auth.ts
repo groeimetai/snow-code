@@ -475,6 +475,9 @@ export const AuthLoginCommand = cmd({
               }
             }
 
+            // DEBUG: Check if we reach this point
+            console.log('[DEBUG] Reached after model save, about to start ServiceNow setup')
+
             // Automatically continue to ServiceNow setup (required for snow-flow)
             prompts.log.message("")
             prompts.log.step("ServiceNow Configuration")
