@@ -16,18 +16,23 @@ const GOARCH: Record<string, string> = {
   "x64-baseline": "amd64",
 }
 
-// Build only current platform (cross-compilation requires native modules for each platform)
-// Full builds done via GitHub Actions CI/CD
-const targets = [
-  ["darwin", "arm64"],
-]
+// Determine build targets based on environment
+// GitHub Actions sets TARGET_OS and TARGET_ARCH for single-platform builds
+// Local builds only build current platform to avoid cross-compilation issues
+const targets = (() => {
+  const targetOS = process.env.TARGET_OS
+  const targetArch = process.env.TARGET_ARCH
 
-// Full targets (for GitHub Actions):
-// ["windows", "x64"],
-// ["linux", "arm64"],
-// ["linux", "x64"],
-// ["darwin", "x64"],
-// ["darwin", "arm64"],
+  // If TARGET_OS/TARGET_ARCH set (GitHub Actions), build that specific platform
+  if (targetOS && targetArch) {
+    console.log(`Building for specified target: ${targetOS}-${targetArch}`)
+    return [[targetOS, targetArch]]
+  }
+
+  // Otherwise, build current platform only (local development)
+  console.log(`Building for current platform: ${process.platform}-${process.arch}`)
+  return [[process.platform, process.arch]]
+})()
 
 await $`rm -rf dist`
 
