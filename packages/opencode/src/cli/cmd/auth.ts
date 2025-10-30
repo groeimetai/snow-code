@@ -121,11 +121,6 @@ export const AuthLoginCommand = cmd({
           message: "Select provider",
           maxItems: 10,
           options: [
-            {
-              value: "servicenow",
-              label: "ServiceNow (OAuth)",
-              hint: "recommended for Snow-Flow",
-            },
             ...pipe(
               providers,
               values(),
@@ -139,10 +134,6 @@ export const AuthLoginCommand = cmd({
                 hint: priority[x.id] <= 1 ? "recommended" : undefined,
               })),
             ),
-            {
-              value: "enterprise",
-              label: "Snow-Flow Enterprise",
-            },
             {
               value: "other",
               label: "Other",
