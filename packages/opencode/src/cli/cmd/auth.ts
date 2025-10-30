@@ -367,6 +367,13 @@ export const AuthLoginCommand = cmd({
           })
 
           if (prompts.isCancel(configureEnterprise) || !configureEnterprise) {
+            prompts.log.message("")
+            prompts.log.success("✅ Authentication complete!")
+            prompts.log.message("")
+            prompts.log.info("Next steps:")
+            prompts.log.message("")
+            prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
+            prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
             prompts.outro("Done")
             await Instance.dispose()
             process.exit(0)
@@ -764,9 +771,16 @@ export const AuthLoginCommand = cmd({
             })
 
             if (prompts.isCancel(configureEnterpriseAfterLLM) || !configureEnterpriseAfterLLM) {
+              prompts.log.message("")
+              prompts.log.success("✅ Authentication complete!")
+              prompts.log.message("")
+              prompts.log.info("Next steps:")
+              prompts.log.message("")
+              prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
+              prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
               prompts.outro("Done")
               await Instance.dispose()
-              return
+              process.exit(0)
             }
 
             // User wants Enterprise - handle it directly
@@ -884,6 +898,13 @@ export const AuthLoginCommand = cmd({
           prompts.log.info(
             "Amazon bedrock can be configured with standard AWS environment variables like AWS_BEARER_TOKEN_BEDROCK, AWS_PROFILE or AWS_ACCESS_KEY_ID",
           )
+          prompts.log.message("")
+          prompts.log.success("✅ Authentication complete!")
+          prompts.log.message("")
+          prompts.log.info("Next steps:")
+          prompts.log.message("")
+          prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
+          prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
           prompts.outro("Done")
           await Instance.dispose()
           process.exit(0)
@@ -893,6 +914,13 @@ export const AuthLoginCommand = cmd({
           prompts.log.info(
             "Google Cloud Vertex AI uses Application Default Credentials. Set GOOGLE_APPLICATION_CREDENTIALS or run 'gcloud auth application-default login'. Optionally set GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION (or VERTEX_LOCATION)",
           )
+          prompts.log.message("")
+          prompts.log.success("✅ Authentication complete!")
+          prompts.log.message("")
+          prompts.log.info("Next steps:")
+          prompts.log.message("")
+          prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
+          prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
           prompts.outro("Done")
           await Instance.dispose()
           process.exit(0)
@@ -926,6 +954,13 @@ export const AuthLoginCommand = cmd({
           }
         }
 
+        prompts.log.message("")
+        prompts.log.success("✅ Authentication complete!")
+        prompts.log.message("")
+        prompts.log.info("Next steps:")
+        prompts.log.message("")
+        prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
+        prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
         prompts.outro("Done")
         await Instance.dispose()
         process.exit(0)
