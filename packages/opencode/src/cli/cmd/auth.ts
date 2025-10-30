@@ -68,11 +68,15 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
     path.join(globalConfigDir, "config.json"),
   ]
 
+  var updatedCount = 0
   for (const configPath of configPaths) {
     try {
       // Check if file exists
       const file = Bun.file(configPath)
-      if (!(await file.exists())) continue
+      if (!(await file.exists())) {
+        console.log(`[Auth] Config not found: ${configPath}`)
+        continue
+      }
 
       // Read and parse config
       const configText = await file.text()
@@ -80,6 +84,7 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
 
       // Update ServiceNow credentials in MCP server configs
       if (config.mcp) {
+        var serverCount = 0
         for (var serverName in config.mcp) {
           var serverConfig = config.mcp[serverName]
 
@@ -110,15 +115,27 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
             if (serverConfig.environment.SERVICENOW_PASSWORD !== undefined) {
               serverConfig.environment.SERVICENOW_PASSWORD = ""
             }
+            serverCount++
           }
         }
-      }
 
-      // Write updated config back
-      await Bun.write(configPath, JSON.stringify(config, null, 2))
-    } catch (error) {
-      // Silently skip configs that don't exist or can't be parsed
+        if (serverCount > 0) {
+          // Write updated config back
+          await Bun.write(configPath, JSON.stringify(config, null, 2))
+          console.log(`[Auth] Updated ${serverCount} MCP servers in: ${path.basename(configPath)}`)
+          updatedCount++
+        }
+      }
+    } catch (error: any) {
+      console.warn(`[Auth] Failed to update ${path.basename(configPath)}: ${error.message}`)
     }
+  }
+
+  if (updatedCount === 0) {
+    console.warn("[Auth] No SnowCode config files found to update!")
+    console.warn("[Auth] Run 'snow-flow init' first to create MCP configuration")
+  } else {
+    console.log(`[Auth] Successfully updated ${updatedCount} config file(s)`)
   }
 }
 
@@ -471,6 +488,28 @@ export const AuthLoginCommand = cmd({
           if (jiraEmail) envUpdates.push({ key: "SNOW_JIRA_EMAIL", value: jiraEmail })
           if (jiraApiToken) envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: jiraApiToken })
           await updateEnvFile(envUpdates)
+
+          // Add snow-flow-enterprise MCP server to SnowCode config
+          const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
+          const configPath = path.join(globalSnowCodeDir, "snowcode.json")
+          try {
+            const file = Bun.file(configPath)
+            if (await file.exists()) {
+              const configText = await file.text()
+              const config = JSON.parse(configText)
+              if (!config.mcp) config.mcp = {}
+              config.mcp["snow-flow-enterprise"] = {
+                type: "remote",
+                url: "https://enterprise.snow-flow.dev/mcp/sse",
+                headers: { Authorization: `Bearer ${licenseKey}` },
+                enabled: true,
+              }
+              await Bun.write(configPath, JSON.stringify(config, null, 2))
+              prompts.log.info("Added snow-flow-enterprise MCP server to config")
+            }
+          } catch (error: any) {
+            console.warn(`[Auth] Failed to add enterprise MCP: ${error.message}`)
+          }
 
           prompts.log.success("Enterprise configuration saved")
           prompts.log.info("Credentials saved to .env file")
@@ -878,7 +917,29 @@ export const AuthLoginCommand = cmd({
               envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: enterpriseJiraBaseUrl })
             if (enterpriseJiraEmail) envUpdates.push({ key: "SNOW_JIRA_EMAIL", value: enterpriseJiraEmail })
             if (enterpriseJiraApiToken)
-              envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: enterpriseJiraApiToken })
+          await updateEnvFile(envUpdates)
+
+          // Add snow-flow-enterprise MCP server to SnowCode config
+          const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
+          const configPath = path.join(globalSnowCodeDir, "snowcode.json")
+          try {
+            const file = Bun.file(configPath)
+            if (await file.exists()) {
+              const configText = await file.text()
+              const config = JSON.parse(configText)
+              if (!config.mcp) config.mcp = {}
+              config.mcp["snow-flow-enterprise"] = {
+                type: "remote",
+                url: "https://enterprise.snow-flow.dev/mcp/sse",
+                headers: { Authorization: `Bearer ${enterpriseLicenseKey}` },
+                enabled: true,
+              }
+              await Bun.write(configPath, JSON.stringify(config, null, 2))
+              prompts.log.info("Added snow-flow-enterprise MCP server to config")
+            }
+          } catch (error: any) {
+            console.warn(`[Auth] Failed to add enterprise MCP: ${error.message}`)
+          }
             await updateEnvFile(envUpdates)
 
             prompts.log.success("Enterprise configuration saved")
