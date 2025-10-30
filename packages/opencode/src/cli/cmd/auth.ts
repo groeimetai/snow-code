@@ -12,6 +12,101 @@ import { Instance } from "../../project/instance"
 import { Config } from "../../config/config"
 import { ServiceNowOAuth } from "../../auth/servicenow-oauth"
 
+/**
+ * Helper function to update .env file with key-value pairs
+ */
+async function updateEnvFile(updates: Array<{ key: string; value: string }>) {
+  const envPath = path.join(process.cwd(), ".env")
+  let envContent = ""
+
+  try {
+    envContent = await Bun.file(envPath).text()
+  } catch {
+    // File doesn't exist yet
+  }
+
+  for (const { key, value } of updates) {
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    if (envContent.includes(`${key}=`)) {
+      envContent = envContent.replace(new RegExp(`${escapedKey}=.*`, "g"), `${key}=${value}`)
+    } else {
+      envContent += `\n${key}=${value}`
+    }
+  }
+
+  // Ensure file ends with newline
+  if (!envContent.endsWith("\n")) {
+    envContent += "\n"
+  }
+
+  await Bun.write(envPath, envContent)
+}
+
+/**
+ * Helper function to update SnowCode MCP config files with ServiceNow credentials
+ */
+async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clientSecret: string) {
+  const projectSnowCodeDir = path.join(process.cwd(), ".snowcode")
+  const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
+
+  // Ensure instance is a full URL
+  const instanceUrl = instance.startsWith("http") ? instance : `https://${instance}`
+
+  // Update both project-level and global configs
+  const configPaths = [
+    path.join(projectSnowCodeDir, "opencode.json"),
+    path.join(projectSnowCodeDir, "config.json"),
+    path.join(globalSnowCodeDir, "opencode.json"),
+    path.join(globalSnowCodeDir, "snowcode.json"),
+  ]
+
+  for (const configPath of configPaths) {
+    try {
+      // Check if file exists
+      const file = Bun.file(configPath)
+      if (!(await file.exists())) continue
+
+      // Read and parse config
+      const configText = await file.text()
+      var config = JSON.parse(configText)
+
+      // Update ServiceNow credentials in MCP server configs
+      if (config.mcp) {
+        for (var serverName in config.mcp) {
+          var serverConfig = config.mcp[serverName]
+
+          // Update environment variables
+          if (serverConfig.environment) {
+            if (serverConfig.environment.SERVICENOW_INSTANCE_URL !== undefined) {
+              serverConfig.environment.SERVICENOW_INSTANCE_URL = instanceUrl
+            }
+            if (serverConfig.environment.SERVICENOW_CLIENT_ID !== undefined) {
+              serverConfig.environment.SERVICENOW_CLIENT_ID = clientId
+            }
+            if (serverConfig.environment.SERVICENOW_CLIENT_SECRET !== undefined) {
+              serverConfig.environment.SERVICENOW_CLIENT_SECRET = clientSecret
+            }
+            if (serverConfig.environment.SNOW_INSTANCE !== undefined) {
+              serverConfig.environment.SNOW_INSTANCE = instance
+            }
+            if (serverConfig.environment.SNOW_CLIENT_ID !== undefined) {
+              serverConfig.environment.SNOW_CLIENT_ID = clientId
+            }
+            if (serverConfig.environment.SNOW_CLIENT_SECRET !== undefined) {
+              serverConfig.environment.SNOW_CLIENT_SECRET = clientSecret
+            }
+          }
+        }
+      }
+
+      // Write updated config back
+      await Bun.write(configPath, JSON.stringify(config, null, 2))
+    } catch (error) {
+      // Silently skip configs that don't exist or can't be parsed
+    }
+  }
+}
+
 export const AuthCommand = cmd({
   command: "auth",
   describe: "manage credentials",
@@ -93,7 +188,7 @@ export const AuthLoginCommand = cmd({
             prompts.log.error("Failed")
             prompts.outro("Done")
             await Instance.dispose()
-            return
+            process.exit(0)
           }
           const token = await new Response(proc.stdout).text()
           await Auth.set(args.url, {
@@ -104,18 +199,18 @@ export const AuthLoginCommand = cmd({
           prompts.log.success("Logged into " + args.url)
           prompts.outro("Done")
           await Instance.dispose()
-          return
+          process.exit(0)
         }
         await ModelsDev.refresh().catch(() => {})
         const providers = await ModelsDev.get()
         const priority: Record<string, number> = {
-          opencode: 0,
-          anthropic: 1,
-          "github-copilot": 2,
-          openai: 3,
-          google: 4,
-          openrouter: 5,
-          vercel: 6,
+          anthropic: 0,
+          "github-copilot": 1,
+          openai: 2,
+          google: 3,
+          openrouter: 4,
+          vercel: 5,
+          opencode: 99,
         }
         let provider = await prompts.autocomplete({
           message: "Select provider",
@@ -131,7 +226,7 @@ export const AuthLoginCommand = cmd({
               map((x) => ({
                 label: x.name,
                 value: x.id,
-                hint: priority[x.id] <= 1 ? "recommended" : undefined,
+                hint: priority[x.id] === 0 ? "recommended" : undefined,
               })),
             ),
             {
@@ -206,7 +301,17 @@ export const AuthLoginCommand = cmd({
             })
 
             if (result.success) {
+              // Write to .env file
+              await updateEnvFile([
+                { key: "SNOW_INSTANCE", value: instance },
+                { key: "SNOW_AUTH_METHOD", value: "oauth" },
+                { key: "SNOW_CLIENT_ID", value: clientId },
+                { key: "SNOW_CLIENT_SECRET", value: clientSecret },
+              ])
+              // Update SnowCode MCP configs
+              await updateSnowCodeMCPConfigs(instance, clientId, clientSecret)
               prompts.log.success("ServiceNow authentication successful")
+              prompts.log.info("Credentials saved to .env and SnowCode configs")
             } else {
               prompts.log.error(`Authentication failed: ${result.error}`)
             }
@@ -239,7 +344,19 @@ export const AuthLoginCommand = cmd({
               password,
             })
 
+            // Write to .env file
+            await updateEnvFile([
+              { key: "SNOW_INSTANCE", value: instance },
+              { key: "SNOW_AUTH_METHOD", value: "basic" },
+              { key: "SNOW_USERNAME", value: username },
+              { key: "SNOW_PASSWORD", value: password },
+            ])
+            // Note: Basic auth doesn't use OAuth, so we update MCP configs with instance only
+            // MCP servers will use username/password from .env instead
+            await updateSnowCodeMCPConfigs(instance, "", "")
+
             prompts.log.success("ServiceNow credentials saved")
+            prompts.log.info("Credentials saved to .env and SnowCode configs")
           }
 
           // After ServiceNow setup, ask about Enterprise (optional)
@@ -252,7 +369,7 @@ export const AuthLoginCommand = cmd({
           if (prompts.isCancel(configureEnterprise) || !configureEnterprise) {
             prompts.outro("Done")
             await Instance.dispose()
-            return
+            process.exit(0)
           }
 
           // User wants Enterprise, set provider and fall through
@@ -323,10 +440,28 @@ export const AuthLoginCommand = cmd({
             jiraApiToken: jiraApiToken || undefined,
           })
 
+          // Write to .env file
+          const envUpdates: Array<{ key: string; value: string }> = [
+            { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: licenseKey },
+          ]
+          if (enterpriseUrl) envUpdates.push({ key: "SNOW_ENTERPRISE_URL", value: enterpriseUrl })
+          if (jiraBaseUrl) envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: jiraBaseUrl })
+          if (jiraEmail) envUpdates.push({ key: "SNOW_JIRA_EMAIL", value: jiraEmail })
+          if (jiraApiToken) envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: jiraApiToken })
+          await updateEnvFile(envUpdates)
+
           prompts.log.success("Enterprise configuration saved")
+          prompts.log.info("Credentials saved to .env file")
+          prompts.log.message("")
+          prompts.log.success("✅ Authentication complete!")
+          prompts.log.message("")
+          prompts.log.info("Next steps:")
+          prompts.log.message("")
+          prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
+          prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
           prompts.outro("Done")
           await Instance.dispose()
-          return
+          process.exit(0)
         }
 
         // Model selection step - integrated into the auth flow
@@ -340,12 +475,21 @@ export const AuthLoginCommand = cmd({
         ) {
           const providerData = providers[provider]
           if (providerData && providerData.models && Object.keys(providerData.models).length > 0) {
+            // Custom sorting for Anthropic: version-based (4.5 → 4.1 → 4 → 3.5 → 3)
+            const extractVersion = (model: any): number => {
+              const match = model.id.match(/claude-(?:opus|sonnet|haiku)-(\d+)(?:\.(\d+))?/)
+              if (!match) return 0
+              const major = parseInt(match[1]) || 0
+              const minor = parseInt(match[2]) || 0
+              return major * 10 + minor
+            }
+
             const modelOptions = pipe(
               providerData.models,
               values(),
               sortBy(
                 (x) => (x.status === "alpha" || x.status === "beta" ? 1 : 0),
-                (x) => -x.release_date,
+                provider === "anthropic" ? (x) => -extractVersion(x) : (x) => -x.release_date,
               ),
               map((model) => {
                 const contextWindow = model.limit.context ? ` (${(model.limit.context / 1000).toFixed(0)}K context)` : ""
@@ -380,14 +524,14 @@ export const AuthLoginCommand = cmd({
             const method = await prompts.select({
               message: "Login method",
               options: [
-                ...plugin.auth.methods.map((x, index) => ({
+                ...plugin.auth.methods.map((x: any, index: number) => ({
                   label: x.label,
                   value: index.toString(),
                 })),
               ],
             })
             if (prompts.isCancel(method)) throw new UI.CancelledError()
-            index = parseInt(method)
+            index = parseInt(method as string)
           }
           const method = plugin.auth.methods[index]
           if (method.type === "oauth") {
@@ -465,10 +609,6 @@ export const AuthLoginCommand = cmd({
                 prompts.log.warn("Could not save model preference to config")
               }
             }
-
-            // DEBUG: Check if we reach this point
-            console.log('[DEBUG] Reached after model save, about to start ServiceNow setup')
-
             // Automatically continue to ServiceNow setup (required for snow-flow)
             prompts.log.message("")
             prompts.log.step("ServiceNow Configuration")
@@ -551,7 +691,17 @@ export const AuthLoginCommand = cmd({
               })
 
               if (result.success) {
+                // Write to .env file
+                await updateEnvFile([
+                  { key: "SNOW_INSTANCE", value: snowInstance },
+                  { key: "SNOW_AUTH_METHOD", value: "oauth" },
+                  { key: "SNOW_CLIENT_ID", value: snowClientId },
+                  { key: "SNOW_CLIENT_SECRET", value: snowClientSecret },
+                ])
+                // Update SnowCode MCP configs
+                await updateSnowCodeMCPConfigs(snowInstance, snowClientId, snowClientSecret)
                 prompts.log.success("ServiceNow authentication successful")
+                prompts.log.info("Credentials saved to .env and SnowCode configs")
               } else {
                 prompts.log.error(`Authentication failed: ${result.error}`)
               }
@@ -592,7 +742,18 @@ export const AuthLoginCommand = cmd({
                 password: snowPassword,
               })
 
+              // Write to .env file
+              await updateEnvFile([
+                { key: "SNOW_INSTANCE", value: snowInstance },
+                { key: "SNOW_AUTH_METHOD", value: "basic" },
+                { key: "SNOW_USERNAME", value: snowUsername },
+                { key: "SNOW_PASSWORD", value: snowPassword },
+              ])
+              // Note: Basic auth doesn't use OAuth, so we update MCP configs with instance only
+              await updateSnowCodeMCPConfigs(snowInstance, "", "")
+
               prompts.log.success("ServiceNow credentials saved")
+              prompts.log.info("Credentials saved to .env and SnowCode configs")
             }
 
             // After ServiceNow setup, ask about Enterprise (optional)
@@ -678,10 +839,31 @@ export const AuthLoginCommand = cmd({
               jiraApiToken: enterpriseJiraApiToken || undefined,
             })
 
+            // Write to .env file
+            const envUpdates: Array<{ key: string; value: string }> = [
+              { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: enterpriseLicenseKey },
+            ]
+            if (enterpriseServerUrl)
+              envUpdates.push({ key: "SNOW_ENTERPRISE_URL", value: enterpriseServerUrl })
+            if (enterpriseJiraBaseUrl)
+              envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: enterpriseJiraBaseUrl })
+            if (enterpriseJiraEmail) envUpdates.push({ key: "SNOW_JIRA_EMAIL", value: enterpriseJiraEmail })
+            if (enterpriseJiraApiToken)
+              envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: enterpriseJiraApiToken })
+            await updateEnvFile(envUpdates)
+
             prompts.log.success("Enterprise configuration saved")
+            prompts.log.info("Credentials saved to .env file")
+            prompts.log.message("")
+            prompts.log.success("✅ Authentication complete!")
+            prompts.log.message("")
+            prompts.log.info("Next steps:")
+            prompts.log.message("")
+            prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
+            prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
             prompts.outro("Done")
             await Instance.dispose()
-            return
+            process.exit(0)
           }
         }
 
@@ -704,7 +886,7 @@ export const AuthLoginCommand = cmd({
           )
           prompts.outro("Done")
           await Instance.dispose()
-          return
+          process.exit(0)
         }
 
         if (provider === "google-vertex") {
@@ -713,7 +895,7 @@ export const AuthLoginCommand = cmd({
           )
           prompts.outro("Done")
           await Instance.dispose()
-          return
+          process.exit(0)
         }
 
         if (provider === "opencode") {
@@ -746,6 +928,7 @@ export const AuthLoginCommand = cmd({
 
         prompts.outro("Done")
         await Instance.dispose()
+        process.exit(0)
       },
     })
   },
