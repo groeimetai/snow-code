@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "0.16.3",
+  "version": "0.16.4",
   "name": "@groeimetai/snowcode",
   "description": "SnowCode - AI-powered ServiceNow development CLI (OpenCode fork enhanced for Snow-Flow)",
   "type": "module",
@@ -90,7 +90,7 @@
     "tsx": "4.20.6"
   },
   "optionalDependencies": {
-    "@groeimetai/snowcode-darwin-arm64": "0.15.32",
+    "@groeimetai/snowcode-darwin-arm64": "0.16.3",
     "tree-sitter": "0.25.0",
     "tree-sitter-bash": "0.25.0"
   }
