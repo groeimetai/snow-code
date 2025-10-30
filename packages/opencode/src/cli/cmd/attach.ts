@@ -37,8 +37,7 @@ export const AttachCommand = cmd({
       cmd = [binary]
     }
     if (!tui) {
-      // SnowCode doesn't use TUI component (platform binaries only)
-      throw new Error("TUI mode is not available in SnowCode - use 'snowcode' command directly")
+      throw new Error("TUI binary not found - try reinstalling: npm install -g @groeimetai/snowcode")
     }
     if (args.session) {
       cmd.push("--session", args.session)
@@ -54,7 +53,8 @@ export const AttachCommand = cmd({
       env: {
         ...process.env,
         CGO_ENABLED: "0",
-        OPENCODE_SERVER: args.server,
+        SNOWCODE_SERVER: args.server,
+        OPENCODE_SERVER: args.server, // Fallback for compatibility
       },
     })
 

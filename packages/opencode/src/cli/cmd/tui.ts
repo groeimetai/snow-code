@@ -125,9 +125,8 @@ export const TuiCommand = cmd({
           cmd = [binary]
         }
         if (!tui) {
-          // SnowCode doesn't use TUI component (platform binaries only)
-          UI.error("TUI mode is not available in SnowCode")
-          UI.println("Use 'snowcode' command directly for CLI mode")
+          UI.error("TUI binary not found - platform binary may be incomplete")
+          UI.println("Try reinstalling: npm install -g @groeimetai/snowcode")
           return "done"
         }
         Log.Default.info("tui", {
@@ -148,7 +147,8 @@ export const TuiCommand = cmd({
           env: {
             ...process.env,
             CGO_ENABLED: "0",
-            OPENCODE_SERVER: server.url.toString(),
+            SNOWCODE_SERVER: server.url.toString(),
+            OPENCODE_SERVER: server.url.toString(), // Fallback for compatibility
           },
           onExit: () => {
             server.stop()

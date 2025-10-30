@@ -40,11 +40,11 @@ for (const [os, arch] of targets) {
   const name = `${pkg.name}-${os}-${arch}`
   await $`mkdir -p dist/${name}/bin`
 
-  // Note: TUI component skipped - SnowCode doesn't use Go TUI
-  // If needed in future, uncomment and adjust:
-  // await $`CGO_ENABLED=0 GOOS=${os} GOARCH=${GOARCH[arch]} go build -ldflags="-s -w -X main.Version=${version}" -o ../opencode/dist/${name}/bin/tui ../tui/cmd/snowcode/main.go`
-  //   .cwd("../tui")
-  //   .quiet()
+  // Build TUI component (Go binary for interactive interface)
+  console.log(`  Building TUI for ${os}-${arch}...`)
+  await $`CGO_ENABLED=0 GOOS=${os === "windows" ? "windows" : os} GOARCH=${GOARCH[arch]} go build -ldflags="-s -w -X main.Version=${version}" -o ../opencode/dist/${name}/bin/tui${os === "windows" ? ".exe" : ""} ./cmd/snowcode/main.go`
+    .cwd("../tui")
+    .quiet()
 
   const watcher = `@parcel/watcher-${os === "windows" ? "win32" : os}-${arch.replace("-baseline", "")}${os === "linux" ? "-glibc" : ""}`
   await $`mkdir -p ../../node_modules/${watcher}`
