@@ -481,10 +481,213 @@ export const AuthLoginCommand = cmd({
             prompts.log.info("Snow-Flow requires ServiceNow connection for development")
             prompts.log.message("")
 
-            // Set provider to servicenow to fall through to ServiceNow handler
-            provider = "servicenow"
+            // Run ServiceNow setup directly (handler was already passed earlier)
+            const snowInstance = (await prompts.text({
+              message: "ServiceNow instance URL",
+              placeholder: "dev12345.service-now.com",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Instance URL is required"
+                const cleaned = value.replace(/^https?:\/\//, "").replace(/\/$/, "")
+                if (
+                  !cleaned.includes(".service-now.com") &&
+                  !cleaned.includes("localhost") &&
+                  !cleaned.includes("127.0.0.1")
+                ) {
+                  return "Must be a ServiceNow domain (e.g., dev12345.service-now.com)"
+                }
+              },
+            })) as string
 
-            // Fall through to ServiceNow handler below (don't return here!)
+            if (prompts.isCancel(snowInstance)) {
+              prompts.outro("Done")
+              await Instance.dispose()
+              return
+            }
+
+            const snowAuthMethod = (await prompts.select({
+              message: "Authentication method",
+              options: [
+                { value: "oauth", label: "OAuth 2.0", hint: "recommended" },
+                { value: "basic", label: "Basic Auth", hint: "username/password" },
+              ],
+            })) as string
+
+            if (prompts.isCancel(snowAuthMethod)) {
+              prompts.outro("Done")
+              await Instance.dispose()
+              return
+            }
+
+            if (snowAuthMethod === "oauth") {
+              const snowClientId = (await prompts.text({
+                message: "OAuth Client ID",
+                placeholder: "32-character hex string from ServiceNow",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Client ID is required"
+                  if (value.length < 32) return "Client ID too short (expected 32+ characters)"
+                },
+              })) as string
+
+              if (prompts.isCancel(snowClientId)) {
+                prompts.outro("Done")
+                await Instance.dispose()
+                return
+              }
+
+              const snowClientSecret = (await prompts.password({
+                message: "OAuth Client Secret",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Client Secret is required"
+                  if (value.length < 32) return "Client Secret too short (expected 32+ characters)"
+                },
+              })) as string
+
+              if (prompts.isCancel(snowClientSecret)) {
+                prompts.outro("Done")
+                await Instance.dispose()
+                return
+              }
+
+              // Run full OAuth flow
+              const oauth = new ServiceNowOAuth()
+              const result = await oauth.authenticate({
+                instance: snowInstance,
+                clientId: snowClientId,
+                clientSecret: snowClientSecret,
+              })
+
+              if (result.success) {
+                prompts.log.success("ServiceNow authentication successful")
+              } else {
+                prompts.log.error(`Authentication failed: ${result.error}`)
+              }
+            } else {
+              // Basic auth
+              const snowUsername = (await prompts.text({
+                message: "ServiceNow username",
+                placeholder: "admin",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Username is required"
+                },
+              })) as string
+
+              if (prompts.isCancel(snowUsername)) {
+                prompts.outro("Done")
+                await Instance.dispose()
+                return
+              }
+
+              const snowPassword = (await prompts.password({
+                message: "ServiceNow password",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Password is required"
+                },
+              })) as string
+
+              if (prompts.isCancel(snowPassword)) {
+                prompts.outro("Done")
+                await Instance.dispose()
+                return
+              }
+
+              // Save to Auth store
+              await Auth.set("servicenow", {
+                type: "servicenow-basic",
+                instance: snowInstance,
+                username: snowUsername,
+                password: snowPassword,
+              })
+
+              prompts.log.success("ServiceNow credentials saved")
+            }
+
+            // After ServiceNow setup, ask about Enterprise (optional)
+            prompts.log.message("")
+            const configureEnterpriseAfterLLM = await prompts.confirm({
+              message: "Configure Snow-Flow Enterprise? (optional)",
+              initialValue: false,
+            })
+
+            if (prompts.isCancel(configureEnterpriseAfterLLM) || !configureEnterpriseAfterLLM) {
+              prompts.outro("Done")
+              await Instance.dispose()
+              return
+            }
+
+            // User wants Enterprise - handle it directly
+            prompts.log.message("")
+            prompts.log.step("Snow-Flow Enterprise Setup")
+
+            const enterpriseLicenseKey = (await prompts.password({
+              message: "Enterprise License Key (format: SNOW-ENT-*-*)",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "License key is required"
+                if (!value.startsWith("SNOW-ENT-")) return "Invalid license key format (should start with SNOW-ENT-)"
+              },
+            })) as string
+
+            if (prompts.isCancel(enterpriseLicenseKey)) {
+              prompts.outro("Done")
+              await Instance.dispose()
+              return
+            }
+
+            const enterpriseServerUrl = (await prompts.text({
+              message: "Enterprise License Server URL (optional)",
+              placeholder: "https://license.snow-flow.dev",
+              initialValue: "https://license.snow-flow.dev",
+            })) as string
+
+            if (prompts.isCancel(enterpriseServerUrl)) {
+              prompts.outro("Done")
+              await Instance.dispose()
+              return
+            }
+
+            // Optional integrations
+            const configureJira = await prompts.confirm({
+              message: "Configure optional integrations (Jira, Azure DevOps)?",
+              initialValue: false,
+            })
+
+            let enterpriseJiraBaseUrl: string | undefined
+            let enterpriseJiraEmail: string | undefined
+            let enterpriseJiraApiToken: string | undefined
+
+            if (!prompts.isCancel(configureJira) && configureJira) {
+              enterpriseJiraBaseUrl = (await prompts.text({
+                message: "Jira Base URL (optional)",
+                placeholder: "https://company.atlassian.net",
+              })) as string
+
+              if (!prompts.isCancel(enterpriseJiraBaseUrl) && enterpriseJiraBaseUrl) {
+                enterpriseJiraEmail = (await prompts.text({
+                  message: "Jira Email",
+                  placeholder: "admin@company.com",
+                })) as string
+
+                if (!prompts.isCancel(enterpriseJiraEmail)) {
+                  enterpriseJiraApiToken = (await prompts.password({
+                    message: "Jira API Token",
+                  })) as string
+                }
+              }
+            }
+
+            // Save Enterprise config to Auth store
+            await Auth.set("enterprise", {
+              type: "enterprise",
+              licenseKey: enterpriseLicenseKey,
+              enterpriseUrl: enterpriseServerUrl || undefined,
+              jiraBaseUrl: enterpriseJiraBaseUrl || undefined,
+              jiraEmail: enterpriseJiraEmail || undefined,
+              jiraApiToken: enterpriseJiraApiToken || undefined,
+            })
+
+            prompts.log.success("Enterprise configuration saved")
+            prompts.outro("Done")
+            await Instance.dispose()
+            return
           }
         }
 
