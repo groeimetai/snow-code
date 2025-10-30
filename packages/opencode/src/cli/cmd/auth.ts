@@ -461,9 +461,36 @@ export const AuthLoginCommand = cmd({
               }
             }
 
-            prompts.outro("Done")
-            await Instance.dispose()
-            return
+            // Ask if user wants to configure ServiceNow/Enterprise after successful LLM auth
+            prompts.log.message("")
+            const configureMore = await prompts.confirm({
+              message: "Configure ServiceNow or Enterprise integration?",
+              initialValue: true,
+            })
+
+            if (prompts.isCancel(configureMore) || !configureMore) {
+              prompts.outro("Done")
+              await Instance.dispose()
+              return
+            }
+
+            // User wants to configure ServiceNow/Enterprise, ask which one
+            prompts.log.message("")
+            provider = (await prompts.select({
+              message: "What would you like to configure?",
+              options: [
+                { value: "servicenow", label: "ServiceNow (OAuth/Basic)", hint: "recommended" },
+                { value: "enterprise", label: "Snow-Flow Enterprise" },
+              ],
+            })) as string
+
+            if (prompts.isCancel(provider)) {
+              prompts.outro("Done")
+              await Instance.dispose()
+              return
+            }
+
+            // Fall through to ServiceNow or Enterprise handlers below (don't return here!)
           }
         }
 
