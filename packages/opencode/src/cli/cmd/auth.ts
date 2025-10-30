@@ -338,6 +338,211 @@ export const AuthLoginCommand = cmd({
           }
         }
 
+        // ServiceNow Authentication (optional)
+        prompts.log.message("")
+        prompts.log.step("ServiceNow Configuration (Optional)")
+
+        const configureServiceNow = await prompts.confirm({
+          message: "Configure ServiceNow instance?",
+          initialValue: false
+        })
+
+        if (!prompts.isCancel(configureServiceNow) && configureServiceNow) {
+          // Ask for ServiceNow instance
+          const snowInstance = await prompts.text({
+            message: "ServiceNow instance URL",
+            placeholder: "dev12345.service-now.com",
+            validate: (value) => {
+              if (!value || value.trim() === "") return "Instance URL is required"
+              const cleaned = value.replace(/^https?:\/\//, "").replace(/\/$/, "")
+              if (!cleaned.includes(".service-now.com")) {
+                return "Must be a ServiceNow domain (e.g., dev12345.service-now.com)"
+              }
+            }
+          })
+
+          if (!prompts.isCancel(snowInstance)) {
+            // Ask for auth method
+            const authMethod = await prompts.select({
+              message: "Authentication method",
+              options: [
+                { value: "oauth", label: "OAuth 2.0", hint: "recommended" },
+                { value: "basic", label: "Basic Auth", hint: "username/password" }
+              ]
+            })
+
+            if (!prompts.isCancel(authMethod)) {
+              if (authMethod === "oauth") {
+                const clientId = await prompts.text({
+                  message: "OAuth Client ID",
+                  placeholder: "32-character hex string from ServiceNow",
+                  validate: (value) => {
+                    if (!value || value.trim() === "") return "Client ID is required"
+                    if (value.length < 32) return "Client ID too short (expected 32+ characters)"
+                  }
+                })
+
+                if (!prompts.isCancel(clientId)) {
+                  const clientSecret = await prompts.password({
+                    message: "OAuth Client Secret",
+                    validate: (value) => {
+                      if (!value || value.trim() === "") return "Client Secret is required"
+                      if (value.length < 32) return "Client Secret too short (expected 32+ characters)"
+                    }
+                  })
+
+                  if (!prompts.isCancel(clientSecret)) {
+                    // Save to .env in current directory
+                    const envPath = path.join(process.cwd(), ".env")
+                    let envContent = ""
+                    try {
+                      envContent = await Bun.file(envPath).text()
+                    } catch {}
+
+                    const updates = [
+                      { key: "SNOW_INSTANCE", value: snowInstance },
+                      { key: "SNOW_AUTH_METHOD", value: "oauth" },
+                      { key: "SNOW_CLIENT_ID", value: clientId },
+                      { key: "SNOW_CLIENT_SECRET", value: clientSecret }
+                    ]
+
+                    for (const { key, value } of updates) {
+                      if (envContent.includes(`${key}=`)) {
+                        envContent = envContent.replace(new RegExp(`${key}=.*`, "g"), `${key}=${value}`)
+                      } else {
+                        envContent += `\n${key}=${value}\n`
+                      }
+                    }
+
+                    await Bun.write(envPath, envContent)
+                    prompts.log.success("ServiceNow credentials saved to .env")
+                  }
+                }
+              } else {
+                // Basic auth
+                const username = await prompts.text({
+                  message: "ServiceNow username",
+                  placeholder: "admin",
+                  validate: (value) => {
+                    if (!value || value.trim() === "") return "Username is required"
+                  }
+                })
+
+                if (!prompts.isCancel(username)) {
+                  const password = await prompts.password({
+                    message: "ServiceNow password",
+                    validate: (value) => {
+                      if (!value || value.trim() === "") return "Password is required"
+                    }
+                  })
+
+                  if (!prompts.isCancel(password)) {
+                    // Save to .env
+                    const envPath = path.join(process.cwd(), ".env")
+                    let envContent = ""
+                    try {
+                      envContent = await Bun.file(envPath).text()
+                    } catch {}
+
+                    const updates = [
+                      { key: "SNOW_INSTANCE", value: snowInstance },
+                      { key: "SNOW_AUTH_METHOD", value: "basic" },
+                      { key: "SNOW_USERNAME", value: username },
+                      { key: "SNOW_PASSWORD", value: password }
+                    ]
+
+                    for (const { key, value } of updates) {
+                      if (envContent.includes(`${key}=`)) {
+                        envContent = envContent.replace(new RegExp(`${key}=.*`, "g"), `${key}=${value}`)
+                      } else {
+                        envContent += `\n${key}=${value}\n`
+                      }
+                    }
+
+                    await Bun.write(envPath, envContent)
+                    prompts.log.success("ServiceNow credentials saved to .env")
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Enterprise Configuration (optional)
+        prompts.log.message("")
+        prompts.log.step("Enterprise Configuration (Optional)")
+
+        const configureEnterprise = await prompts.confirm({
+          message: "Configure Snow-Flow Enterprise integration?",
+          initialValue: false
+        })
+
+        if (!prompts.isCancel(configureEnterprise) && configureEnterprise) {
+          // Ask for Enterprise license key
+          const enterpriseLicense = await prompts.password({
+            message: "Enterprise License Key",
+            validate: (value) => {
+              if (!value || value.trim() === "") return "License key is required"
+              if (value.length < 32) return "Invalid license key format"
+            }
+          })
+
+          if (!prompts.isCancel(enterpriseLicense)) {
+            // Ask for Enterprise endpoint
+            const enterpriseEndpoint = await prompts.text({
+              message: "Enterprise API Endpoint",
+              placeholder: "https://enterprise.snow-flow.dev",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Endpoint URL is required"
+                if (!value.startsWith("http://") && !value.startsWith("https://")) {
+                  return "Must be a valid URL (http:// or https://)"
+                }
+              }
+            })
+
+            if (!prompts.isCancel(enterpriseEndpoint)) {
+              // Ask for optional features
+              const enableFeatures = await prompts.multiselect({
+                message: "Enable Enterprise features",
+                options: [
+                  { value: "advanced-ml", label: "Advanced ML & Predictive Intelligence" },
+                  { value: "multi-tenant", label: "Multi-tenant Management" },
+                  { value: "audit-compliance", label: "Enhanced Audit & Compliance" },
+                  { value: "custom-agents", label: "Custom AI Agent Deployment" }
+                ],
+                required: false
+              })
+
+              if (!prompts.isCancel(enableFeatures)) {
+                // Save to .env
+                const envPath = path.join(process.cwd(), ".env")
+                var envContent = ""
+                try {
+                  envContent = await Bun.file(envPath).text()
+                } catch {}
+
+                var updates = [
+                  { key: "ENTERPRISE_LICENSE_KEY", value: enterpriseLicense },
+                  { key: "ENTERPRISE_API_ENDPOINT", value: enterpriseEndpoint },
+                  { key: "ENTERPRISE_FEATURES", value: Array.isArray(enableFeatures) ? enableFeatures.join(",") : "" }
+                ]
+
+                for (var i = 0; i < updates.length; i++) {
+                  var update = updates[i]
+                  if (envContent.includes(update.key + "=")) {
+                    envContent = envContent.replace(new RegExp(update.key + "=.*", "g"), update.key + "=" + update.value)
+                  } else {
+                    envContent += "\n" + update.key + "=" + update.value + "\n"
+                  }
+                }
+
+                await Bun.write(envPath, envContent)
+                prompts.log.success("Enterprise configuration saved to .env")
+              }
+            }
+          }
+        }
+
         prompts.outro("Done")
         await Instance.dispose()
       },
