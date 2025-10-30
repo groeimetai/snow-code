@@ -91,7 +91,8 @@ export const AuthLoginCommand = cmd({
           if (exit !== 0) {
             prompts.log.error("Failed")
             prompts.outro("Done")
-            process.exit(1)
+            await Instance.dispose()
+            return
           }
           const token = await new Response(proc.stdout).text()
           await Auth.set(args.url, {
@@ -101,7 +102,8 @@ export const AuthLoginCommand = cmd({
           })
           prompts.log.success("Logged into " + args.url)
           prompts.outro("Done")
-          process.exit(0)
+          await Instance.dispose()
+          return
         }
         await ModelsDev.refresh().catch(() => {})
         const providers = await ModelsDev.get()
@@ -272,7 +274,8 @@ export const AuthLoginCommand = cmd({
             }
 
             prompts.outro("Done")
-            process.exit(0)
+            await Instance.dispose()
+            return
           }
         }
 
@@ -294,7 +297,8 @@ export const AuthLoginCommand = cmd({
             "Amazon bedrock can be configured with standard AWS environment variables like AWS_BEARER_TOKEN_BEDROCK, AWS_PROFILE or AWS_ACCESS_KEY_ID",
           )
           prompts.outro("Done")
-          process.exit(0)
+          await Instance.dispose()
+          return
         }
 
         if (provider === "google-vertex") {
@@ -302,7 +306,8 @@ export const AuthLoginCommand = cmd({
             "Google Cloud Vertex AI uses Application Default Credentials. Set GOOGLE_APPLICATION_CREDENTIALS or run 'gcloud auth application-default login'. Optionally set GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION (or VERTEX_LOCATION)",
           )
           prompts.outro("Done")
-          process.exit(0)
+          await Instance.dispose()
+          return
         }
 
         if (provider === "opencode") {
@@ -334,7 +339,7 @@ export const AuthLoginCommand = cmd({
         }
 
         prompts.outro("Done")
-        process.exit(0)
+        await Instance.dispose()
       },
     })
   },
