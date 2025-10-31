@@ -64,6 +64,7 @@ export const createClient = (config: Config = {}): Client => {
   }
 
   const request: Client["request"] = async (options) => {
+    // @ts-expect-error - Generic type mismatch in generated code (TData vs unknown)
     const { opts, url } = await beforeRequest(options)
     const requestInit: ReqInit = {
       redirect: "follow",
