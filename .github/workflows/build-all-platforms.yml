@@ -159,8 +159,20 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            packages/opencode/dist/@groeimetai/*/bin/*
           generate_release_notes: true
+          body: |
+            ## Installation
+
+            ```bash
+            npm install -g @groeimetai/snowcode@${{ steps.version.outputs.version }}
+            ```
+
+            ## Platform Binaries Published to npm
+
+            - `@groeimetai/snowcode-darwin-arm64@${{ steps.version.outputs.version }}`
+            - `@groeimetai/snowcode-darwin-x64@${{ steps.version.outputs.version }}`
+            - `@groeimetai/snowcode-linux-arm64@${{ steps.version.outputs.version }}`
+            - `@groeimetai/snowcode-linux-x64@${{ steps.version.outputs.version }}`
+            - `@groeimetai/snowcode-windows-x64@${{ steps.version.outputs.version }}`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
