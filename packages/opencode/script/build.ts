@@ -53,7 +53,6 @@ for (const [os, arch] of targets) {
       windows: {},
     },
     entrypoints: ["./src/index.ts"],
-    external: ["tree-sitter", "tree-sitter-bash", "web-tree-sitter"],
     define: {
       OPENCODE_VERSION: `'${Script.version}'`,
       OPENCODE_CHANNEL: `'${Script.channel}'`,
