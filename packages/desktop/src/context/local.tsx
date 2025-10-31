@@ -324,7 +324,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (index === -1) return
           setStore(
             "opened",
-            produce((opened) => {
+            produce((opened: string[]) => {
               opened.splice(to, 0, opened.splice(index, 1)[0])
             }),
           )

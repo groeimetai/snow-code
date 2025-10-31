@@ -50,7 +50,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           }
           setStore(
             "session",
-            produce((draft) => {
+            produce((draft: Session[]) => {
               draft.splice(result.index, 0, event.properties.info)
             }),
           )
@@ -70,7 +70,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           setStore(
             "message",
             event.properties.info.sessionID,
-            produce((draft) => {
+            produce((draft: Message[]) => {
               draft.splice(result.index, 0, event.properties.info)
             }),
           )
@@ -90,7 +90,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           setStore(
             "part",
             event.properties.part.messageID,
-            produce((draft) => {
+            produce((draft: Part[]) => {
               draft.splice(result.index, 0, event.properties.part)
             }),
           )
