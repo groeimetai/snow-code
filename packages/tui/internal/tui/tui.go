@@ -663,9 +663,6 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case opencode.UnknownError:
 			slog.Error("Server error", "name", err.Name, "message", err.Data.Message)
 			return a, toast.NewErrorToast(err.Data.Message, toast.WithTitle(string(err.Name)))
-		case opencode.EventListResponseEventSessionErrorPropertiesErrorAPIError:
-			slog.Error("API error", "message", err.Data.Message, "statusCode", err.Data.StatusCode)
-			return a, toast.NewErrorToast(err.Data.Message, toast.WithTitle(string(err.Name)))
 		case opencode.MessageAbortedError:
 			// Message was aborted - this is expected when user cancels, so just log it
 			slog.Debug("Message aborted", "message", err.Data.Message)
