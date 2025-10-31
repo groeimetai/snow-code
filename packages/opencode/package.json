@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "0.16.20",
+  "version": "0.16.21",
   "name": "@groeimetai/snowcode",
   "description": "SnowCode - AI-powered ServiceNow development CLI (OpenCode fork enhanced for Snow-Flow)",
   "type": "module",
@@ -22,7 +22,7 @@
   "scripts": {
     "typecheck": "tsgo --noEmit",
     "test": "bun test",
-    "build": "./script/build.ts",
+    "build": "bun script/build.ts",
     "dev": "bun run ./src/index.ts"
   },
   "bin": {
