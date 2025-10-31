@@ -9,7 +9,6 @@ import os from "os"
 import { Global } from "../../global"
 import { Plugin } from "../../plugin"
 import { Instance } from "../../project/instance"
-import { Config } from "../../config/config"
 import { ServiceNowOAuth } from "../../auth/servicenow-oauth"
 
 /**
@@ -534,7 +533,7 @@ export const AuthLoginCommand = cmd({
           const providerData = providers[provider]
           if (providerData && providerData.models && Object.keys(providerData.models).length > 0) {
             // Custom sorting for Anthropic: version-based (4.5 → 4.1 → 4 → 3.5 → 3)
-            const extractVersion = (model: any): number => {
+            const extractAnthropicVersion = (model: any): number => {
               const match = model.id.match(/claude-(?:opus|sonnet|haiku)-(\d+)(?:\.(\d+))?/)
               if (!match) return 0
               const major = parseInt(match[1]) || 0
@@ -542,12 +541,82 @@ export const AuthLoginCommand = cmd({
               return major * 10 + minor
             }
 
+            // Custom sorting for OpenAI: version-based (gpt-5 → gpt-4.1 → gpt-4o → o3 → o1)
+            const extractOpenAIVersion = (model: any): number => {
+              // GPT-5 family (highest priority)
+              if (model.id.includes('gpt-5')) {
+                if (model.id.includes('pro')) return 5100
+                if (model.id.includes('codex')) return 5090
+                if (model.id === 'gpt-5') return 5080
+                if (model.id.includes('mini')) return 5070
+                if (model.id.includes('nano')) return 5060
+                return 5000
+              }
+              // GPT-4.1 family
+              if (model.id.includes('gpt-4.1')) {
+                if (model.id.includes('mini')) return 4110
+                return 4120
+              }
+              // GPT-4o family (4.x = 4000 + x*10)
+              if (model.id.includes('gpt-4o')) {
+                if (model.id.includes('mini')) return 4080
+                return 4100
+              }
+              // GPT-4 family
+              if (model.id.includes('gpt-4')) {
+                if (model.id.includes('turbo')) return 4050
+                return 4040
+              }
+              // O-series (o4 > o3 > o1)
+              if (model.id.includes('o4')) {
+                if (model.id.includes('mini')) return 3950
+                return 3960
+              }
+              if (model.id.includes('o3')) {
+                if (model.id.includes('pro')) return 3920
+                if (model.id.includes('mini')) return 3900
+                if (model.id.includes('deep-research')) return 3910
+                return 3915
+              }
+              if (model.id.includes('o1')) {
+                if (model.id.includes('pro')) return 3850
+                if (model.id.includes('mini')) return 3840
+                if (model.id.includes('preview')) return 3845
+                return 3842
+              }
+              // GPT-3.5
+              if (model.id.includes('gpt-3.5')) return 3500
+              // Codex
+              if (model.id.includes('codex')) return 3000
+              // Default: use release date as fallback
+              return parseInt(model.release_date.replace(/-/g, '')) || 0
+            }
+
+            // Custom sorting for Google (Gemini): newer versions first
+            const extractGeminiVersion = (model: any): number => {
+              const match = model.id.match(/gemini-(\d+)(?:\.(\d+))?/)
+              if (!match) {
+                // Fallback to release date
+                return parseInt(model.release_date.replace(/-/g, '')) || 0
+              }
+              const major = parseInt(match[1]) || 0
+              const minor = parseInt(match[2]) || 0
+              return major * 100 + minor
+            }
+
+            const getSortKey = (provider: string) => {
+              if (provider === "anthropic") return (x: any) => -extractAnthropicVersion(x)
+              if (provider === "openai") return (x: any) => -extractOpenAIVersion(x)
+              if (provider === "google") return (x: any) => -extractGeminiVersion(x)
+              return (x: any) => -parseInt(x.release_date.replace(/-/g, '') || '0')
+            }
+
             const modelOptions = pipe(
               providerData.models,
               values(),
               sortBy(
                 (x) => (x.status === "alpha" || x.status === "beta" ? 1 : 0),
-                provider === "anthropic" ? (x) => -extractVersion(x) : (x) => -x.release_date,
+                getSortKey(provider),
               ),
               map((model) => {
                 const contextWindow = model.limit.context ? ` (${(model.limit.context / 1000).toFixed(0)}K context)` : ""
@@ -658,10 +727,19 @@ export const AuthLoginCommand = cmd({
               }
             }
 
-            // Save selected model to config if chosen
+            // Save selected model to global config if chosen
             if (selectedModel) {
               try {
-                await Config.update({ model: selectedModel })
+                const globalConfigPath = path.join(os.homedir(), ".config", "snowcode", "config.json")
+                let globalConfig = {}
+                try {
+                  const file = Bun.file(globalConfigPath)
+                  if (await file.exists()) {
+                    globalConfig = JSON.parse(await file.text())
+                  }
+                } catch {}
+                globalConfig = { ...globalConfig, model: selectedModel }
+                await Bun.write(globalConfigPath, JSON.stringify(globalConfig, null, 2))
                 prompts.log.info(`Saved default model: ${selectedModel}`)
               } catch (err) {
                 prompts.log.warn("Could not save model preference to config")
@@ -1018,10 +1096,19 @@ export const AuthLoginCommand = cmd({
           key,
         })
 
-        // Save selected model to config if chosen
+        // Save selected model to global config if chosen
         if (selectedModel) {
           try {
-            await Config.update({ model: selectedModel })
+            const globalConfigPath = path.join(os.homedir(), ".config", "snowcode", "config.json")
+            let globalConfig = {}
+            try {
+              const file = Bun.file(globalConfigPath)
+              if (await file.exists()) {
+                globalConfig = JSON.parse(await file.text())
+              }
+            } catch {}
+            globalConfig = { ...globalConfig, model: selectedModel }
+            await Bun.write(globalConfigPath, JSON.stringify(globalConfig, null, 2))
             prompts.log.info(`Saved default model: ${selectedModel}`)
           } catch (err) {
             prompts.log.warn("Could not save model preference to config")
