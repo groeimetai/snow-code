@@ -1200,28 +1200,88 @@ export const AuthLoginCommand = cmd({
               initialValue: "https://license.snow-flow.dev",
             })) as string
 
-            const configureJira = await prompts.confirm({
-              message: "Configure Jira integration? (optional)",
+            // External integrations configuration
+            const configureExternal = await prompts.confirm({
+              message: "Configure external integrations? (optional)",
               initialValue: false,
             })
 
             let jiraBaseUrl, jiraEmail, jiraApiToken
-            if (!prompts.isCancel(configureJira) && configureJira) {
-              jiraBaseUrl = await prompts.text({
-                message: "Jira Base URL",
-                placeholder: "https://company.atlassian.net",
-              }) as string
+            let azureOrg, azureProject, azurePat
+            let confluenceUrl, confluenceEmail, confluenceApiToken
 
-              if (!prompts.isCancel(jiraBaseUrl) && jiraBaseUrl) {
-                jiraEmail = await prompts.text({
-                  message: "Jira Email",
-                  placeholder: "admin@company.com",
-                }) as string
+            if (!prompts.isCancel(configureExternal) && configureExternal) {
+              const integrations = await prompts.multiselect({
+                message: "Select integrations to configure",
+                options: [
+                  { value: "jira", label: "Jira" },
+                  { value: "azure", label: "Azure DevOps" },
+                  { value: "confluence", label: "Confluence" },
+                ],
+              }) as string[]
 
-                if (!prompts.isCancel(jiraEmail)) {
-                  jiraApiToken = await prompts.password({
-                    message: "Jira API Token",
-                  }) as string
+              if (!prompts.isCancel(integrations)) {
+                // Jira configuration
+                if (integrations.includes("jira")) {
+                  jiraBaseUrl = (await prompts.text({
+                    message: "Jira Base URL",
+                    placeholder: "https://company.atlassian.net",
+                  })) as string
+
+                  if (!prompts.isCancel(jiraBaseUrl) && jiraBaseUrl) {
+                    jiraEmail = (await prompts.text({
+                      message: "Jira Email",
+                      placeholder: "admin@company.com",
+                    })) as string
+
+                    if (!prompts.isCancel(jiraEmail)) {
+                      jiraApiToken = (await prompts.password({
+                        message: "Jira API Token",
+                      })) as string
+                    }
+                  }
+                }
+
+                // Azure DevOps configuration
+                if (integrations.includes("azure")) {
+                  azureOrg = (await prompts.text({
+                    message: "Azure DevOps Organization",
+                    placeholder: "mycompany",
+                  })) as string
+
+                  if (!prompts.isCancel(azureOrg) && azureOrg) {
+                    azureProject = (await prompts.text({
+                      message: "Azure DevOps Project",
+                      placeholder: "MyProject",
+                    })) as string
+
+                    if (!prompts.isCancel(azureProject)) {
+                      azurePat = (await prompts.password({
+                        message: "Azure Personal Access Token (PAT)",
+                      })) as string
+                    }
+                  }
+                }
+
+                // Confluence configuration
+                if (integrations.includes("confluence")) {
+                  confluenceUrl = (await prompts.text({
+                    message: "Confluence Base URL",
+                    placeholder: "https://company.atlassian.net/wiki",
+                  })) as string
+
+                  if (!prompts.isCancel(confluenceUrl) && confluenceUrl) {
+                    confluenceEmail = (await prompts.text({
+                      message: "Confluence Email",
+                      placeholder: "admin@company.com",
+                    })) as string
+
+                    if (!prompts.isCancel(confluenceEmail)) {
+                      confluenceApiToken = (await prompts.password({
+                        message: "Confluence API Token",
+                      })) as string
+                    }
+                  }
                 }
               }
             }
@@ -1234,6 +1294,12 @@ export const AuthLoginCommand = cmd({
               jiraBaseUrl: jiraBaseUrl || undefined,
               jiraEmail: jiraEmail || undefined,
               jiraApiToken: jiraApiToken || undefined,
+              azureOrg: azureOrg || undefined,
+              azureProject: azureProject || undefined,
+              azurePat: azurePat || undefined,
+              confluenceUrl: confluenceUrl || undefined,
+              confluenceEmail: confluenceEmail || undefined,
+              confluenceApiToken: confluenceApiToken || undefined,
             })
 
             // Write to .env file
@@ -1244,6 +1310,12 @@ export const AuthLoginCommand = cmd({
             if (jiraBaseUrl) envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: jiraBaseUrl })
             if (jiraEmail) envUpdates.push({ key: "SNOW_JIRA_EMAIL", value: jiraEmail })
             if (jiraApiToken) envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: jiraApiToken })
+            if (azureOrg) envUpdates.push({ key: "SNOW_AZURE_ORG", value: azureOrg })
+            if (azureProject) envUpdates.push({ key: "SNOW_AZURE_PROJECT", value: azureProject })
+            if (azurePat) envUpdates.push({ key: "SNOW_AZURE_PAT", value: azurePat })
+            if (confluenceUrl) envUpdates.push({ key: "SNOW_CONFLUENCE_URL", value: confluenceUrl })
+            if (confluenceEmail) envUpdates.push({ key: "SNOW_CONFLUENCE_EMAIL", value: confluenceEmail })
+            if (confluenceApiToken) envUpdates.push({ key: "SNOW_CONFLUENCE_API_TOKEN", value: confluenceApiToken })
             await updateEnvFile(envUpdates)
 
             // Add snow-flow-enterprise MCP server to SnowCode config
@@ -1266,6 +1338,43 @@ export const AuthLoginCommand = cmd({
               }
             } catch (error: any) {
               // Silently skip enterprise MCP configuration errors
+            }
+
+            // Sync integration settings to enterprise backend
+            try {
+              const enterpriseApiUrl = enterpriseUrl || "https://license.snow-flow.dev"
+              await fetch(`${enterpriseApiUrl}/api/integrations`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${licenseKey}`,
+                },
+                body: JSON.stringify({
+                  jira: jiraBaseUrl
+                    ? {
+                        baseUrl: jiraBaseUrl,
+                        email: jiraEmail,
+                        // API token is NOT sent - kept local for security
+                      }
+                    : undefined,
+                  azure: azureOrg
+                    ? {
+                        organization: azureOrg,
+                        project: azureProject,
+                        // PAT is NOT sent - kept local for security
+                      }
+                    : undefined,
+                  confluence: confluenceUrl
+                    ? {
+                        baseUrl: confluenceUrl,
+                        email: confluenceEmail,
+                        // API token is NOT sent - kept local for security
+                      }
+                    : undefined,
+                }),
+              })
+            } catch (error) {
+              // Silently fail - integrations are still saved locally
             }
 
             prompts.log.success("Enterprise configuration saved")
