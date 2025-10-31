@@ -1,7 +1,7 @@
 import { createEffect, Show, For, type JSX, splitProps } from "solid-js"
-import { Dialog, DialogProps, Icon, IconButton, Input } from "@opencode-ai/ui"
+import { Dialog, DialogProps, Icon, IconButton, Input } from "@groeimetai/snowcode-ui"
 import { createStore } from "solid-js/store"
-import { FilteredListProps, useFilteredList } from "@opencode-ai/ui/hooks"
+import { FilteredListProps, useFilteredList } from "@groeimetai/snowcode-ui/hooks"
 
 interface SelectDialogProps<T>
   extends FilteredListProps<T>,
