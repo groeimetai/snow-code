@@ -18,7 +18,11 @@ const GOARCH: Record<string, string> = {
   "x64-baseline": "amd64",
 }
 
-const targets = [
+// Check if we should build for a specific platform (from GitHub Actions)
+const targetOS = process.env.TARGET_OS
+const targetArch = process.env.TARGET_ARCH
+
+const allTargets = [
   ["windows", "x64"],
   ["linux", "arm64"],
   ["linux", "x64"],
@@ -27,6 +31,11 @@ const targets = [
   ["darwin", "x64-baseline"],
   ["darwin", "arm64"],
 ]
+
+// If TARGET_OS and TARGET_ARCH are set, only build that platform
+const targets = targetOS && targetArch
+  ? [[targetOS, targetArch]]
+  : allTargets
 
 await $`rm -rf dist`
 
