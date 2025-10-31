@@ -74,7 +74,7 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
       // Check if file exists
       const file = Bun.file(configPath)
       if (!(await file.exists())) {
-        console.log(`[Auth] Config not found: ${configPath}`)
+        // Silently skip non-existent config files
         continue
       }
 
@@ -122,21 +122,17 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
         if (serverCount > 0) {
           // Write updated config back
           await Bun.write(configPath, JSON.stringify(config, null, 2))
-          console.log(`[Auth] Updated ${serverCount} MCP servers in: ${path.basename(configPath)}`)
+          // Silently update MCP servers
           updatedCount++
         }
       }
     } catch (error: any) {
-      console.warn(`[Auth] Failed to update ${path.basename(configPath)}: ${error.message}`)
+      // Silently skip failed config updates
     }
   }
 
-  if (updatedCount === 0) {
-    console.warn("[Auth] No SnowCode config files found to update!")
-    console.warn("[Auth] Run 'snow-flow init' first to create MCP configuration")
-  } else {
-    console.log(`[Auth] Successfully updated ${updatedCount} config file(s)`)
-  }
+  // Silently complete - no need for verbose logging
+  // Config updates are transparent to the user
 }
 
 export const AuthCommand = cmd({
@@ -508,7 +504,7 @@ export const AuthLoginCommand = cmd({
               prompts.log.info("Added snow-flow-enterprise MCP server to config")
             }
           } catch (error: any) {
-            console.warn(`[Auth] Failed to add enterprise MCP: ${error.message}`)
+            // Silently skip enterprise MCP configuration errors
           }
 
           prompts.log.message("")
@@ -940,7 +936,7 @@ export const AuthLoginCommand = cmd({
                 prompts.log.info("Added snow-flow-enterprise MCP server to config")
               }
             } catch (error: any) {
-              console.warn(`[Auth] Failed to add enterprise MCP: ${error.message}`)
+              // Silently skip enterprise MCP configuration errors
             }
 
             prompts.log.message("")
@@ -1269,14 +1265,27 @@ export const AuthLoginCommand = cmd({
                 prompts.log.info("Added snow-flow-enterprise MCP server to config")
               }
             } catch (error: any) {
-              console.warn(`[Auth] Failed to add enterprise MCP: ${error.message}`)
+              // Silently skip enterprise MCP configuration errors
             }
 
             prompts.log.success("Enterprise configuration saved")
             prompts.log.info("Credentials saved to .env file")
+
+            // Show completion and exit (prevents duplicate completion message)
+            prompts.log.message("")
+            prompts.log.success("✅ Authentication complete!")
+            prompts.log.message("")
+            prompts.log.info("Next steps:")
+            prompts.log.message("")
+            prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
+            prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
+            prompts.outro("Done")
+            await Instance.dispose()
+            process.exit(0)
           }
         }
 
+        // If enterprise was not configured, show completion here
         prompts.log.message("")
         prompts.log.success("✅ Authentication complete!")
         prompts.log.message("")
