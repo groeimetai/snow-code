@@ -81,11 +81,11 @@ jobs:
         shell: bash
         run: |
           cd packages/opencode
-          BINARY_NAME="snowcode-${{ matrix.os }}-${{ matrix.arch }}"
+          BINARY_NAME="snow-code-${{ matrix.os }}-${{ matrix.arch }}"
           if [ "${{ matrix.os }}" = "windows" ]; then
-            BINARY_PATH="dist/@groeimetai/$BINARY_NAME/bin/snowcode.exe"
+            BINARY_PATH="dist/@groeimetai/$BINARY_NAME/bin/snow-code.exe"
           else
-            BINARY_PATH="dist/@groeimetai/$BINARY_NAME/bin/snowcode"
+            BINARY_PATH="dist/@groeimetai/$BINARY_NAME/bin/snow-code"
           fi
 
           if [ ! -f "$BINARY_PATH" ]; then
@@ -98,8 +98,8 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: snowcode-${{ matrix.os }}-${{ matrix.arch }}
-          path: packages/opencode/dist/@groeimetai/snowcode-${{ matrix.os }}-${{ matrix.arch }}/
+          name: snow-code-${{ matrix.os }}-${{ matrix.arch }}
+          path: packages/opencode/dist/@groeimetai/snow-code-${{ matrix.os }}-${{ matrix.arch }}/
           retention-days: 7
 
   # Publish all binaries to npm
@@ -141,7 +141,7 @@ jobs:
       - name: Publish platform binaries
         run: |
           cd packages/opencode/dist/@groeimetai
-          for dir in snowcode-*; do
+          for dir in snow-code-*; do
             if [ -d "$dir" ]; then
               echo "Publishing $dir..."
               cd "$dir"
@@ -164,15 +164,15 @@ jobs:
             ## Installation
 
             ```bash
-            npm install -g @groeimetai/snowcode@${{ steps.version.outputs.version }}
+            npm install -g @groeimetai/snow-code@${{ steps.version.outputs.version }}
             ```
 
             ## Platform Binaries Published to npm
 
-            - `@groeimetai/snowcode-darwin-arm64@${{ steps.version.outputs.version }}`
-            - `@groeimetai/snowcode-darwin-x64@${{ steps.version.outputs.version }}`
-            - `@groeimetai/snowcode-linux-arm64@${{ steps.version.outputs.version }}`
-            - `@groeimetai/snowcode-linux-x64@${{ steps.version.outputs.version }}`
-            - `@groeimetai/snowcode-windows-x64@${{ steps.version.outputs.version }}`
+            - `@groeimetai/snow-code-darwin-arm64@${{ steps.version.outputs.version }}`
+            - `@groeimetai/snow-code-darwin-x64@${{ steps.version.outputs.version }}`
+            - `@groeimetai/snow-code-linux-arm64@${{ steps.version.outputs.version }}`
+            - `@groeimetai/snow-code-linux-x64@${{ steps.version.outputs.version }}`
+            - `@groeimetai/snow-code-windows-x64@${{ steps.version.outputs.version }}`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

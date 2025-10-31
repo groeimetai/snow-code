@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "0.17.1",
-  "name": "@groeimetai/snowcode",
+  "version": "0.18.0",
+  "name": "@groeimetai/snow-code",
   "description": "SnowCode - AI-powered ServiceNow development CLI (OpenCode fork enhanced for Snow-Flow)",
   "type": "module",
   "author": "Snow-Flow Team",
@@ -26,8 +26,9 @@
     "dev": "bun run ./src/index.ts"
   },
   "bin": {
-    "snowcode": "./bin/snowcode",
-    "opencode": "./bin/snowcode"
+    "snow-code": "./bin/snow-code",
+    "snowcode": "./bin/snow-code",
+    "opencode": "./bin/snow-code"
   },
   "exports": {
     "./*": "./src/*.ts"
@@ -94,11 +95,11 @@
     "tsx": "4.20.6"
   },
   "optionalDependencies": {
-    "@groeimetai/snowcode-darwin-arm64": "*",
-    "@groeimetai/snowcode-darwin-x64": "*",
-    "@groeimetai/snowcode-linux-arm64": "*",
-    "@groeimetai/snowcode-linux-x64": "*",
-    "@groeimetai/snowcode-windows-x64": "*",
+    "@groeimetai/snow-code-darwin-arm64": "*",
+    "@groeimetai/snow-code-darwin-x64": "*",
+    "@groeimetai/snow-code-linux-arm64": "*",
+    "@groeimetai/snow-code-linux-x64": "*",
+    "@groeimetai/snow-code-windows-x64": "*",
     "tree-sitter-bash": "0.25.0"
   }
 }

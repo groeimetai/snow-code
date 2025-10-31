@@ -57,7 +57,7 @@ for (const [os, arch] of targets) {
     sourcemap: "external",
     compile: {
       target: `bun-${os}-${arch}` as any,
-      outfile: `dist/${name}/bin/snowcode`,
+      outfile: `dist/${name}/bin/snow-code`,
       execArgv: [`--user-agent=opencode/${Script.version}`, `--env-file=""`, `--`],
       windows: {},
     },
