@@ -107,14 +107,14 @@ export namespace SessionSummary {
 
   export const diff = fn(
     z.object({
-      sessionID: Identifier.schema("session"),
-      messageID: Identifier.schema("message").optional(),
+      sessionID: Identifier.schema("session") as any,
+      messageID: Identifier.schema("message").optional() as any,
     }),
     async (input) => {
-      let all = await Session.messages(input.sessionID)
+      let all = (await Session.messages(input.sessionID)) as MessageV2.WithParts[]
       if (input.messageID)
         all = all.filter(
-          (x) => x.info.id === input.messageID || (x.info.role === "assistant" && x.info.parentID === input.messageID),
+          (x: MessageV2.WithParts) => x.info.id === input.messageID || (x.info.role === "assistant" && x.info.parentID === input.messageID),
         )
 
       return computeDiff({

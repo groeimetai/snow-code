@@ -420,7 +420,7 @@ export const GithubRunCommand = cmd({
 
         // Setup opencode session
         const repoData = await fetchRepo()
-        session = await Session.create({})
+        session = (await Session.create({})) as Session.Info
         subscribeSessionEvents()
         shareId = await (async () => {
           if (share === false) return

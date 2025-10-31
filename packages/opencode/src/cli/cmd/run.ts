@@ -163,13 +163,13 @@ export const RunCommand = cmd({
           process.exit(1)
         }
       }
-      const session = await (async () => {
+      const session = await (async (): Promise<Session.Info | undefined> => {
         if (args.continue) {
           const it = Session.list()
           try {
             for await (const s of it) {
               if (s.parentID === undefined) {
-                return s
+                return s as Session.Info
               }
             }
             return
@@ -178,9 +178,9 @@ export const RunCommand = cmd({
           }
         }
 
-        if (args.session) return Session.get(args.session)
+        if (args.session) return (await Session.get(args.session)) as Session.Info
 
-        return Session.create({})
+        return (await Session.create({})) as Session.Info
       })()
 
       if (!session) {

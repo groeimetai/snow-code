@@ -26,7 +26,7 @@ const parser = lazy(async () => {
     p.setLanguage(Bash.language as any)
     return p
   } catch (e) {
-    const { default: Parser } = await import("web-tree-sitter")
+    const Parser = (await import("web-tree-sitter")).default as any
     const { default: treeWasm } = await import("web-tree-sitter/tree-sitter.wasm" as string, { with: { type: "wasm" } })
     await Parser.init({
       locateFile() {

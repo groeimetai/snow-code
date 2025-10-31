@@ -55,8 +55,8 @@ export namespace SessionCompaction {
     const toPrune = []
     let turns = 0
 
-    loop: for (let msgIndex = msgs.length - 1; msgIndex >= 0; msgIndex--) {
-      const msg = msgs[msgIndex]
+    loop: for (let msgIndex = (msgs as MessageV2.WithParts[]).length - 1; msgIndex >= 0; msgIndex--) {
+      const msg = (msgs as MessageV2.WithParts[])[msgIndex]
       if (msg.info.role === "user") turns++
       if (turns < 2) continue
       if (msg.info.role === "assistant" && msg.info.summary) break loop
@@ -99,7 +99,7 @@ export namespace SessionCompaction {
         draft.time.compacting = undefined
       })
     })
-    const toSummarize = await Session.messages(input.sessionID).then(MessageV2.filterCompacted)
+    const toSummarize = (await Session.messages(input.sessionID).then(MessageV2.filterCompacted)) as MessageV2.WithParts[]
     const model = await Provider.getModel(input.providerID, input.modelID)
     const system = [
       ...SystemPrompt.summarize(model.providerID),
@@ -110,7 +110,7 @@ export namespace SessionCompaction {
     const msg = (await Session.updateMessage({
       id: Identifier.ascending("message"),
       role: "assistant",
-      parentID: toSummarize.findLast((m) => m.info.role === "user")?.info.id!,
+      parentID: toSummarize.findLast((m: MessageV2.WithParts) => m.info.role === "user")?.info.id!,
       sessionID: input.sessionID,
       system,
       mode: "build",
@@ -206,8 +206,8 @@ export namespace SessionCompaction {
                 usage: value.usage,
                 metadata: value.providerMetadata,
               })
-              msg.cost += usage.cost
-              msg.tokens = usage.tokens
+              msg.cost += (usage as any).cost
+              msg.tokens = (usage as any).tokens
               await Session.updateMessage(msg)
               continue
             }
@@ -259,7 +259,7 @@ export namespace SessionCompaction {
     })
     if (result.shouldRetry) {
       for (let retry = 1; retry < MAX_RETRIES; retry++) {
-        const lastRetryPart = result.parts.findLast((p) => p.type === "retry")
+        const lastRetryPart = (result.parts as any[]).findLast((p: any) => p.type === "retry")
 
         if (lastRetryPart) {
           const delayMs = SessionRetry.getRetryDelayInMs(lastRetryPart.error, retry)
@@ -308,7 +308,7 @@ export namespace SessionCompaction {
     if (
       !msg.error ||
       (MessageV2.AbortedError.isInstance(msg.error) &&
-        result.parts.some((part) => part.type === "text" && part.text.length > 0))
+        (result.parts as any[]).some((part: any) => part.type === "text" && part.text.length > 0))
     ) {
       msg.summary = true
       Bus.publish(Event.Compacted, {

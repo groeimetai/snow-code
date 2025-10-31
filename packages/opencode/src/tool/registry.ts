@@ -15,7 +15,8 @@ import { Tool } from "./tool"
 import { Instance } from "../project/instance"
 import { Config } from "../config/config"
 import path from "path"
-import { type ToolDefinition } from "@opencode-ai/plugin"
+// @ts-expect-error - workspace package resolved at runtime by Bun
+import { type ToolDefinition } from "@groeimetai/snowcode-plugin"
 import z from "zod/v4"
 import { Plugin } from "../plugin"
 

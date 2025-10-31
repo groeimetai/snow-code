@@ -17,7 +17,7 @@ export namespace Storage {
     "NotFoundError",
     z.object({
       message: z.string(),
-    }),
+    }) as any,
   )
 
   const MIGRATIONS: Migration[] = [

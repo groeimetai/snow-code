@@ -105,7 +105,7 @@ export namespace Session {
         parentID: Identifier.schema("session").optional(),
         title: z.string().optional(),
       })
-      .optional(),
+      .optional() as any,
     async (input) => {
       return createNext({
         parentID: input?.parentID,
@@ -119,19 +119,19 @@ export namespace Session {
     z.object({
       sessionID: Identifier.schema("session"),
       messageID: Identifier.schema("message").optional(),
-    }),
+    }) as any,
     async (input) => {
       const session = await createNext({
         directory: Instance.directory,
       })
-      const msgs = await messages(input.sessionID)
+      const msgs = (await messages(input.sessionID)) as MessageV2.WithParts[]
       for (const msg of msgs) {
         if (input.messageID && msg.info.id >= input.messageID) break
-        const cloned = await updateMessage({
+        const cloned = (await updateMessage({
           ...msg.info,
           sessionID: session.id,
           id: Identifier.ascending("message"),
-        })
+        })) as MessageV2.Info
 
         for (const part of msg.parts) {
           await updatePart({
@@ -146,7 +146,7 @@ export namespace Session {
     },
   )
 
-  export const touch = fn(Identifier.schema("session"), async (sessionID) => {
+  export const touch = fn(Identifier.schema("session") as any, async (sessionID) => {
     await update(sessionID, (draft) => {
       draft.time.updated = Date.now()
     })
@@ -170,9 +170,9 @@ export namespace Session {
     const cfg = await Config.get()
     if (!result.parentID && (Flag.OPENCODE_AUTO_SHARE || cfg.share === "auto"))
       share(result.id)
-        .then((share) => {
+        .then((share: { url: string; secret?: string }) => {
           update(result.id, (draft) => {
-            draft.share = share
+            draft.share = { url: share.url }
           })
         })
         .catch(() => {
@@ -184,22 +184,22 @@ export namespace Session {
     return result
   }
 
-  export const get = fn(Identifier.schema("session"), async (id) => {
+  export const get = fn(Identifier.schema("session") as any, async (id) => {
     const read = await Storage.read<Info>(["session", Instance.project.id, id])
     return read as Info
   })
 
-  export const getShare = fn(Identifier.schema("session"), async (id) => {
+  export const getShare = fn(Identifier.schema("session") as any, async (id) => {
     return Storage.read<ShareInfo>(["share", id])
   })
 
-  export const share = fn(Identifier.schema("session"), async (id) => {
+  export const share = fn(Identifier.schema("session") as any, async (id) => {
     const cfg = await Config.get()
     if (cfg.share === "disabled") {
       throw new Error("Sharing is disabled in configuration")
     }
 
-    const session = await get(id)
+    const session = (await get(id)) as Info
     if (session.share) return session.share
     const share = await Share.create(id)
     await update(id, (draft) => {
@@ -209,7 +209,7 @@ export namespace Session {
     })
     await Storage.write(["share", id], share)
     await Share.sync("session/info/" + id, session)
-    for (const msg of await messages(id)) {
+    for (const msg of (await messages(id)) as MessageV2.WithParts[]) {
       await Share.sync("session/message/" + id + "/" + msg.info.id, msg.info)
       for (const part of msg.parts) {
         await Share.sync("session/part/" + id + "/" + msg.info.id + "/" + part.id, part)
@@ -218,8 +218,8 @@ export namespace Session {
     return share
   })
 
-  export const unshare = fn(Identifier.schema("session"), async (id) => {
-    const share = await getShare(id)
+  export const unshare = fn(Identifier.schema("session") as any, async (id) => {
+    const share = (await getShare(id)) as ShareInfo | undefined
     if (!share) return
     await Storage.remove(["share", id])
     await update(id, (draft) => {
@@ -240,13 +240,13 @@ export namespace Session {
     return result
   }
 
-  export const messages = fn(Identifier.schema("session"), async (sessionID) => {
+  export const messages = fn(Identifier.schema("session") as any, async (sessionID) => {
     const result = [] as MessageV2.WithParts[]
     for (const p of await Storage.list(["message", sessionID])) {
       const read = await Storage.read<MessageV2.Info>(p)
       result.push({
         info: read,
-        parts: await getParts(read.id),
+        parts: (await getParts(read.id)) as MessageV2.Part[],
       })
     }
     result.sort((a, b) => (a.info.id > b.info.id ? 1 : -1))
@@ -257,7 +257,7 @@ export namespace Session {
     z.object({
       sessionID: Identifier.schema("session"),
       messageID: Identifier.schema("message"),
-    }),
+    }) as any,
     async (input) => {
       return {
         info: await Storage.read<MessageV2.Info>(["message", input.sessionID, input.messageID]),
@@ -266,7 +266,7 @@ export namespace Session {
     },
   )
 
-  export const getParts = fn(Identifier.schema("message"), async (messageID) => {
+  export const getParts = fn(Identifier.schema("message") as any, async (messageID) => {
     const result = [] as MessageV2.Part[]
     for (const item of await Storage.list(["part", messageID])) {
       const read = await Storage.read<MessageV2.Part>(item)
@@ -283,7 +283,7 @@ export namespace Session {
     }
   }
 
-  export const children = fn(Identifier.schema("session"), async (parentID) => {
+  export const children = fn(Identifier.schema("session") as any, async (parentID) => {
     const project = Instance.project
     const result = [] as Session.Info[]
     for (const item of await Storage.list(["session", project.id])) {
@@ -294,11 +294,11 @@ export namespace Session {
     return result
   })
 
-  export const remove = fn(Identifier.schema("session"), async (sessionID) => {
+  export const remove = fn(Identifier.schema("session") as any, async (sessionID) => {
     const project = Instance.project
     try {
-      const session = await get(sessionID)
-      for (const child of await children(sessionID)) {
+      const session = (await get(sessionID)) as Info
+      for (const child of (await children(sessionID)) as Info[]) {
         await remove(child.id)
       }
       await unshare(sessionID).catch(() => {})
@@ -317,7 +317,7 @@ export namespace Session {
     }
   })
 
-  export const updateMessage = fn(MessageV2.Info, async (msg) => {
+  export const updateMessage = fn(MessageV2.Info as any, async (msg) => {
     await Storage.write(["message", msg.sessionID, msg.id], msg)
     Bus.publish(MessageV2.Event.Updated, {
       info: msg,
@@ -329,7 +329,7 @@ export namespace Session {
     z.object({
       sessionID: Identifier.schema("session"),
       messageID: Identifier.schema("message"),
-    }),
+    }) as any,
     async (input) => {
       await Storage.remove(["message", input.sessionID, input.messageID])
       Bus.publish(MessageV2.Event.Removed, {
@@ -352,7 +352,7 @@ export namespace Session {
     }),
   ])
 
-  export const updatePart = fn(UpdatePartInput, async (input) => {
+  export const updatePart = fn(UpdatePartInput as any, async (input) => {
     const part = "delta" in input ? input.part : input
     const delta = "delta" in input ? input.delta : undefined
     await Storage.write(["part", part.messageID, part.id], part)
@@ -368,7 +368,7 @@ export namespace Session {
       model: z.custom<ModelsDev.Model>(),
       usage: z.custom<LanguageModelUsage>(),
       metadata: z.custom<ProviderMetadata>().optional(),
-    }),
+    }) as any,
     (input) => {
       const tokens = {
         input: input.usage.inputTokens ?? 0,
@@ -376,8 +376,7 @@ export namespace Session {
         reasoning: input.usage?.reasoningTokens ?? 0,
         cache: {
           write: (input.metadata?.["anthropic"]?.["cacheCreationInputTokens"] ??
-            // @ts-expect-error
-            input.metadata?.["bedrock"]?.["usage"]?.["cacheWriteInputTokens"] ??
+            (input.metadata as any)?.["bedrock"]?.["usage"]?.["cacheWriteInputTokens"] ??
             0) as number,
           read: input.usage.cachedInputTokens ?? 0,
         },
@@ -406,7 +405,7 @@ export namespace Session {
       modelID: z.string(),
       providerID: z.string(),
       messageID: Identifier.schema("message"),
-    }),
+    }) as any,
     async (input) => {
       await SessionPrompt.prompt({
         sessionID: input.sessionID,

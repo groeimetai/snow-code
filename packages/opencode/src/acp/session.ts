@@ -8,7 +8,7 @@ export class ACPSessionManager {
   private sessions = new Map<string, ACPSessionState>()
 
   async create(cwd: string, mcpServers: McpServer[], model?: ACPSessionState["model"]): Promise<ACPSessionState> {
-    const session = await Session.create({ title: `ACP Session ${crypto.randomUUID()}` })
+    const session = (await Session.create({ title: `ACP Session ${crypto.randomUUID()}` })) as Session.Info
     const sessionId = session.id
     const resolvedModel = model ?? (await Provider.defaultModel())
 
@@ -32,7 +32,7 @@ export class ACPSessionManager {
     const state = this.sessions.get(sessionId)
     if (!state) return
 
-    await Session.remove(sessionId).catch(() => {})
+    await (Session.remove(sessionId) as Promise<void>).catch(() => {})
     this.sessions.delete(sessionId)
   }
 
