@@ -1,4 +1,4 @@
-import { Button, List, SelectDialog, Tooltip, IconButton, Tabs, Icon, Accordion } from "@opencode-ai/ui"
+import { Button, List, SelectDialog, Tooltip, IconButton, Tabs, Icon, Accordion } from "@groeimetai/snowcode-ui"
 import { FileIcon } from "@/ui"
 import FileTree from "@/components/file-tree"
 import { For, onCleanup, onMount, Show, Match, Switch, createSignal, createEffect, createMemo } from "solid-js"

@@ -1,5 +1,5 @@
-import { Button, Icon, IconButton, Select, SelectDialog } from "@opencode-ai/ui"
-import { useFilteredList } from "@opencode-ai/ui/hooks"
+import { Button, Icon, IconButton, Select, SelectDialog } from "@groeimetai/snowcode-ui"
+import { useFilteredList } from "@groeimetai/snowcode-ui/hooks"
 import { createEffect, on, Component, createMemo, Show, For, onMount, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { FileIcon } from "@/ui"
