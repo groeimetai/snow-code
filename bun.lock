@@ -165,7 +165,7 @@
     },
     "packages/opencode": {
       "name": "@groeimetai/snowcode",
-      "version": "0.16.3",
+      "version": "0.16.19",
       "bin": {
         "snowcode": "./bin/snowcode",
         "opencode": "./bin/snowcode",
@@ -228,7 +228,7 @@
         "zod-to-json-schema": "3.24.5",
       },
       "optionalDependencies": {
-        "@groeimetai/snowcode-darwin-arm64": "0.15.32",
+        "@groeimetai/snowcode-darwin-arm64": "0.16.14",
         "tree-sitter": "0.25.0",
         "tree-sitter-bash": "0.25.0",
       },
@@ -669,7 +669,7 @@
 
     "@groeimetai/snowcode": ["@groeimetai/snowcode@workspace:packages/opencode"],
 
-    "@groeimetai/snowcode-darwin-arm64": ["@groeimetai/snowcode-darwin-arm64@0.15.32", "", { "os": "darwin", "cpu": "arm64", "bin": { "snowcode": "bin/snowcode", "opencode": "bin/snowcode" } }, "sha512-p1nN8XpRt/MaTJsS5Xqe/e1+cQvwT2hijSX7/Y+qI2KqZv6o0i1YCtVW60dMYiWPZ/ofatVDYsgwU7dIrfFbeA=="],
+    "@groeimetai/snowcode-darwin-arm64": ["@groeimetai/snowcode-darwin-arm64@0.16.14", "", { "os": "darwin", "cpu": "arm64", "bin": { "snowcode": "bin/snowcode", "opencode": "bin/snowcode" } }, "sha512-7lXkY0yCCySzZ7Lyc21vvZI7JqRouPbApdkxtOrVtF+S+QFYTcI8nsuURI39PxCnbT9cU6kiAtfKmw+ROi3b+w=="],
 
     "@groeimetai/snowcode-plugin": ["@groeimetai/snowcode-plugin@workspace:packages/plugin"],
 
