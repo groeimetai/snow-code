@@ -1032,6 +1032,251 @@ export const AuthLoginCommand = cmd({
           }
         }
 
+        // Automatically continue to ServiceNow setup (required for snow-flow)
+        prompts.log.message("")
+        prompts.log.step("ServiceNow Configuration")
+        prompts.log.info("Snow-Flow requires ServiceNow connection for development")
+        prompts.log.message("")
+
+        const snowInstance = (await prompts.text({
+          message: "ServiceNow instance URL",
+          placeholder: "dev12345.service-now.com",
+          validate: (value) => {
+            if (!value || value.trim() === "") return "Instance URL is required"
+            const cleaned = value.replace(/^https?:\/\//, "").replace(/\/$/, "")
+            if (
+              !cleaned.includes(".service-now.com") &&
+              !cleaned.includes("localhost") &&
+              !cleaned.includes("127.0.0.1")
+            ) {
+              return "Must be a ServiceNow domain (e.g., dev12345.service-now.com)"
+            }
+          },
+        })) as string
+
+        if (prompts.isCancel(snowInstance)) {
+          prompts.outro("Done")
+          await Instance.dispose()
+          return
+        }
+
+        const snowAuthMethod = (await prompts.select({
+          message: "Authentication method",
+          options: [
+            { value: "oauth", label: "OAuth 2.0", hint: "recommended" },
+            { value: "basic", label: "Basic Auth", hint: "username/password" },
+          ],
+        })) as string
+
+        if (prompts.isCancel(snowAuthMethod)) {
+          prompts.outro("Done")
+          await Instance.dispose()
+          return
+        }
+
+        if (snowAuthMethod === "oauth") {
+          const snowClientId = (await prompts.text({
+            message: "OAuth Client ID",
+            placeholder: "32-character hex string from ServiceNow",
+            validate: (value) => {
+              if (!value || value.trim() === "") return "Client ID is required"
+              if (value.length < 32) return "Client ID too short (expected 32+ characters)"
+            },
+          })) as string
+
+          if (prompts.isCancel(snowClientId)) {
+            prompts.outro("Done")
+            await Instance.dispose()
+            return
+          }
+
+          const snowClientSecret = (await prompts.password({
+            message: "OAuth Client Secret",
+            validate: (value) => {
+              if (!value || value.trim() === "") return "Client Secret is required"
+              if (value.length < 32) return "Client Secret too short (expected 32+ characters)"
+            },
+          })) as string
+
+          if (prompts.isCancel(snowClientSecret)) {
+            prompts.outro("Done")
+            await Instance.dispose()
+            return
+          }
+
+          // Run full OAuth flow
+          const oauth = new ServiceNowOAuth()
+          const result = await oauth.authenticate({
+            instance: snowInstance,
+            clientId: snowClientId,
+            clientSecret: snowClientSecret,
+          })
+
+          if (result.success) {
+            // Write to .env file
+            await updateEnvFile([
+              { key: "SNOW_INSTANCE", value: snowInstance },
+              { key: "SNOW_AUTH_METHOD", value: "oauth" },
+              { key: "SNOW_CLIENT_ID", value: snowClientId },
+              { key: "SNOW_CLIENT_SECRET", value: snowClientSecret },
+            ])
+            // Update SnowCode MCP configs
+            await updateSnowCodeMCPConfigs(snowInstance, snowClientId, snowClientSecret)
+            prompts.log.success("ServiceNow authentication successful")
+            prompts.log.info("Credentials saved to .env and SnowCode configs")
+          } else {
+            prompts.log.error(`Authentication failed: ${result.error}`)
+          }
+        } else {
+          // Basic auth
+          const snowUsername = (await prompts.text({
+            message: "ServiceNow username",
+            placeholder: "admin",
+            validate: (value) => {
+              if (!value || value.trim() === "") return "Username is required"
+            },
+          })) as string
+
+          if (prompts.isCancel(snowUsername)) {
+            prompts.outro("Done")
+            await Instance.dispose()
+            return
+          }
+
+          const snowPassword = (await prompts.password({
+            message: "ServiceNow password",
+            validate: (value) => {
+              if (!value || value.trim() === "") return "Password is required"
+            },
+          })) as string
+
+          if (prompts.isCancel(snowPassword)) {
+            prompts.outro("Done")
+            await Instance.dispose()
+            return
+          }
+
+          // Save to Auth store
+          await Auth.set("servicenow", {
+            type: "servicenow-basic",
+            instance: snowInstance,
+            username: snowUsername,
+            password: snowPassword,
+          })
+
+          // Write to .env file
+          await updateEnvFile([
+            { key: "SNOW_INSTANCE", value: snowInstance },
+            { key: "SNOW_AUTH_METHOD", value: "basic" },
+            { key: "SNOW_USERNAME", value: snowUsername },
+            { key: "SNOW_PASSWORD", value: snowPassword },
+          ])
+          // Note: Basic auth doesn't use OAuth, so we update MCP configs with instance only
+          await updateSnowCodeMCPConfigs(snowInstance, "", "")
+
+          prompts.log.success("ServiceNow credentials saved")
+          prompts.log.info("Credentials saved to .env and SnowCode configs")
+        }
+
+        // After ServiceNow setup, ask about Enterprise (optional)
+        prompts.log.message("")
+        const configureEnterprise = await prompts.confirm({
+          message: "Configure Snow-Flow Enterprise? (optional)",
+          initialValue: false,
+        })
+
+        if (!prompts.isCancel(configureEnterprise) && configureEnterprise) {
+          prompts.log.message("")
+          prompts.log.step("Snow-Flow Enterprise Setup")
+
+          const licenseKey = (await prompts.password({
+            message: "Enterprise License Key (format: SNOW-ENT-*-*)",
+            validate: (value) => {
+              if (!value || value.trim() === "") return "License key is required"
+              if (!value.startsWith("SNOW-ENT-")) return "Invalid license key format (should start with SNOW-ENT-)"
+            },
+          })) as string
+
+          if (!prompts.isCancel(licenseKey)) {
+            const enterpriseUrl = (await prompts.text({
+              message: "Enterprise License Server URL (optional)",
+              placeholder: "https://license.snow-flow.dev",
+              initialValue: "https://license.snow-flow.dev",
+            })) as string
+
+            const configureJira = await prompts.confirm({
+              message: "Configure Jira integration? (optional)",
+              initialValue: false,
+            })
+
+            let jiraBaseUrl, jiraEmail, jiraApiToken
+            if (!prompts.isCancel(configureJira) && configureJira) {
+              jiraBaseUrl = await prompts.text({
+                message: "Jira Base URL",
+                placeholder: "https://company.atlassian.net",
+              }) as string
+
+              if (!prompts.isCancel(jiraBaseUrl) && jiraBaseUrl) {
+                jiraEmail = await prompts.text({
+                  message: "Jira Email",
+                  placeholder: "admin@company.com",
+                }) as string
+
+                if (!prompts.isCancel(jiraEmail)) {
+                  jiraApiToken = await prompts.password({
+                    message: "Jira API Token",
+                  }) as string
+                }
+              }
+            }
+
+            // Save to Auth store
+            await Auth.set("enterprise", {
+              type: "enterprise",
+              licenseKey,
+              enterpriseUrl: enterpriseUrl || undefined,
+              jiraBaseUrl: jiraBaseUrl || undefined,
+              jiraEmail: jiraEmail || undefined,
+              jiraApiToken: jiraApiToken || undefined,
+            })
+
+            // Write to .env file
+            const envUpdates: Array<{ key: string; value: string }> = [
+              { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: licenseKey },
+            ]
+            if (enterpriseUrl) envUpdates.push({ key: "SNOW_ENTERPRISE_URL", value: enterpriseUrl })
+            if (jiraBaseUrl) envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: jiraBaseUrl })
+            if (jiraEmail) envUpdates.push({ key: "SNOW_JIRA_EMAIL", value: jiraEmail })
+            if (jiraApiToken) envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: jiraApiToken })
+            await updateEnvFile(envUpdates)
+
+            // Add snow-flow-enterprise MCP server to SnowCode config
+            const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
+            const configPath = path.join(globalSnowCodeDir, "snowcode.json")
+            try {
+              const file = Bun.file(configPath)
+              if (await file.exists()) {
+                const configText = await file.text()
+                const config = JSON.parse(configText)
+                if (!config.mcp) config.mcp = {}
+                config.mcp["snow-flow-enterprise"] = {
+                  type: "remote",
+                  url: "https://enterprise.snow-flow.dev/mcp/sse",
+                  headers: { Authorization: `Bearer ${licenseKey}` },
+                  enabled: true,
+                }
+                await Bun.write(configPath, JSON.stringify(config, null, 2))
+                prompts.log.info("Added snow-flow-enterprise MCP server to config")
+              }
+            } catch (error: any) {
+              console.warn(`[Auth] Failed to add enterprise MCP: ${error.message}`)
+            }
+
+            prompts.log.success("Enterprise configuration saved")
+            prompts.log.info("Credentials saved to .env file")
+          }
+        }
+
         prompts.log.message("")
         prompts.log.success("✅ Authentication complete!")
         prompts.log.message("")
