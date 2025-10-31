@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 import path from "path"
-const dir = new URL("..", import.meta.url).pathname
-process.chdir(dir)
+import { fileURLToPath } from "url"
+const dir = path.dirname(fileURLToPath(import.meta.url))
+process.chdir(path.resolve(dir, ".."))
 import { $ } from "bun"
 
 import pkg from "../package.json"
