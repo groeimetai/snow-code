@@ -8,9 +8,9 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/groeimetai/snowcode.git"
+    "url": "https://github.com/groeimetai/snow-code.git"
   },
-  "homepage": "https://github.com/groeimetai/snowcode",
+  "homepage": "https://github.com/groeimetai/snow-code",
   "keywords": [
     "servicenow",
     "ai",
