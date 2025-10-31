@@ -165,7 +165,7 @@
     },
     "packages/opencode": {
       "name": "@groeimetai/snowcode",
-      "version": "0.16.24",
+      "version": "0.16.25",
       "bin": {
         "snowcode": "./bin/snowcode",
         "opencode": "./bin/snowcode",
@@ -228,7 +228,11 @@
         "zod-to-json-schema": "3.24.5",
       },
       "optionalDependencies": {
-        "@groeimetai/snowcode-darwin-arm64": "0.16.23",
+        "@groeimetai/snowcode-darwin-arm64": "*",
+        "@groeimetai/snowcode-darwin-x64": "*",
+        "@groeimetai/snowcode-linux-arm64": "*",
+        "@groeimetai/snowcode-linux-x64": "*",
+        "@groeimetai/snowcode-windows-x64": "*",
         "tree-sitter": "0.25.0",
         "tree-sitter-bash": "0.25.0",
       },
@@ -671,11 +675,19 @@
 
     "@groeimetai/snowcode-darwin-arm64": ["@groeimetai/snowcode-darwin-arm64@0.16.23", "", { "os": "darwin", "cpu": "arm64", "bin": { "snowcode": "bin/snowcode", "opencode": "bin/snowcode" } }, "sha512-woWtR5t2qzQ54D2hYAcdsHVgQsQk/xHgrstCiKrwGdt/GUGFvYYLu0/whYaKB78Bo8qprHZojk52FuuwHNTbdg=="],
 
+    "@groeimetai/snowcode-darwin-x64": ["@groeimetai/snowcode-darwin-x64@0.16.23", "", { "os": "darwin", "cpu": "x64", "bin": { "snowcode": "bin/snowcode", "opencode": "bin/snowcode" } }, "sha512-jX6113MRapFYuuzT89MusZjozX+3O6XQ8h8bV0/YAgXxCtuPn5D3/e1G8kN7n5tEQkMxe69vuhL/02QZ59iYMw=="],
+
+    "@groeimetai/snowcode-linux-arm64": ["@groeimetai/snowcode-linux-arm64@0.16.23", "", { "os": "linux", "cpu": "arm64", "bin": { "snowcode": "bin/snowcode", "opencode": "bin/snowcode" } }, "sha512-Jh0wobgCOC3RKWYlKmIu5Jg3q3lgFmmB/onb6jEZy9myiDN4iyRdJd9xU93bxf9fFpj+Xuk/OZGwX5qeqONUTA=="],
+
+    "@groeimetai/snowcode-linux-x64": ["@groeimetai/snowcode-linux-x64@0.16.23", "", { "os": "linux", "cpu": "x64", "bin": { "snowcode": "bin/snowcode", "opencode": "bin/snowcode" } }, "sha512-s0EMNY1z2272qTAicdabdPLzgJvBemqiP0LfpM11eBKQFQ/o4rjZmAF4DZfn2SmrtKRbBr4wbq/nsHY8QSUzhg=="],
+
     "@groeimetai/snowcode-plugin": ["@groeimetai/snowcode-plugin@workspace:packages/plugin"],
 
     "@groeimetai/snowcode-sdk": ["@groeimetai/snowcode-sdk@workspace:packages/sdk/js"],
 
     "@groeimetai/snowcode-ui": ["@groeimetai/snowcode-ui@workspace:packages/ui"],
+
+    "@groeimetai/snowcode-windows-x64": ["@groeimetai/snowcode-windows-x64@0.16.23", "", { "os": "win32", "cpu": "x64", "bin": { "snowcode": "bin/snowcode.exe", "opencode": "bin/snowcode.exe" } }, "sha512-GkRkg5MVXHGzn2yikMg4SmR0e6swYfJHQXbk2vpoYfrroC75hcOp6ZdFg/7TkQHY99msI328m5m5hgmiegutJQ=="],
 
     "@hey-api/json-schema-ref-parser": ["@hey-api/json-schema-ref-parser@1.0.6", "", { "dependencies": { "@jsdevtools/ono": "^7.1.3", "@types/json-schema": "^7.0.15", "js-yaml": "^4.1.0", "lodash": "^4.17.21" } }, "sha512-yktiFZoWPtEW8QKS65eqKwA5MTKp88CyiL8q72WynrBs/73SAaxlSWlA2zW/DZlywZ5hX1OYzrCC0wFdvO9c2w=="],
 
