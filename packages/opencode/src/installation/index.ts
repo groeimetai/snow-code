@@ -87,7 +87,7 @@ export namespace Installation {
       },
       {
         name: "brew" as const,
-        command: () => shell('brew list --formula @groeimetai/snowcode').output,
+        command: () => shell('brew list --formula @groeimetai/snow-code').output,
       },
     ]
 
@@ -101,7 +101,7 @@ export namespace Installation {
 
     for (const check of checks) {
       const output = await check.command()
-      if (output.includes("@groeimetai/snowcode") || output.includes("snowcode")) {
+      if (output.includes("@groeimetai/snow-code") || output.includes("snow-code") || output.includes("snowcode")) {
         return check.name
       }
     }
@@ -124,11 +124,11 @@ export namespace Installation {
             VERSION: target,
           })
         case "npm":
-          return shell(`npm install -g @groeimetai/snowcode@${target}`)
+          return shell(`npm install -g @groeimetai/snow-code@${target}`)
         case "pnpm":
-          return shell(`pnpm install -g @groeimetai/snowcode@${target}`)
+          return shell(`pnpm install -g @groeimetai/snow-code@${target}`)
         case "bun":
-          return shell(`bun install -g @groeimetai/snowcode@${target}`)
+          return shell(`bun install -g @groeimetai/snow-code@${target}`)
         case "brew":
           return shell('brew install groeimetai/tap/snowcode', {
             HOMEBREW_NO_AUTO_UPDATE: "1",
@@ -155,7 +155,7 @@ export namespace Installation {
   export const USER_AGENT = `snowcode/${CHANNEL}/${VERSION}`
 
   export async function latest() {
-    return fetch(`https://registry.npmjs.org/@groeimetai/snowcode/${CHANNEL}`)
+    return fetch(`https://registry.npmjs.org/@groeimetai/snow-code/${CHANNEL}`)
       .then((res) => {
         if (!res.ok) throw new Error(res.statusText)
         return res.json()

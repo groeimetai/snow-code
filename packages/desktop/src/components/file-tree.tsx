@@ -1,5 +1,5 @@
 import { useLocal, type LocalFile } from "@/context/local"
-import { Tooltip } from "@groeimetai/snowcode-ui"
+import { Tooltip } from "@groeimetai/snow-code-ui"
 import { Collapsible, FileIcon } from "@/ui"
 import { For, Match, Switch, Show, type ComponentProps, type ParentProps } from "solid-js"
 import { Dynamic } from "solid-js/web"

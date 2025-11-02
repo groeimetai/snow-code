@@ -10,7 +10,7 @@ import type {
   Part,
   Message,
   AssistantMessage,
-} from "@groeimetai/snowcode-sdk"
+} from "@groeimetai/snow-code-sdk"
 import { createSimpleContext } from "./helper"
 import { useSDK } from "./sdk"
 import { useSync } from "./sync"

@@ -1,5 +1,5 @@
 import { App } from "@slack/bolt"
-import { createOpencode, type ToolPart } from "@groeimetai/snowcode-sdk"
+import { createOpencode, type ToolPart } from "@groeimetai/snow-code-sdk"
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,

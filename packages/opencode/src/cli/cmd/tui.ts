@@ -111,7 +111,7 @@ export const TuiCommand = cmd({
 
         let cmd = [] as string[]
 
-        // Platform binaries: TUI is in node_modules/@groeimetai/snowcode-{platform}-{arch}/bin/tui
+        // Platform binaries: TUI is in node_modules/@groeimetai/snow-code-{platform}-{arch}/bin/tui
         const platformMap: Record<string, string> = {
           darwin: "darwin",
           linux: "linux",
@@ -125,7 +125,7 @@ export const TuiCommand = cmd({
         const platform = platformMap[process.platform] || process.platform
         const arch = archMap[process.arch] || process.arch
         const tuiExt = process.platform === "win32" ? ".exe" : ""
-        const platformPkgName = `@groeimetai/snowcode-${platform}-${arch}`
+        const platformPkgName = `@groeimetai/snow-code-${platform}-${arch}`
 
         // Try multiple possible locations for the platform binary
         const possiblePaths = [
@@ -173,7 +173,7 @@ export const TuiCommand = cmd({
           } else {
             UI.error("TUI binary not found - platform binary may be incomplete")
             UI.println("Expected location: " + platformBinaryPath)
-            UI.println("Try reinstalling: npm install -g @groeimetai/snowcode")
+            UI.println("Try reinstalling: npm install -g @groeimetai/snow-code")
             return "done"
           }
         }

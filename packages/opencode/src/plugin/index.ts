@@ -1,9 +1,9 @@
 // @ts-expect-error - workspace package resolved at runtime by Bun
-import type { Hooks, PluginInput, Plugin as PluginInstance } from "@groeimetai/snowcode-plugin"
+import type { Hooks, PluginInput, Plugin as PluginInstance } from "@groeimetai/snow-code-plugin"
 import { Config } from "../config/config"
 import { Bus } from "../bus"
 import { Log } from "../util/log"
-import { createOpencodeClient } from "@groeimetai/snowcode-sdk"
+import { createOpencodeClient } from "@groeimetai/snow-code-sdk"
 import { Server } from "../server/server"
 import { BunProc } from "../bun"
 import { Instance } from "../project/instance"

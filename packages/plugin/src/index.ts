@@ -9,7 +9,7 @@ import type {
   Part,
   Auth,
   Config,
-} from "@groeimetai/snowcode-sdk"
+} from "@groeimetai/snow-code-sdk"
 
 import type { BunShell } from "./shell"
 import { type ToolDefinition } from "./tool"

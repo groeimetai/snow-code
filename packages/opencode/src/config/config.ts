@@ -173,7 +173,7 @@ export namespace Config {
     await BunProc.run(
       [
         "add",
-        "@groeimetai/snowcode-plugin@" + (Installation.isLocal() ? "latest" : Installation.VERSION),
+        "@groeimetai/snow-code-plugin@" + (Installation.isLocal() ? "latest" : Installation.VERSION),
         "--exact",
       ],
       {

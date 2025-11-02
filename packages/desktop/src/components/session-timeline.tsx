@@ -1,6 +1,6 @@
-import { Icon, Tooltip } from "@groeimetai/snowcode-ui"
+import { Icon, Tooltip } from "@groeimetai/snow-code-ui"
 import { Collapsible } from "@/ui"
-import type { AssistantMessage, Message, Part, ToolPart } from "@groeimetai/snowcode-sdk"
+import type { AssistantMessage, Message, Part, ToolPart } from "@groeimetai/snow-code-sdk"
 import { DateTime } from "luxon"
 import {
   createSignal,
