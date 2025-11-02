@@ -4,7 +4,7 @@
     "": {
       "name": "opencode",
       "dependencies": {
-        "@groeimetai/snowcode-sdk": "workspace:*",
+        "@groeimetai/snow-code-sdk": "workspace:*",
         "@opencode-ai/script": "workspace:*",
       },
       "devDependencies": {
@@ -111,8 +111,8 @@
       "name": "@opencode-ai/desktop",
       "version": "0.15.17",
       "dependencies": {
-        "@groeimetai/snowcode-sdk": "workspace:*",
-        "@groeimetai/snowcode-ui": "workspace:*",
+        "@groeimetai/snow-code-sdk": "workspace:*",
+        "@groeimetai/snow-code-ui": "workspace:*",
         "@kobalte/core": "catalog:",
         "@pierre/precision-diffs": "catalog:",
         "@shikijs/transformers": "3.9.2",
@@ -165,7 +165,7 @@
     },
     "packages/opencode": {
       "name": "@groeimetai/snow-code",
-      "version": "0.18.0",
+      "version": "0.18.1",
       "bin": {
         "snow-code": "./bin/snow-code",
         "snowcode": "./bin/snow-code",
@@ -242,10 +242,10 @@
       },
     },
     "packages/plugin": {
-      "name": "@groeimetai/snowcode-plugin",
+      "name": "@groeimetai/snow-code-plugin",
       "version": "0.15.22",
       "dependencies": {
-        "@groeimetai/snowcode-sdk": "workspace:*",
+        "@groeimetai/snow-code-sdk": "workspace:*",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -262,7 +262,7 @@
       },
     },
     "packages/sdk/js": {
-      "name": "@groeimetai/snowcode-sdk",
+      "name": "@groeimetai/snow-code-sdk",
       "version": "0.15.22",
       "devDependencies": {
         "@hey-api/openapi-ts": "0.81.0",
@@ -276,7 +276,7 @@
       "name": "@opencode-ai/slack",
       "version": "0.15.17",
       "dependencies": {
-        "@groeimetai/snowcode-sdk": "workspace:*",
+        "@groeimetai/snow-code-sdk": "workspace:*",
         "@slack/bolt": "^3.17.1",
       },
       "devDependencies": {
@@ -286,7 +286,7 @@
       },
     },
     "packages/ui": {
-      "name": "@groeimetai/snowcode-ui",
+      "name": "@groeimetai/snow-code-ui",
       "version": "0.15.17",
       "dependencies": {
         "@kobalte/core": "catalog:",
@@ -676,11 +676,11 @@
 
     "@groeimetai/snow-code": ["@groeimetai/snow-code@workspace:packages/opencode"],
 
-    "@groeimetai/snowcode-plugin": ["@groeimetai/snowcode-plugin@workspace:packages/plugin"],
+    "@groeimetai/snow-code-plugin": ["@groeimetai/snow-code-plugin@workspace:packages/plugin"],
 
-    "@groeimetai/snowcode-sdk": ["@groeimetai/snowcode-sdk@workspace:packages/sdk/js"],
+    "@groeimetai/snow-code-sdk": ["@groeimetai/snow-code-sdk@workspace:packages/sdk/js"],
 
-    "@groeimetai/snowcode-ui": ["@groeimetai/snowcode-ui@workspace:packages/ui"],
+    "@groeimetai/snow-code-ui": ["@groeimetai/snow-code-ui@workspace:packages/ui"],
 
     "@hey-api/json-schema-ref-parser": ["@hey-api/json-schema-ref-parser@1.0.6", "", { "dependencies": { "@jsdevtools/ono": "^7.1.3", "@types/json-schema": "^7.0.15", "js-yaml": "^4.1.0", "lodash": "^4.17.21" } }, "sha512-yktiFZoWPtEW8QKS65eqKwA5MTKp88CyiL8q72WynrBs/73SAaxlSWlA2zW/DZlywZ5hX1OYzrCC0wFdvO9c2w=="],
 
@@ -3458,7 +3458,7 @@
 
     "@expressive-code/plugin-shiki/shiki": ["shiki@3.13.0", "", { "dependencies": { "@shikijs/core": "3.13.0", "@shikijs/engine-javascript": "3.13.0", "@shikijs/engine-oniguruma": "3.13.0", "@shikijs/langs": "3.13.0", "@shikijs/themes": "3.13.0", "@shikijs/types": "3.13.0", "@shikijs/vscode-textmate": "^10.0.2", "@types/hast": "^3.0.4" } }, "sha512-aZW4l8Og16CokuCLf8CF8kq+KK2yOygapU5m3+hoGw0Mdosc6fPitjM+ujYarppj5ZIKGyPDPP1vqmQhr+5/0g=="],
 
-    "@groeimetai/snowcode-plugin/zod": ["zod@4.1.8", "", {}, "sha512-5R1P+WwQqmmMIEACyzSvo4JXHY5WiAFHRMg+zBZKgKS+Q1viRa0C1hmUKtHltoIFKtIdki3pRxkmpP74jnNYHQ=="],
+    "@groeimetai/snow-code-plugin/zod": ["zod@4.1.8", "", {}, "sha512-5R1P+WwQqmmMIEACyzSvo4JXHY5WiAFHRMg+zBZKgKS+Q1viRa0C1hmUKtHltoIFKtIdki3pRxkmpP74jnNYHQ=="],
 
     "@hey-api/json-schema-ref-parser/js-yaml": ["js-yaml@4.1.0", "", { "dependencies": { "argparse": "^2.0.1" }, "bin": { "js-yaml": "bin/js-yaml.js" } }, "sha512-wpxZs9NoxZaJESJGIZTyDEaYpl0FKSA+FB9aJiyemKhMwkxQg63h4T1KJgUGHpTqPDNRcmmYLugrRjJlBtWvRA=="],
 
