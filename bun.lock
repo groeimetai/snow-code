@@ -164,11 +164,12 @@
       },
     },
     "packages/opencode": {
-      "name": "@groeimetai/snowcode",
-      "version": "0.17.1",
+      "name": "@groeimetai/snow-code",
+      "version": "0.18.0",
       "bin": {
-        "snowcode": "./bin/snowcode",
-        "opencode": "./bin/snowcode",
+        "snow-code": "./bin/snow-code",
+        "snowcode": "./bin/snow-code",
+        "opencode": "./bin/snow-code",
       },
       "dependencies": {
         "@actions/core": "1.11.1",
@@ -232,11 +233,11 @@
         "zod-to-json-schema": "3.24.5",
       },
       "optionalDependencies": {
-        "@groeimetai/snowcode-darwin-arm64": "*",
-        "@groeimetai/snowcode-darwin-x64": "*",
-        "@groeimetai/snowcode-linux-arm64": "*",
-        "@groeimetai/snowcode-linux-x64": "*",
-        "@groeimetai/snowcode-windows-x64": "*",
+        "@groeimetai/snow-code-darwin-arm64": "*",
+        "@groeimetai/snow-code-darwin-x64": "*",
+        "@groeimetai/snow-code-linux-arm64": "*",
+        "@groeimetai/snow-code-linux-x64": "*",
+        "@groeimetai/snow-code-windows-x64": "*",
         "tree-sitter-bash": "0.25.0",
       },
     },
@@ -334,7 +335,7 @@
         "toolbeam-docs-theme": "0.4.8",
       },
       "devDependencies": {
-        "@groeimetai/snowcode": "workspace:*",
+        "@groeimetai/snow-code": "workspace:*",
         "@types/node": "catalog:",
         "typescript": "catalog:",
       },
@@ -673,23 +674,13 @@
 
     "@fontsource/inter": ["@fontsource/inter@5.2.8", "", {}, "sha512-P6r5WnJoKiNVV+zvW2xM13gNdFhAEpQ9dQJHt3naLvfg+LkF2ldgSLiF4T41lf1SQCM9QmkqPTn4TH568IRagg=="],
 
-    "@groeimetai/snowcode": ["@groeimetai/snowcode@workspace:packages/opencode"],
-
-    "@groeimetai/snowcode-darwin-arm64": ["@groeimetai/snowcode-darwin-arm64@0.16.29", "", { "os": "darwin", "cpu": "arm64", "bin": { "snowcode": "bin/snowcode", "opencode": "bin/snowcode" } }, "sha512-fwzu2Ge3iGXF36L+7TRm1sEg7OwgDLeK9gQRtKRRuRkCHimJ/yfygCjHTTEbinhVgQtwtFHDW8Zkel9pTUQ94Q=="],
-
-    "@groeimetai/snowcode-darwin-x64": ["@groeimetai/snowcode-darwin-x64@0.16.29", "", { "os": "darwin", "cpu": "x64", "bin": { "snowcode": "bin/snowcode", "opencode": "bin/snowcode" } }, "sha512-upnfIMYvpfa0QV96xuPakwfevTK9bROeVCQHEy8P5jdqdO0cGwNZ/zK3u/L+rh2qV/ZjfMcBqBWmIw6Ny3cgsg=="],
-
-    "@groeimetai/snowcode-linux-arm64": ["@groeimetai/snowcode-linux-arm64@0.16.29", "", { "os": "linux", "cpu": "arm64", "bin": { "snowcode": "bin/snowcode", "opencode": "bin/snowcode" } }, "sha512-6+BlbH7XV+1AviYEFpF+HX+yRArZ2B1UM/Fl2YFZ8L2OIPwRw8soQH+a6mfvKIAKCWlTr2nCslwkagScxQRtVA=="],
-
-    "@groeimetai/snowcode-linux-x64": ["@groeimetai/snowcode-linux-x64@0.16.29", "", { "os": "linux", "cpu": "x64", "bin": { "snowcode": "bin/snowcode", "opencode": "bin/snowcode" } }, "sha512-RZ27WgTVWHuBULmgr6SiY5Yn5R3dh/1YIJbhWF/ocCSUAEQ6NjpnLwGQL/2FhgRmpHpuXJsQJ3Fw/bjApNLW9g=="],
+    "@groeimetai/snow-code": ["@groeimetai/snow-code@workspace:packages/opencode"],
 
     "@groeimetai/snowcode-plugin": ["@groeimetai/snowcode-plugin@workspace:packages/plugin"],
 
     "@groeimetai/snowcode-sdk": ["@groeimetai/snowcode-sdk@workspace:packages/sdk/js"],
 
     "@groeimetai/snowcode-ui": ["@groeimetai/snowcode-ui@workspace:packages/ui"],
-
-    "@groeimetai/snowcode-windows-x64": ["@groeimetai/snowcode-windows-x64@0.16.29", "", { "os": "win32", "cpu": "x64", "bin": { "snowcode": "bin/snowcode.exe", "opencode": "bin/snowcode.exe" } }, "sha512-TClzDRJ9wQrvp+peTtQlwOhYjQ2CQdXxM7f4uuil9YvNpLFSaf+7lKEZIqRSPqNKhUto7dvIx5GpdmpuewR9KQ=="],
 
     "@hey-api/json-schema-ref-parser": ["@hey-api/json-schema-ref-parser@1.0.6", "", { "dependencies": { "@jsdevtools/ono": "^7.1.3", "@types/json-schema": "^7.0.15", "js-yaml": "^4.1.0", "lodash": "^4.17.21" } }, "sha512-yktiFZoWPtEW8QKS65eqKwA5MTKp88CyiL8q72WynrBs/73SAaxlSWlA2zW/DZlywZ5hX1OYzrCC0wFdvO9c2w=="],
 
