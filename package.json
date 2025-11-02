@@ -53,7 +53,7 @@
     "turbo": "2.5.6"
   },
   "dependencies": {
-    "@groeimetai/snowcode-sdk": "workspace:*",
+    "@groeimetai/snow-code-sdk": "workspace:*",
     "@opencode-ai/script": "workspace:*"
   },
   "repository": {

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@groeimetai/snowcode-sdk",
+  "name": "@groeimetai/snow-code-sdk",
   "version": "0.15.22",
   "type": "module",
   "scripts": {

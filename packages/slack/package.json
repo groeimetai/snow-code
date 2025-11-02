@@ -7,7 +7,7 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
-    "@groeimetai/snowcode-sdk": "workspace:*",
+    "@groeimetai/snow-code-sdk": "workspace:*",
     "@slack/bolt": "^3.17.1"
   },
   "devDependencies": {

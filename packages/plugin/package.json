@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@groeimetai/snowcode-plugin",
+  "name": "@groeimetai/snow-code-plugin",
   "version": "0.15.22",
   "type": "module",
   "scripts": {
@@ -15,7 +15,7 @@
     "dist"
   ],
   "dependencies": {
-    "@groeimetai/snowcode-sdk": "workspace:*",
+    "@groeimetai/snow-code-sdk": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {
