@@ -68,6 +68,12 @@ for (const [os, arch] of targets) {
       OPENCODE_TUI_PATH: `'../../../dist/${name}/bin/tui'`,
     },
   })
+
+  // Make binary executable (non-Windows platforms)
+  if (os !== "windows") {
+    await $`chmod +x dist/${name}/bin/snow-code`
+  }
+
   await $`rm -rf ./dist/${name}/bin/tui`
   await Bun.file(`dist/${name}/package.json`).write(
     JSON.stringify(
