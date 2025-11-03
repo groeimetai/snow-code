@@ -165,7 +165,7 @@
     },
     "packages/opencode": {
       "name": "@groeimetai/snow-code",
-      "version": "0.18.5",
+      "version": "0.18.6",
       "bin": {
         "snow-code": "./bin/snow-code",
         "snowcode": "./bin/snow-code",
@@ -676,11 +676,21 @@
 
     "@groeimetai/snow-code": ["@groeimetai/snow-code@workspace:packages/opencode"],
 
+    "@groeimetai/snow-code-darwin-arm64": ["@groeimetai/snow-code-darwin-arm64@1.0.16", "", { "os": "darwin", "cpu": "arm64" }, "sha512-A7dGiiIVeSIj6gUFXpsn+cxN4kHG7Q16PfgXCmdqGWaGWQt8SSwiG9IfbXwwfo9fD5y5uCKY01fvoyjD5DG5WA=="],
+
+    "@groeimetai/snow-code-darwin-x64": ["@groeimetai/snow-code-darwin-x64@1.0.16", "", { "os": "darwin", "cpu": "x64" }, "sha512-3ELLyq1PASV/JHm6C983zGbDeJ3siT3pkylMBJZ/k24LLT1eW6HrtiIOEGoijlPCugbI1jpNbGgyujVsMHlL+Q=="],
+
+    "@groeimetai/snow-code-linux-arm64": ["@groeimetai/snow-code-linux-arm64@1.0.16", "", { "os": "linux", "cpu": "arm64" }, "sha512-i1MMrh7EONnjOyDw/wUM+odyGZTpnnfZ0bi0CYT091kGIxWbjnpt9vlg0k37wJamIIMDe3hProvTutgnTcs6Mw=="],
+
+    "@groeimetai/snow-code-linux-x64": ["@groeimetai/snow-code-linux-x64@1.0.16", "", { "os": "linux", "cpu": "x64" }, "sha512-cBPSxCSCmnz58EZ/7YSLcsKqTMImvUICEMvDW2O7p+kHB9K8q1GPDPOsGClAe613LhrQcNUMHgTVEFyIzqal6w=="],
+
     "@groeimetai/snow-code-plugin": ["@groeimetai/snow-code-plugin@workspace:packages/plugin"],
 
     "@groeimetai/snow-code-sdk": ["@groeimetai/snow-code-sdk@workspace:packages/sdk/js"],
 
     "@groeimetai/snow-code-ui": ["@groeimetai/snow-code-ui@workspace:packages/ui"],
+
+    "@groeimetai/snow-code-windows-x64": ["@groeimetai/snow-code-windows-x64@1.0.16", "", { "os": "win32", "cpu": "x64" }, "sha512-Q2goi7SB1OM6RcY1+UQ5CV6R5m7dTXle5PJeLQNpM8YXrxzmW13BgGQ0KCqHEtITXS/IA12wOvLUY3fCTUQxrQ=="],
 
     "@hey-api/json-schema-ref-parser": ["@hey-api/json-schema-ref-parser@1.0.6", "", { "dependencies": { "@jsdevtools/ono": "^7.1.3", "@types/json-schema": "^7.0.15", "js-yaml": "^4.1.0", "lodash": "^4.17.21" } }, "sha512-yktiFZoWPtEW8QKS65eqKwA5MTKp88CyiL8q72WynrBs/73SAaxlSWlA2zW/DZlywZ5hX1OYzrCC0wFdvO9c2w=="],
 
