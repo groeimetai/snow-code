@@ -165,7 +165,7 @@
     },
     "packages/opencode": {
       "name": "@groeimetai/snow-code",
-      "version": "0.18.2",
+      "version": "0.18.3",
       "bin": {
         "snow-code": "./bin/snow-code",
         "snowcode": "./bin/snow-code",
@@ -233,11 +233,11 @@
         "zod-to-json-schema": "3.24.5",
       },
       "optionalDependencies": {
-        "@groeimetai/snow-code-darwin-arm64": "*",
-        "@groeimetai/snow-code-darwin-x64": "*",
-        "@groeimetai/snow-code-linux-arm64": "*",
-        "@groeimetai/snow-code-linux-x64": "*",
-        "@groeimetai/snow-code-windows-x64": "*",
+        "@groeimetai/snow-code-darwin-arm64": "0.18.3",
+        "@groeimetai/snow-code-darwin-x64": "0.18.3",
+        "@groeimetai/snow-code-linux-arm64": "0.18.3",
+        "@groeimetai/snow-code-linux-x64": "0.18.3",
+        "@groeimetai/snow-code-windows-x64": "0.18.3",
         "tree-sitter-bash": "0.25.0",
       },
     },
