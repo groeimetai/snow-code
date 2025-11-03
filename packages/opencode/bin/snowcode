@@ -34,7 +34,7 @@ else
 
     name="@groeimetai/snow-code-${platform}-${arch}"
     binary="snow-code"
-    [ "$platform" = "win32" ] && binary="snowcode.exe"
+    [ "$platform" = "win32" ] && binary="snow-code.exe"
 
     # Search for the binary starting from real script location
     resolved=""
