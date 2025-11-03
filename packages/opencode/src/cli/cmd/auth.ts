@@ -6,10 +6,20 @@ import { ModelsDev } from "../../provider/models"
 import { map, pipe, sortBy, values } from "remeda"
 import path from "path"
 import os from "os"
+import crypto from "crypto"
 import { Global } from "../../global"
 import { Plugin } from "../../plugin"
 import { Instance } from "../../project/instance"
 import { ServiceNowOAuth } from "../../auth/servicenow-oauth"
+
+/**
+ * Generate a unique machine ID for device binding
+ * Uses hostname + platform + homedir for consistent ID across sessions
+ */
+function generateMachineId(): string {
+  const machineInfo = `${os.hostname()}-${os.platform()}-${os.homedir()}`
+  return crypto.createHash('sha256').update(machineInfo).digest('hex')
+}
 
 /**
  * Helper function to update .env file with key-value pairs
@@ -433,6 +443,149 @@ export const AuthLoginCommand = cmd({
           })) as string
 
           if (prompts.isCancel(enterpriseUrl)) throw new UI.CancelledError()
+
+          // User Registration/Login Flow
+          prompts.log.message("")
+          prompts.log.step("User Account Setup")
+
+          const isFirstTime = await prompts.confirm({
+            message: "Is this your first time using this machine with this license?",
+            initialValue: true,
+          })
+
+          if (prompts.isCancel(isFirstTime)) throw new UI.CancelledError()
+
+          let username: string | undefined
+          let email: string | undefined
+          let role: "developer" | "stakeholder" | "admin"
+
+          if (isFirstTime) {
+            // New user registration
+            prompts.log.info("Creating your user account...")
+
+            username = (await prompts.text({
+              message: "Your username",
+              placeholder: "john.doe",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Username is required"
+                if (value.length < 3) return "Username must be at least 3 characters"
+              },
+            })) as string
+
+            if (prompts.isCancel(username)) throw new UI.CancelledError()
+
+            email = (await prompts.text({
+              message: "Your email",
+              placeholder: "john.doe@company.com",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Email is required"
+                if (!value.includes("@")) return "Please enter a valid email"
+              },
+            })) as string
+
+            if (prompts.isCancel(email)) throw new UI.CancelledError()
+
+            const roleChoice = (await prompts.select({
+              message: "Select your role",
+              options: [
+                {
+                  value: "developer",
+                  label: "Developer",
+                  hint: "Full MCP access + ServiceNow tools",
+                },
+                {
+                  value: "stakeholder",
+                  label: "Stakeholder",
+                  hint: "Portal-only access for monitoring",
+                },
+                {
+                  value: "admin",
+                  label: "Admin",
+                  hint: "Full administrative access",
+                },
+              ],
+            })) as string
+
+            if (prompts.isCancel(roleChoice)) throw new UI.CancelledError()
+            role = roleChoice as "developer" | "stakeholder" | "admin"
+          } else {
+            // Existing user login
+            prompts.log.info("Logging in with existing account...")
+
+            username = (await prompts.text({
+              message: "Your username",
+              placeholder: "john.doe",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Username is required"
+              },
+            })) as string
+
+            if (prompts.isCancel(username)) throw new UI.CancelledError()
+
+            // Role will be fetched from backend during login
+            role = "developer" // Default, will be updated after auth
+          }
+
+          // Generate machine ID for device binding
+          const machineId = generateMachineId()
+          prompts.log.info(`Machine ID: ${machineId.substring(0, 16)}...`)
+
+          // Authenticate with enterprise backend
+          prompts.log.message("")
+          const spinner = prompts.spinner()
+          spinner.start("Authenticating with enterprise server...")
+
+          try {
+            const response = await fetch(`${enterpriseUrl}/api/auth/mcp/login`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                licenseKey,
+                machineId,
+                role,
+                username,
+                email,
+              }),
+            })
+
+            const authData = await response.json()
+
+            if (!response.ok || !authData.success) {
+              spinner.stop("Authentication failed", 1)
+              prompts.log.error(authData.error || "Unknown error")
+              prompts.outro("Done")
+              await Instance.dispose()
+              process.exit(1)
+            }
+
+            spinner.stop("Authentication successful!")
+
+            // Store enterprise auth with user info
+            await Auth.set("enterprise", {
+              type: "enterprise",
+              licenseKey,
+              enterpriseUrl: enterpriseUrl || undefined,
+              token: authData.token,
+              username,
+              email,
+              role: authData.customer?.role || role,
+              machineId,
+            })
+
+            prompts.log.success(`Welcome, ${username}!`)
+            prompts.log.info(`Role: ${authData.customer?.role || role}`)
+            if (authData.customer?.company) {
+              prompts.log.info(`Company: ${authData.customer.company}`)
+            }
+          } catch (error: any) {
+            spinner.stop("Authentication failed", 1)
+            prompts.log.error(`Connection error: ${error.message}`)
+            prompts.outro("Done")
+            await Instance.dispose()
+            process.exit(1)
+          }
 
           // Optional integrations
           const configureIntegrations = await prompts.confirm({
@@ -940,6 +1093,171 @@ export const AuthLoginCommand = cmd({
               prompts.outro("Done")
               await Instance.dispose()
               return
+            }
+
+            // User Registration/Login Flow
+            prompts.log.message("")
+            prompts.log.step("User Account Setup")
+
+            const isFirstTimeEnterprise = await prompts.confirm({
+              message: "Is this your first time using this machine with this license?",
+              initialValue: true,
+            })
+
+            if (prompts.isCancel(isFirstTimeEnterprise)) {
+              prompts.outro("Done")
+              await Instance.dispose()
+              return
+            }
+
+            let enterpriseUsername: string | undefined
+            let enterpriseEmail: string | undefined
+            let enterpriseRole: "developer" | "stakeholder" | "admin"
+
+            if (isFirstTimeEnterprise) {
+              // New user registration
+              prompts.log.info("Creating your user account...")
+
+              enterpriseUsername = (await prompts.text({
+                message: "Your username",
+                placeholder: "john.doe",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Username is required"
+                  if (value.length < 3) return "Username must be at least 3 characters"
+                },
+              })) as string
+
+              if (prompts.isCancel(enterpriseUsername)) {
+                prompts.outro("Done")
+                await Instance.dispose()
+                return
+              }
+
+              enterpriseEmail = (await prompts.text({
+                message: "Your email",
+                placeholder: "john.doe@company.com",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Email is required"
+                  if (!value.includes("@")) return "Please enter a valid email"
+                },
+              })) as string
+
+              if (prompts.isCancel(enterpriseEmail)) {
+                prompts.outro("Done")
+                await Instance.dispose()
+                return
+              }
+
+              const enterpriseRoleChoice = (await prompts.select({
+                message: "Select your role",
+                options: [
+                  {
+                    value: "developer",
+                    label: "Developer",
+                    hint: "Full MCP access + ServiceNow tools",
+                  },
+                  {
+                    value: "stakeholder",
+                    label: "Stakeholder",
+                    hint: "Portal-only access for monitoring",
+                  },
+                  {
+                    value: "admin",
+                    label: "Admin",
+                    hint: "Full administrative access",
+                  },
+                ],
+              })) as string
+
+              if (prompts.isCancel(enterpriseRoleChoice)) {
+                prompts.outro("Done")
+                await Instance.dispose()
+                return
+              }
+              enterpriseRole = enterpriseRoleChoice as "developer" | "stakeholder" | "admin"
+            } else {
+              // Existing user login
+              prompts.log.info("Logging in with existing account...")
+
+              enterpriseUsername = (await prompts.text({
+                message: "Your username",
+                placeholder: "john.doe",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Username is required"
+                },
+              })) as string
+
+              if (prompts.isCancel(enterpriseUsername)) {
+                prompts.outro("Done")
+                await Instance.dispose()
+                return
+              }
+
+              // Role will be fetched from backend during login
+              enterpriseRole = "developer" // Default, will be updated after auth
+            }
+
+            // Generate machine ID for device binding
+            const enterpriseMachineId = generateMachineId()
+            prompts.log.info(`Machine ID: ${enterpriseMachineId.substring(0, 16)}...`)
+
+            // Authenticate with enterprise backend
+            prompts.log.message("")
+            const enterpriseSpinner = prompts.spinner()
+            enterpriseSpinner.start("Authenticating with enterprise server...")
+
+            try {
+              const authResponse = await fetch(`${enterpriseServerUrl}/api/auth/mcp/login`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  licenseKey: enterpriseLicenseKey,
+                  machineId: enterpriseMachineId,
+                  role: enterpriseRole,
+                  username: enterpriseUsername,
+                  email: enterpriseEmail,
+                }),
+              })
+
+              const authData = await authResponse.json()
+
+              if (!authResponse.ok || !authData.success) {
+                enterpriseSpinner.stop("Authentication failed", 1)
+                prompts.log.error(authData.error || "Unknown error")
+                prompts.outro("Done")
+                await Instance.dispose()
+                process.exit(1)
+              }
+
+              enterpriseSpinner.stop("Authentication successful!")
+
+              prompts.log.success(`Welcome, ${enterpriseUsername}!`)
+              prompts.log.info(`Role: ${authData.customer?.role || enterpriseRole}`)
+              if (authData.customer?.company) {
+                prompts.log.info(`Company: ${authData.customer.company}`)
+              }
+
+              // Update enterprise auth storage with user info and token
+              const existingEnterpriseAuth = await Auth.all().then(x => x["enterprise"])
+              await Auth.set("enterprise", {
+                ...(existingEnterpriseAuth || {}),
+                type: "enterprise",
+                licenseKey: enterpriseLicenseKey,
+                enterpriseUrl: enterpriseServerUrl || undefined,
+                token: authData.token,
+                username: enterpriseUsername,
+                email: enterpriseEmail,
+                role: authData.customer?.role || enterpriseRole,
+                machineId: enterpriseMachineId,
+              })
+            } catch (error: any) {
+              enterpriseSpinner.stop("Authentication failed", 1)
+              prompts.log.error(`Connection error: ${error.message}`)
+              prompts.outro("Done")
+              await Instance.dispose()
+              process.exit(1)
             }
 
             // Optional integrations
