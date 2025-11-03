@@ -32,8 +32,8 @@ else
         *) arch="$(uname -m)" ;;
     esac
 
-    name="@groeimetai/snowcode-${platform}-${arch}"
-    binary="snowcode"
+    name="@groeimetai/snow-code-${platform}-${arch}"
+    binary="snow-code"
     [ "$platform" = "win32" ] && binary="snowcode.exe"
 
     # Search for the binary starting from real script location
