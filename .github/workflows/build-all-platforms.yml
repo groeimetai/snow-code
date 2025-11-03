@@ -76,6 +76,7 @@ jobs:
         env:
           TARGET_OS: ${{ matrix.os }}
           TARGET_ARCH: ${{ matrix.arch }}
+          OPENCODE_CHANNEL: latest
 
       - name: Verify build
         shell: bash
