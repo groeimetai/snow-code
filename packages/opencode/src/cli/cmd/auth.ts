@@ -427,10 +427,12 @@ export const AuthLoginCommand = cmd({
           prompts.log.step("Snow-Flow Enterprise Setup")
 
           const licenseKey = (await prompts.password({
-            message: "Enterprise License Key (format: SNOW-ENT-*-*)",
+            message: "Enterprise License Key (format: SNOW-ENT-*-* or SNOW-SI-*-*)",
             validate: (value) => {
               if (!value || value.trim() === "") return "License key is required"
-              if (!value.startsWith("SNOW-ENT-")) return "Invalid license key format (should start with SNOW-ENT-)"
+              if (!value.startsWith("SNOW-ENT-") && !value.startsWith("SNOW-SI-")) {
+                return "Invalid license key format (should start with SNOW-ENT- or SNOW-SI-)"
+              }
             },
           })) as string
 
@@ -438,11 +440,57 @@ export const AuthLoginCommand = cmd({
 
           const enterpriseUrl = (await prompts.text({
             message: "Enterprise License Server URL (optional)",
-            placeholder: "https://license.snow-flow.dev",
-            initialValue: "https://license.snow-flow.dev",
+            placeholder: "https://enterprise.snow-flow.dev",
+            initialValue: "https://enterprise.snow-flow.dev",
+            validate: (value) => {
+              if (!value || value.trim() === "") return "URL is required"
+              try {
+                new URL(value)
+              } catch {
+                return "Invalid URL format (must include https://)"
+              }
+            },
           })) as string
 
           if (prompts.isCancel(enterpriseUrl)) throw new UI.CancelledError()
+
+          // Test connection to enterprise server first
+          prompts.log.message("")
+          const testSpinner = prompts.spinner()
+          testSpinner.start("Testing connection to enterprise server...")
+
+          try {
+            const testResponse = await fetch(`${enterpriseUrl}/api/health`, {
+              method: "GET",
+              signal: AbortSignal.timeout(5000), // 5 second timeout
+            })
+            testSpinner.stop("Connection successful!")
+          } catch (testError: any) {
+            testSpinner.stop("Connection failed", 1)
+            prompts.log.warn(`Unable to reach ${enterpriseUrl}`)
+            prompts.log.message("")
+
+            const skipEnterprise = await prompts.confirm({
+              message: "Enterprise server is not accessible. Skip enterprise setup?",
+              initialValue: true,
+            })
+
+            if (prompts.isCancel(skipEnterprise) || skipEnterprise) {
+              prompts.log.message("")
+              prompts.log.success("✅ Authentication complete! (without enterprise features)")
+              prompts.log.message("")
+              prompts.log.info("Next steps:")
+              prompts.log.message("")
+              prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
+              prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
+              prompts.outro("Done")
+              await Instance.dispose()
+              process.exit(0)
+            }
+
+            // User wants to continue anyway - proceed with setup
+            prompts.log.warn("Continuing with enterprise setup...")
+          }
 
           // User Registration/Login Flow
           prompts.log.message("")
@@ -497,11 +545,6 @@ export const AuthLoginCommand = cmd({
                   value: "stakeholder",
                   label: "Stakeholder",
                   hint: "Portal-only access for monitoring",
-                },
-                {
-                  value: "admin",
-                  label: "Admin",
-                  hint: "Full administrative access",
                 },
               ],
             })) as string
@@ -582,6 +625,17 @@ export const AuthLoginCommand = cmd({
           } catch (error: any) {
             spinner.stop("Authentication failed", 1)
             prompts.log.error(`Connection error: ${error.message}`)
+            prompts.log.message("")
+            prompts.log.warn("Unable to connect to enterprise license server")
+            prompts.log.info(`URL: ${enterpriseUrl}/api/auth/mcp/login`)
+            prompts.log.message("")
+            prompts.log.info("Possible causes:")
+            prompts.log.message("  • License server is not running or accessible")
+            prompts.log.message("  • Network connectivity issues")
+            prompts.log.message("  • Incorrect enterprise URL")
+            prompts.log.message("")
+            prompts.log.info("You can still use Snow-Flow without enterprise features.")
+            prompts.log.info("Contact your administrator for license server details.")
             prompts.outro("Done")
             await Instance.dispose()
             process.exit(1)
@@ -1070,10 +1124,12 @@ export const AuthLoginCommand = cmd({
             prompts.log.step("Snow-Flow Enterprise Setup")
 
             const enterpriseLicenseKey = (await prompts.password({
-              message: "Enterprise License Key (format: SNOW-ENT-*-*)",
+              message: "Enterprise License Key (format: SNOW-ENT-*-* or SNOW-SI-*-*)",
               validate: (value) => {
                 if (!value || value.trim() === "") return "License key is required"
-                if (!value.startsWith("SNOW-ENT-")) return "Invalid license key format (should start with SNOW-ENT-)"
+                if (!value.startsWith("SNOW-ENT-") && !value.startsWith("SNOW-SI-")) {
+                  return "Invalid license key format (should start with SNOW-ENT- or SNOW-SI-)"
+                }
               },
             })) as string
 
@@ -1085,14 +1141,60 @@ export const AuthLoginCommand = cmd({
 
             const enterpriseServerUrl = (await prompts.text({
               message: "Enterprise License Server URL (optional)",
-              placeholder: "https://license.snow-flow.dev",
-              initialValue: "https://license.snow-flow.dev",
+              placeholder: "https://enterprise.snow-flow.dev",
+              initialValue: "https://enterprise.snow-flow.dev",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "URL is required"
+                try {
+                  new URL(value)
+                } catch {
+                  return "Invalid URL format (must include https://)"
+                }
+              },
             })) as string
 
             if (prompts.isCancel(enterpriseServerUrl)) {
               prompts.outro("Done")
               await Instance.dispose()
               return
+            }
+
+            // Test connection to enterprise server first
+            prompts.log.message("")
+            const enterpriseTestSpinner = prompts.spinner()
+            enterpriseTestSpinner.start("Testing connection to enterprise server...")
+
+            try {
+              const testResponse = await fetch(`${enterpriseServerUrl}/api/health`, {
+                method: "GET",
+                signal: AbortSignal.timeout(5000), // 5 second timeout
+              })
+              enterpriseTestSpinner.stop("Connection successful!")
+            } catch (testError: any) {
+              enterpriseTestSpinner.stop("Connection failed", 1)
+              prompts.log.warn(`Unable to reach ${enterpriseServerUrl}`)
+              prompts.log.message("")
+
+              const skipEnterpriseSetup = await prompts.confirm({
+                message: "Enterprise server is not accessible. Skip enterprise setup?",
+                initialValue: true,
+              })
+
+              if (prompts.isCancel(skipEnterpriseSetup) || skipEnterpriseSetup) {
+                prompts.log.message("")
+                prompts.log.success("✅ Authentication complete! (without enterprise features)")
+                prompts.log.message("")
+                prompts.log.info("Next steps:")
+                prompts.log.message("")
+                prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
+                prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
+                prompts.outro("Done")
+                await Instance.dispose()
+                process.exit(0)
+              }
+
+              // User wants to continue anyway - proceed with setup
+              prompts.log.warn("Continuing with enterprise setup...")
             }
 
             // User Registration/Login Flow
@@ -1160,11 +1262,6 @@ export const AuthLoginCommand = cmd({
                     value: "stakeholder",
                     label: "Stakeholder",
                     hint: "Portal-only access for monitoring",
-                  },
-                  {
-                    value: "admin",
-                    label: "Admin",
-                    hint: "Full administrative access",
                   },
                 ],
               })) as string
@@ -1255,6 +1352,17 @@ export const AuthLoginCommand = cmd({
             } catch (error: any) {
               enterpriseSpinner.stop("Authentication failed", 1)
               prompts.log.error(`Connection error: ${error.message}`)
+              prompts.log.message("")
+              prompts.log.warn("Unable to connect to enterprise license server")
+              prompts.log.info(`URL: ${enterpriseServerUrl}/api/auth/mcp/login`)
+              prompts.log.message("")
+              prompts.log.info("Possible causes:")
+              prompts.log.message("  • License server is not running or accessible")
+              prompts.log.message("  • Network connectivity issues")
+              prompts.log.message("  • Incorrect enterprise URL")
+              prompts.log.message("")
+              prompts.log.info("You can still use Snow-Flow without enterprise features.")
+              prompts.log.info("Contact your administrator for license server details.")
               prompts.outro("Done")
               await Instance.dispose()
               process.exit(1)
@@ -1591,10 +1699,12 @@ export const AuthLoginCommand = cmd({
           prompts.log.step("Snow-Flow Enterprise Setup")
 
           const licenseKey = (await prompts.password({
-            message: "Enterprise License Key (format: SNOW-ENT-*-*)",
+            message: "Enterprise License Key (format: SNOW-ENT-*-* or SNOW-SI-*-*)",
             validate: (value) => {
               if (!value || value.trim() === "") return "License key is required"
-              if (!value.startsWith("SNOW-ENT-")) return "Invalid license key format (should start with SNOW-ENT-)"
+              if (!value.startsWith("SNOW-ENT-") && !value.startsWith("SNOW-SI-")) {
+                return "Invalid license key format (should start with SNOW-ENT- or SNOW-SI-)"
+              }
             },
           })) as string
 
