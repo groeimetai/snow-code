@@ -702,7 +702,7 @@ export const AuthLoginCommand = cmd({
               if (!config.mcp) config.mcp = {}
               config.mcp["snow-flow-enterprise"] = {
                 type: "remote",
-                url: "https://enterprise.snow-flow.dev/mcp/sse",
+                url: "https://portal.snow-flow.dev/mcp/sse",
                 headers: { Authorization: `Bearer ${licenseKey}` },
                 enabled: true,
               }
@@ -1432,7 +1432,7 @@ export const AuthLoginCommand = cmd({
                 if (!config.mcp) config.mcp = {}
                 config.mcp["snow-flow-enterprise"] = {
                   type: "remote",
-                  url: "https://enterprise.snow-flow.dev/mcp/sse",
+                  url: "https://portal.snow-flow.dev/mcp/sse",
                   headers: { Authorization: `Bearer ${enterpriseLicenseKey}` },
                   enabled: true,
                 }
@@ -1711,8 +1711,8 @@ export const AuthLoginCommand = cmd({
           if (!prompts.isCancel(licenseKey)) {
             const enterpriseUrl = (await prompts.text({
               message: "Enterprise License Server URL (optional)",
-              placeholder: "https://license.snow-flow.dev",
-              initialValue: "https://license.snow-flow.dev",
+              placeholder: "https://portal.snow-flow.dev",
+              initialValue: "https://portal.snow-flow.dev",
             })) as string
 
             // External integrations configuration
@@ -1844,7 +1844,7 @@ export const AuthLoginCommand = cmd({
                 if (!config.mcp) config.mcp = {}
                 config.mcp["snow-flow-enterprise"] = {
                   type: "remote",
-                  url: "https://enterprise.snow-flow.dev/mcp/sse",
+                  url: "https://portal.snow-flow.dev/mcp/sse",
                   headers: { Authorization: `Bearer ${licenseKey}` },
                   enabled: true,
                 }
@@ -1857,7 +1857,7 @@ export const AuthLoginCommand = cmd({
 
             // Sync integration settings to enterprise backend
             try {
-              const enterpriseApiUrl = enterpriseUrl || "https://license.snow-flow.dev"
+              const enterpriseApiUrl = enterpriseUrl || "https://portal.snow-flow.dev"
               await fetch(`${enterpriseApiUrl}/api/integrations`, {
                 method: "POST",
                 headers: {
