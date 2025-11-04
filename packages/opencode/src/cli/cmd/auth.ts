@@ -702,7 +702,7 @@ export const AuthLoginCommand = cmd({
               if (!config.mcp) config.mcp = {}
               config.mcp["snow-flow-enterprise"] = {
                 type: "remote",
-                url: "https://portal.snow-flow.dev/mcp/sse",
+                url: "https://enterprise.snow-flow.dev/mcp/sse",
                 headers: { Authorization: `Bearer ${licenseKey}` },
                 enabled: true,
               }
@@ -1432,7 +1432,7 @@ export const AuthLoginCommand = cmd({
                 if (!config.mcp) config.mcp = {}
                 config.mcp["snow-flow-enterprise"] = {
                   type: "remote",
-                  url: "https://portal.snow-flow.dev/mcp/sse",
+                  url: "https://enterprise.snow-flow.dev/mcp/sse",
                   headers: { Authorization: `Bearer ${enterpriseLicenseKey}` },
                   enabled: true,
                 }
@@ -1844,7 +1844,7 @@ export const AuthLoginCommand = cmd({
                 if (!config.mcp) config.mcp = {}
                 config.mcp["snow-flow-enterprise"] = {
                   type: "remote",
-                  url: "https://portal.snow-flow.dev/mcp/sse",
+                  url: "https://enterprise.snow-flow.dev/mcp/sse",
                   headers: { Authorization: `Bearer ${licenseKey}` },
                   enabled: true,
                 }
