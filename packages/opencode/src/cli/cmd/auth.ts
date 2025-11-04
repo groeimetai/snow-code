@@ -440,8 +440,8 @@ export const AuthLoginCommand = cmd({
 
           const enterpriseUrl = (await prompts.text({
             message: "Enterprise License Server URL (optional)",
-            placeholder: "https://enterprise.snow-flow.dev",
-            initialValue: "https://enterprise.snow-flow.dev",
+            placeholder: "https://portal.snow-flow.dev",
+            initialValue: "https://portal.snow-flow.dev",
             validate: (value) => {
               if (!value || value.trim() === "") return "URL is required"
               try {
@@ -1141,8 +1141,8 @@ export const AuthLoginCommand = cmd({
 
             const enterpriseServerUrl = (await prompts.text({
               message: "Enterprise License Server URL (optional)",
-              placeholder: "https://enterprise.snow-flow.dev",
-              initialValue: "https://enterprise.snow-flow.dev",
+              placeholder: "https://portal.snow-flow.dev",
+              initialValue: "https://portal.snow-flow.dev",
               validate: (value) => {
                 if (!value || value.trim() === "") return "URL is required"
                 try {
