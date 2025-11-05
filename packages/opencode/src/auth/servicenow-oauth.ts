@@ -492,6 +492,7 @@ export class ServiceNowOAuth {
     clientId: string,
     clientSecret: string,
     code: string,
+    redirectUri?: string,
   ): Promise<ServiceNowAuthResult> {
     if (!this.checkTokenRequestRateLimit()) {
       return {
@@ -503,10 +504,13 @@ export class ServiceNowOAuth {
     const baseUrl = instance.startsWith("http") ? instance : `https://${instance}`
     const tokenUrl = `${baseUrl}/oauth_token.do`
 
+    // redirect_uri MUST match the one used in authorization request
+    const finalRedirectUri = redirectUri || "http://localhost:3005/callback"
+
     const params = new URLSearchParams({
       grant_type: "authorization_code",
       code: code,
-      redirect_uri: "http://localhost:3005/callback",
+      redirect_uri: finalRedirectUri,
       client_id: clientId,
       client_secret: clientSecret,
       code_verifier: this.codeVerifier!,
@@ -556,7 +560,20 @@ export class ServiceNowOAuth {
    * Detect if running in GitHub Codespaces
    */
   private isCodespace(): boolean {
-    return !!(process.env.CODESPACE_NAME && process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN)
+    // Check multiple Codespace indicators
+    const hasCodespacesEnv = process.env.CODESPACES === 'true'
+    const hasCodespaceName = !!process.env.CODESPACE_NAME
+    const hasForwardingDomain = !!process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN
+
+    // Debug logging
+    if (hasCodespacesEnv || hasCodespaceName || hasForwardingDomain) {
+      prompts.log.info(`🔍 Codespace detection:`)
+      prompts.log.message(`   CODESPACES=${process.env.CODESPACES}`)
+      prompts.log.message(`   CODESPACE_NAME=${process.env.CODESPACE_NAME}`)
+      prompts.log.message(`   GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN=${process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`)
+    }
+
+    return hasCodespacesEnv || (hasCodespaceName && hasForwardingDomain)
   }
 
   /**
@@ -606,18 +623,23 @@ export class ServiceNowOAuth {
       // Check if running in Codespaces
       const inCodespace = this.isCodespace()
       const port = 3005
-      const redirectUri = `http://localhost:${port}/callback`
-
-      // Generate authorization URL
-      const authUrl = this.generateAuthUrlWithCallback(normalizedInstance, options.clientId, redirectUri)
 
       prompts.log.message("")
 
       if (inCodespace) {
-        const forwardedUrl = this.getCodespaceForwardedUrl()
         prompts.log.info("🌐 Detected GitHub Codespaces environment")
+        prompts.log.info("Using manual callback flow (paste URL after approval)")
         prompts.log.message("")
       }
+
+      // In Codespaces, we can't use localhost callback since ServiceNow can't reach it
+      // We'll use out-of-band flow where user pastes the URL
+      const redirectUri = inCodespace
+        ? "urn:ietf:wg:oauth:2.0:oob"  // Out-of-band for Codespaces
+        : `http://localhost:${port}/callback`
+
+      // Generate authorization URL
+      const authUrl = this.generateAuthUrlWithCallback(normalizedInstance, options.clientId, redirectUri)
 
       prompts.log.step("Opening browser for authentication...")
       prompts.log.info(`Authorization URL: ${authUrl}`)
@@ -664,89 +686,63 @@ export class ServiceNowOAuth {
 
   /**
    * Handle authentication in Codespaces environment
-   * Prompts user to paste the redirect URL after approval
+   * With out-of-band flow, ServiceNow displays the authorization code directly
    */
   private async handleCodespaceAuth(
     instance: string,
     clientId: string,
     clientSecret: string,
   ): Promise<ServiceNowAuthResult> {
-    prompts.log.info("After approving in ServiceNow, paste the redirect URL below")
+    prompts.log.info("📋 After approving in ServiceNow, copy the authorization code displayed")
+    prompts.log.message("ServiceNow will show you an authorization code on the success page.")
     prompts.log.message("")
 
-    const redirectUrl = (await prompts.text({
-      message: "Paste the redirect URL here:",
-      placeholder: "http://localhost:3005/callback?code=...&state=...",
+    const authCode = (await prompts.text({
+      message: "Paste the authorization code here:",
+      placeholder: "Enter the code from ServiceNow",
       validate: (value) => {
         if (!value || value.trim() === "") {
-          return "URL is required"
+          return "Authorization code is required"
         }
-        if (!value.includes("code=")) {
-          return "URL must contain authorization code (code=...)"
+        // Authorization codes are typically alphanumeric, 20-40 chars
+        if (value.trim().length < 10) {
+          return "Authorization code seems too short"
         }
         return undefined
       },
     })) as string
 
-    if (prompts.isCancel(redirectUrl)) {
+    if (prompts.isCancel(authCode)) {
       return {
         success: false,
         error: "Authentication cancelled by user",
       }
     }
 
-    // Parse code and state from URL
-    try {
-      const url = new URL(redirectUrl.replace('localhost:3005', 'dummy.com'))
-      const code = url.searchParams.get("code")
-      const state = url.searchParams.get("state")
-      const error = url.searchParams.get("error")
+    // Clean the code (remove whitespace)
+    const code = authCode.trim()
 
-      // Check for OAuth error
-      if (error) {
-        return {
-          success: false,
-          error: `OAuth error: ${error}`,
-        }
-      }
+    // Exchange code for tokens
+    prompts.log.message("")
+    const spinner = prompts.spinner()
+    spinner.start("Exchanging authorization code for tokens")
 
-      // Validate code exists
-      if (!code) {
-        return {
-          success: false,
-          error: "No authorization code found in URL",
-        }
-      }
+    // Use out-of-band redirect_uri for Codespaces
+    const tokenResult = await this.exchangeCodeForTokens(
+      instance,
+      clientId,
+      clientSecret,
+      code,
+      "urn:ietf:wg:oauth:2.0:oob"
+    )
 
-      // Validate state parameter (CSRF protection)
-      if (state !== this.stateParameter) {
-        prompts.log.error("State parameter mismatch - possible CSRF attack")
-        return {
-          success: false,
-          error: "Invalid state parameter",
-        }
-      }
-
-      // Exchange code for tokens
-      prompts.log.message("")
-      const spinner = prompts.spinner()
-      spinner.start("Exchanging authorization code for tokens")
-
-      const tokenResult = await this.exchangeCodeForTokens(instance, clientId, clientSecret, code)
-
-      if (tokenResult.success) {
-        spinner.stop("Authentication successful")
-      } else {
-        spinner.stop("Token exchange failed")
-      }
-
-      return tokenResult
-    } catch (error) {
-      return {
-        success: false,
-        error: `Failed to parse redirect URL: ${error instanceof Error ? error.message : String(error)}`,
-      }
+    if (tokenResult.success) {
+      spinner.stop("Authentication successful ✓")
+    } else {
+      spinner.stop("Token exchange failed ✗")
     }
+
+    return tokenResult
   }
 
   /**
@@ -850,7 +846,13 @@ export class ServiceNowOAuth {
             // Exchange code for tokens
             const spinner = prompts.spinner()
             spinner.start("Exchanging authorization code for tokens")
-            const tokenResult = await this.exchangeCodeForTokens(instance, clientId, clientSecret, code)
+            const tokenResult = await this.exchangeCodeForTokens(
+              instance,
+              clientId,
+              clientSecret,
+              code,
+              `http://localhost:${port}/callback`
+            )
 
             if (tokenResult.success) {
               res.writeHead(200, { "Content-Type": "text/html" })
