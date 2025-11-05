@@ -1,8 +1,10 @@
 # Snow-Code Branding Guidelines
 
-**Snow-Code is a fork of OpenCode** - These guidelines ensure proper branding while maintaining compatibility.
+**Snow-Code is a fork of OpenCode** - These guidelines ensure proper branding.
 
-## ✅ MUST Change (User-Facing Branding)
+**⚠️ CRITICAL: This is a FORK, not a compatibility layer. NO OpenCode references should remain in user-facing code!**
+
+## ✅ MUST Change (ALL User-Facing & Environment Variables)
 
 ### 1. Build-Time Constants
 ```typescript
@@ -58,38 +60,24 @@ console.log("Run: snow-code auth login")
 prompts.log.info("Welcome to OpenCode!")
 ```
 
----
-
-## ⚠️ Keep for Backwards Compatibility
-
-### Environment Variables
-Support **BOTH** variants for compatibility:
+### 5. Environment Variables
+**ALL environment variables MUST use SNOWCODE_ prefix:**
 
 ```typescript
-// ✅ CORRECT - Support both
-export const CONFIG_DIR =
-  process.env["SNOWCODE_CONFIG_DIR"] ||   // ← Primary
-  process.env["OPENCODE_CONFIG_DIR"]      // ← Fallback
+// ✅ CORRECT - Only SNOWCODE_
+export const CONFIG_DIR = process.env["SNOWCODE_CONFIG_DIR"]
+export const AUTO_SHARE = truthy("SNOWCODE_AUTO_SHARE")
+export const DISABLE_AUTOUPDATE = truthy("SNOWCODE_DISABLE_AUTOUPDATE")
+export const DISABLE_PRUNE = truthy("SNOWCODE_DISABLE_PRUNE")
+export const EXPERIMENTAL_WATCHER = truthy("SNOWCODE_EXPERIMENTAL_WATCHER")
+export const DISABLE_LSP_DOWNLOAD = truthy("SNOWCODE_DISABLE_LSP_DOWNLOAD")
+export const ENABLE_EXPERIMENTAL_MODELS = truthy("SNOWCODE_ENABLE_EXPERIMENTAL_MODELS")
 
-// ✅ CORRECT - Support both
-export const AUTO_SHARE =
-  truthy("SNOWCODE_AUTO_SHARE") ||
-  truthy("OPENCODE_AUTO_SHARE")
+// ❌ WRONG - No OPENCODE_ references!
+export const CONFIG_DIR = process.env["OPENCODE_CONFIG_DIR"]  // NO!
 ```
 
-**Rationale:** Users may have existing scripts/configs with OPENCODE_ vars.
-
-### Feature Flags
-```typescript
-// ⚠️ Keep OPENCODE_ for these (internal, not user-facing):
-OPENCODE_DISABLE_AUTOUPDATE
-OPENCODE_DISABLE_PRUNE
-OPENCODE_EXPERIMENTAL_WATCHER
-OPENCODE_DISABLE_LSP_DOWNLOAD
-// etc.
-```
-
-**Rationale:** These are opt-in experimental flags, changing breaks existing users.
+**Rationale:** This is a FORK. Users should know they're using Snow-Code, not OpenCode.
 
 ---
 
@@ -186,9 +174,9 @@ define: {
 execArgv: [`--user-agent=snowcode/${Script.version}`]
 
 // src/flag/flag.ts
-export const CONFIG_DIR =
-  process.env["SNOWCODE_CONFIG_DIR"] ||
-  process.env["OPENCODE_CONFIG_DIR"]  // backwards compat
+export const CONFIG_DIR = process.env["SNOWCODE_CONFIG_DIR"]
+export const AUTO_SHARE = truthy("SNOWCODE_AUTO_SHARE")
+export const DISABLE_AUTOUPDATE = truthy("SNOWCODE_DISABLE_AUTOUPDATE")
 ```
 
 ### ❌ Bad Branding
@@ -200,39 +188,40 @@ typeof SNOWCODE_VERSION === "string"  // Will always be false!
 // ❌ WRONG - OpenCode user-agent
 execArgv: [`--user-agent=opencode/${version}`]
 
-// ❌ WRONG - no backwards compat
-export const CONFIG_DIR = process.env["SNOWCODE_CONFIG_DIR"]  // Breaks existing users!
+// ❌ WRONG - Using OPENCODE_ env vars
+export const CONFIG_DIR = process.env["OPENCODE_CONFIG_DIR"]  // NO!
+export const AUTO_SHARE = truthy("OPENCODE_AUTO_SHARE")       // NO!
+
+// ❌ WRONG - Fallback to OPENCODE_
+export const CONFIG_DIR =
+  process.env["SNOWCODE_CONFIG_DIR"] ||
+  process.env["OPENCODE_CONFIG_DIR"]  // NO backwards compat!
 ```
 
 ---
 
 ## 🎯 Quick Reference
 
-| Category | Use SNOWCODE | Use OPENCODE | Use Both |
-|----------|--------------|--------------|----------|
-| Build constants (VERSION, CHANNEL) | ✅ | ❌ | ❌ |
-| User-agent strings | ✅ | ❌ | ❌ |
-| Package metadata | ✅ | ❌ | ❌ |
-| User messages | ✅ | ❌ | ❌ |
-| Config env vars | ✅ (primary) | ✅ (fallback) | ✅ |
-| Feature flag env vars | ⚠️ | ✅ (keep) | ⚠️ |
-| Internal paths | ⚠️ | ✅ (OK) | ⚠️ |
+| Category | Use SNOWCODE | Use OPENCODE | Notes |
+|----------|--------------|--------------|-------|
+| Build constants (VERSION, CHANNEL) | ✅ MUST | ❌ NEVER | Causes "local" version bug |
+| User-agent strings | ✅ MUST | ❌ NEVER | User-facing analytics |
+| Package metadata | ✅ MUST | ❌ NEVER | Fork identity |
+| User messages | ✅ MUST | ❌ NEVER | User-facing branding |
+| **ALL** env vars | ✅ MUST | ❌ NEVER | SNOWCODE_* only! |
+| Internal build paths | ⚠️ Optional | ✅ OK | Only if purely internal |
 
 ---
 
 ## 📖 Rationale
 
-**Why fork branding matters:**
-1. **User confusion:** Users should know they're using Snow-Code, not OpenCode
-2. **Version tracking:** `--version` must show correct version for debugging
-3. **Analytics:** User-agent helps track Snow-Code vs OpenCode usage
-4. **Support:** Users need correct docs/support channels
-
-**Why backwards compatibility matters:**
-1. **Existing users:** Many have `OPENCODE_*` env vars in CI/CD
-2. **Documentation:** Existing tutorials reference `OPENCODE_*`
-3. **Gradual migration:** Users can migrate at their own pace
-4. **Less breaking changes:** Smooth upgrade experience
+**Why NO OpenCode references:**
+1. **This is a FORK:** Snow-Code is NOT OpenCode - users need to know what they're using
+2. **User confusion:** OPENCODE_ vars imply they're using OpenCode (they're not!)
+3. **Version tracking:** Correct branding = correct debugging info
+4. **Analytics:** Track Snow-Code usage, not OpenCode
+5. **Support:** Users need Snow-Code docs/support, not OpenCode
+6. **Clean break:** No ambiguity - all SNOWCODE_, all the time
 
 ---
 

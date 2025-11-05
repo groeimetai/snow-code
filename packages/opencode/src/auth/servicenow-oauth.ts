@@ -624,19 +624,49 @@ export class ServiceNowOAuth {
       const inCodespace = this.isCodespace()
       const port = 3005
 
+      // Determine redirect URI based on environment
+      let redirectUri: string
+      if (inCodespace) {
+        const forwardedUrl = this.getCodespaceForwardedUrl()
+        if (!forwardedUrl) {
+          return {
+            success: false,
+            error: "Failed to determine Codespace forwarded URL. Missing environment variables."
+          }
+        }
+        redirectUri = forwardedUrl
+      } else {
+        redirectUri = `http://localhost:${port}/callback`
+      }
+
       prompts.log.message("")
 
       if (inCodespace) {
         prompts.log.info("🌐 Detected GitHub Codespaces environment")
-        prompts.log.info("Using manual callback flow (paste URL after approval)")
+        prompts.log.info("📝 IMPORTANT: Configure ServiceNow OAuth Application:")
+        prompts.log.message("")
+        prompts.log.message(`   Redirect URL: ${redirectUri}`)
+        prompts.log.message("")
+        prompts.log.message("   1. Log into ServiceNow as admin")
+        prompts.log.message("   2. Navigate to: System OAuth > Application Registry")
+        prompts.log.message("   3. Open your OAuth application")
+        prompts.log.message(`   4. Add this redirect URL: ${redirectUri}`)
+        prompts.log.message("   5. Save the configuration")
+        prompts.log.message("")
+
+        const confirmed = await prompts.confirm({
+          message: "Have you added the redirect URL to ServiceNow?",
+          initialValue: false
+        })
+
+        if (prompts.isCancel(confirmed) || !confirmed) {
+          return {
+            success: false,
+            error: "User cancelled - redirect URL not configured in ServiceNow"
+          }
+        }
         prompts.log.message("")
       }
-
-      // In Codespaces, we can't use localhost callback since ServiceNow can't reach it
-      // We'll use out-of-band flow where user pastes the URL
-      const redirectUri = inCodespace
-        ? "urn:ietf:wg:oauth:2.0:oob"  // Out-of-band for Codespaces
-        : `http://localhost:${port}/callback`
 
       // Generate authorization URL
       const authUrl = this.generateAuthUrlWithCallback(normalizedInstance, options.clientId, redirectUri)
@@ -648,15 +678,9 @@ export class ServiceNowOAuth {
       // Auto-open browser
       this.openBrowser(authUrl)
 
-      let result: ServiceNowAuthResult
-
-      if (inCodespace) {
-        // Codespaces: prompt user to paste redirect URL
-        result = await this.handleCodespaceAuth(normalizedInstance, options.clientId, options.clientSecret)
-      } else {
-        // Normal: start callback server and wait for code
-        result = await this.startCallbackServer(port, normalizedInstance, options.clientId, options.clientSecret)
-      }
+      // Start callback server for both Codespaces and normal environments
+      // In Codespaces, GitHub auto-forwards the public HTTPS URL to localhost:3005
+      const result = await this.startCallbackServer(port, normalizedInstance, options.clientId, options.clientSecret, redirectUri)
 
       if (result.success && result.accessToken) {
         // Save to SnowCode auth store
@@ -804,6 +828,7 @@ export class ServiceNowOAuth {
     instance: string,
     clientId: string,
     clientSecret: string,
+    redirectUri: string,
   ): Promise<ServiceNowAuthResult> {
     return new Promise((resolve) => {
       const { createServer } = require("http")
@@ -851,7 +876,7 @@ export class ServiceNowOAuth {
               clientId,
               clientSecret,
               code,
-              `http://localhost:${port}/callback`
+              redirectUri
             )
 
             if (tokenResult.success) {
