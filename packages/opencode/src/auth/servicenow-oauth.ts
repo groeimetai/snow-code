@@ -553,6 +553,27 @@ export class ServiceNowOAuth {
   }
 
   /**
+   * Detect if running in GitHub Codespaces
+   */
+  private isCodespace(): boolean {
+    return !!(process.env.CODESPACE_NAME && process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN)
+  }
+
+  /**
+   * Get Codespace forwarded URL for port 3005
+   */
+  private getCodespaceForwardedUrl(): string | null {
+    const codespaceName = process.env.CODESPACE_NAME
+    const forwardingDomain = process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN
+
+    if (!codespaceName || !forwardingDomain) {
+      return null
+    }
+
+    return `https://${codespaceName}-3005.${forwardingDomain}/callback`
+  }
+
+  /**
    * Main authentication flow with localhost callback server
    */
   async authenticate(options: ServiceNowOAuthOptions): Promise<ServiceNowAuthResult> {
@@ -582,7 +603,8 @@ export class ServiceNowOAuth {
       this.stateParameter = this.generateState()
       this.generatePKCE()
 
-      // Start localhost callback server
+      // Check if running in Codespaces
+      const inCodespace = this.isCodespace()
       const port = 3005
       const redirectUri = `http://localhost:${port}/callback`
 
@@ -590,6 +612,13 @@ export class ServiceNowOAuth {
       const authUrl = this.generateAuthUrlWithCallback(normalizedInstance, options.clientId, redirectUri)
 
       prompts.log.message("")
+
+      if (inCodespace) {
+        const forwardedUrl = this.getCodespaceForwardedUrl()
+        prompts.log.info("🌐 Detected GitHub Codespaces environment")
+        prompts.log.message("")
+      }
+
       prompts.log.step("Opening browser for authentication...")
       prompts.log.info(`Authorization URL: ${authUrl}`)
       prompts.log.message("")
@@ -597,8 +626,15 @@ export class ServiceNowOAuth {
       // Auto-open browser
       this.openBrowser(authUrl)
 
-      // Start callback server and wait for code
-      const result = await this.startCallbackServer(port, normalizedInstance, options.clientId, options.clientSecret)
+      let result: ServiceNowAuthResult
+
+      if (inCodespace) {
+        // Codespaces: prompt user to paste redirect URL
+        result = await this.handleCodespaceAuth(normalizedInstance, options.clientId, options.clientSecret)
+      } else {
+        // Normal: start callback server and wait for code
+        result = await this.startCallbackServer(port, normalizedInstance, options.clientId, options.clientSecret)
+      }
 
       if (result.success && result.accessToken) {
         // Save to SnowCode auth store
@@ -622,6 +658,93 @@ export class ServiceNowOAuth {
       return {
         success: false,
         error: errorMessage,
+      }
+    }
+  }
+
+  /**
+   * Handle authentication in Codespaces environment
+   * Prompts user to paste the redirect URL after approval
+   */
+  private async handleCodespaceAuth(
+    instance: string,
+    clientId: string,
+    clientSecret: string,
+  ): Promise<ServiceNowAuthResult> {
+    prompts.log.info("After approving in ServiceNow, paste the redirect URL below")
+    prompts.log.message("")
+
+    const redirectUrl = (await prompts.text({
+      message: "Paste the redirect URL here:",
+      placeholder: "http://localhost:3005/callback?code=...&state=...",
+      validate: (value) => {
+        if (!value || value.trim() === "") {
+          return "URL is required"
+        }
+        if (!value.includes("code=")) {
+          return "URL must contain authorization code (code=...)"
+        }
+        return undefined
+      },
+    })) as string
+
+    if (prompts.isCancel(redirectUrl)) {
+      return {
+        success: false,
+        error: "Authentication cancelled by user",
+      }
+    }
+
+    // Parse code and state from URL
+    try {
+      const url = new URL(redirectUrl.replace('localhost:3005', 'dummy.com'))
+      const code = url.searchParams.get("code")
+      const state = url.searchParams.get("state")
+      const error = url.searchParams.get("error")
+
+      // Check for OAuth error
+      if (error) {
+        return {
+          success: false,
+          error: `OAuth error: ${error}`,
+        }
+      }
+
+      // Validate code exists
+      if (!code) {
+        return {
+          success: false,
+          error: "No authorization code found in URL",
+        }
+      }
+
+      // Validate state parameter (CSRF protection)
+      if (state !== this.stateParameter) {
+        prompts.log.error("State parameter mismatch - possible CSRF attack")
+        return {
+          success: false,
+          error: "Invalid state parameter",
+        }
+      }
+
+      // Exchange code for tokens
+      prompts.log.message("")
+      const spinner = prompts.spinner()
+      spinner.start("Exchanging authorization code for tokens")
+
+      const tokenResult = await this.exchangeCodeForTokens(instance, clientId, clientSecret, code)
+
+      if (tokenResult.success) {
+        spinner.stop("Authentication successful")
+      } else {
+        spinner.stop("Token exchange failed")
+      }
+
+      return tokenResult
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to parse redirect URL: ${error instanceof Error ? error.message : String(error)}`,
       }
     }
   }
