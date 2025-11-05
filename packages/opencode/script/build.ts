@@ -58,13 +58,13 @@ for (const [os, arch] of targets) {
     compile: {
       target: `bun-${os}-${arch}` as any,
       outfile: `dist/${name}/bin/snow-code`,
-      execArgv: [`--user-agent=opencode/${Script.version}`, `--env-file=""`, `--`],
+      execArgv: [`--user-agent=snowcode/${Script.version}`, `--env-file=""`, `--`],
       windows: {},
     },
     entrypoints: ["./src/index.ts"],
     define: {
-      OPENCODE_VERSION: `'${Script.version}'`,
-      OPENCODE_CHANNEL: `'${Script.channel}'`,
+      SNOWCODE_VERSION: `'${Script.version}'`,  // Changed from OPENCODE_ to SNOWCODE_
+      SNOWCODE_CHANNEL: `'${Script.channel}'`,   // Changed from OPENCODE_ to SNOWCODE_
       OPENCODE_TUI_PATH: `'../../../dist/${name}/bin/tui'`,
     },
   })
