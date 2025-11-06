@@ -152,7 +152,7 @@ SnowCode is part of the Snow-Flow Suite with transparent 3-tier pricing:
 - ✅ **SOC 2 / ISO 27001** - enterprise compliance ready
 
 **Minimum:** 25 seats
-**Perfect for:** Service integrators (Capgemini, Accenture, etc.)
+**Perfect for:** Enterprise ServiceNow consulting firms and systems integrators
 
 **Contact:** [sales@snow-flow.dev](mailto:sales@snow-flow.dev)
 
