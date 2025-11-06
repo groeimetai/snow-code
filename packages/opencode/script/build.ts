@@ -44,7 +44,7 @@ for (const [os, arch] of targets) {
   console.log(`building ${os}-${arch}`)
   const name = `${pkg.name}-${os}-${arch}`
   await $`mkdir -p dist/${name}/bin`
-  await $`CGO_ENABLED=0 GOOS=${os} GOARCH=${GOARCH[arch]} go build -ldflags="-s -w -X main.Version=${Script.version}" -o ../opencode/dist/${name}/bin/tui ../tui/cmd/opencode/main.go`
+  await $`CGO_ENABLED=0 GOOS=${os} GOARCH=${GOARCH[arch]} go build -ldflags="-s -w -X main.Version=${pkg.version}" -o ../opencode/dist/${name}/bin/tui ../tui/cmd/opencode/main.go`
     .cwd("../tui")
     .quiet()
 
@@ -58,13 +58,13 @@ for (const [os, arch] of targets) {
     compile: {
       target: `bun-${os}-${arch}` as any,
       outfile: `dist/${name}/bin/snow-code`,
-      execArgv: [`--user-agent=snowcode/${Script.version}`, `--env-file=""`, `--`],
+      execArgv: [`--user-agent=snowcode/${pkg.version}`, `--env-file=""`, `--`],
       windows: {},
     },
     entrypoints: ["./src/index.ts"],
     define: {
-      SNOWCODE_VERSION: `'${Script.version}'`,  // Changed from OPENCODE_ to SNOWCODE_
-      SNOWCODE_CHANNEL: `'${Script.channel}'`,   // Changed from OPENCODE_ to SNOWCODE_
+      SNOWCODE_VERSION: `'${pkg.version}'`,  // Use package.json version
+      SNOWCODE_CHANNEL: `'${Script.channel}'`,
       OPENCODE_TUI_PATH: `'../../../dist/${name}/bin/tui'`,
     },
   })
@@ -79,7 +79,7 @@ for (const [os, arch] of targets) {
     JSON.stringify(
       {
         name,
-        version: Script.version,
+        version: pkg.version,  // Use package.json version, not Script.version
         os: [os === "windows" ? "win32" : os],
         cpu: [arch],
       },
@@ -87,7 +87,7 @@ for (const [os, arch] of targets) {
       2,
     ),
   )
-  binaries[name] = Script.version
+  binaries[name] = pkg.version
 }
 
 export { binaries }
