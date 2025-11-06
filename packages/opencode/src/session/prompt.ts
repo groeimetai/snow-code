@@ -135,6 +135,7 @@ export namespace SessionPrompt {
   export type PromptInput = z.infer<typeof PromptInput>
   export async function prompt(input: PromptInput): Promise<MessageV2.WithParts> {
     const l = log.clone().tag("session", input.sessionID)
+    l.info("🔵 PROMPT FUNCTION CALLED - BINARY IS UPDATED! 🔵")
     l.info("prompt")
 
     const session = await Session.get(input.sessionID)
@@ -510,15 +511,39 @@ export namespace SessionPrompt {
     tools?: Record<string, boolean>
     processor: Processor
   }) {
+    log.info(`✨ RESOLVETOOLS CALLED - Starting tool resolution for ${input.providerID}/${input.modelID}`)
     const tools: Record<string, AITool> = {}
     const enabledTools = pipe(
       input.agent.tools,
       mergeDeep(await ToolRegistry.enabled(input.providerID, input.modelID, input.agent)),
       mergeDeep(input.tools ?? {}),
     )
+    log.info(`✨ Enabled tools resolved, starting tool loop...`)
     for (const item of await ToolRegistry.tools(input.providerID, input.modelID)) {
       if (Wildcard.all(item.id, enabledTools) === false) continue
-      const schema = ProviderTransform.schema(input.providerID, input.modelID, z.toJSONSchema(item.parameters))
+
+      log.debug(`Processing tool: ${item.id}`)
+
+      // Skip tools with invalid parameters
+      if (!item.parameters) {
+        log.warn(`Tool ${item.id} has no parameters, skipping`)
+        continue
+      }
+
+      log.debug(`Tool ${item.id} has parameters, converting to JSON schema...`)
+
+      let schema
+      try {
+        schema = ProviderTransform.schema(input.providerID, input.modelID, z.toJSONSchema(item.parameters))
+        log.debug(`Tool ${item.id} JSON schema generated successfully`)
+      } catch (error: any) {
+        log.error(`Failed to generate JSON schema for tool ${item.id}: ${error?.message || String(error)}`)
+        log.error(`Error stack: ${error?.stack}`)
+        log.debug(`Tool ${item.id} parameters type: ${typeof item.parameters}`)
+        log.debug(`Tool ${item.id} parameters constructor: ${item.parameters?.constructor?.name}`)
+        continue
+      }
+
       tools[item.id] = tool({
         id: item.id as any,
         description: item.description,
