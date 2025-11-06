@@ -1,50 +1,37 @@
 # GitHub Codespaces OAuth Fix
 
 ## Problem
-The previous implementation attempted to use `urn:ietf:wg:oauth:2.0:oob` (out-of-band OAuth flow) for GitHub Codespaces, but **ServiceNow does not support this OAuth flow**. This caused authentication to fail in Codespaces.
+OAuth callbacks don't work in remote development environments (GitHub Codespaces, Gitpod, etc.) because the browser can't reach `http://localhost:3005` from the internet.
 
 ## Solution
-Use GitHub Codespaces' **automatic port forwarding** feature. When running in a Codespace, GitHub automatically exposes localhost ports as public HTTPS URLs.
+**Simple URL Pasting**: Always use localhost as the redirect URL, and let users paste the callback URL when the automatic redirect fails.
 
 ### How It Works
 
-1. **Detection**: Detect Codespace environment via environment variables:
+1. **Standard OAuth Flow**: Use `http://localhost:3005/callback` for ALL environments (no special Codespaces URLs needed)
+
+2. **Automatic Detection**: Detect Codespace environment via environment variables:
    - `CODESPACES=true`
    - `CODESPACE_NAME`
-   - `GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN`
 
-2. **Redirect URI**: Use Codespace forwarded URL instead of localhost:
+3. **User-Friendly Instructions**: When in Codespaces, show clear instructions:
    ```
-   Normal:     http://localhost:3005/callback
-   Codespace:  https://{codespace-name}-3005.{forwarding-domain}/callback
+   After clicking 'Approve' in ServiceNow:
+   1. Your browser will show a 'Can't reach this page' or 404 error
+   2. Copy the FULL URL from your browser address bar
+      (it starts with: http://localhost:3005/callback?code=...)
+   3. Paste it below when prompted
    ```
 
-3. **Callback Server**: Start HTTP server on localhost:3005 (same as normal flow)
+4. **Code Extraction**: The CLI extracts the authorization code from the pasted URL and completes authentication
 
-4. **Port Forwarding**: GitHub automatically forwards HTTPS traffic from public URL to localhost:3005
+### Benefits
 
-5. **OAuth Flow**:
-   - ServiceNow redirects to: `https://{codespace-name}-3005.{domain}/callback?code=...`
-   - GitHub forwards to: `http://localhost:3005/callback?code=...`
-   - Callback server receives the code and exchanges it for tokens
-
-### User Configuration Required
-
-Users must add the Codespace redirect URL to their ServiceNow OAuth Application:
-
-```
-1. Log into ServiceNow as admin
-2. Navigate to: System OAuth > Application Registry
-3. Open your OAuth application
-4. Add redirect URL: https://{codespace-name}-3005.{domain}/callback
-5. Save configuration
-```
-
-The CLI now automatically:
-- Detects Codespace environment
-- Computes the correct redirect URL
-- Displays it to the user
-- Prompts for confirmation before proceeding
+✅ **No ServiceNow configuration required** - users don't need to add special redirect URLs
+✅ **Works everywhere** - Codespaces, Gitpod, Cloud IDEs, etc.
+✅ **Simple UX** - just copy and paste the URL
+✅ **Secure** - validates state parameter to prevent CSRF attacks
+✅ **Backward compatible** - normal localhost flow still works for local development
 
 ## Technical Details
 
@@ -53,45 +40,43 @@ The CLI now automatically:
 
 ### Key Changes
 
-1. **Redirect URI Selection** (line 627-640):
+1. **Simplified Redirect URI** (line 623-625):
    ```typescript
-   let redirectUri: string
-   if (inCodespace) {
-     const forwardedUrl = this.getCodespaceForwardedUrl()
-     redirectUri = forwardedUrl  // https://...
-   } else {
-     redirectUri = `http://localhost:${port}/callback`
-   }
+   // Always use localhost - simplest approach for all environments
+   const port = 3005
+   const redirectUri = `http://localhost:${port}/callback`
    ```
 
-2. **User Prompt** (line 644-668):
-   - Show the exact redirect URL to configure
-   - Provide step-by-step instructions
-   - Require confirmation before proceeding
+2. **Clear Instructions** (line 886-894):
+   ```typescript
+   prompts.log.info("🌐 GitHub Codespaces Detected")
+   prompts.log.info("After clicking 'Approve' in ServiceNow:")
+   prompts.log.message("   1. Your browser will show a 'Can't reach this page' or 404 error")
+   prompts.log.message("   2. Copy the FULL URL from your browser address bar")
+   prompts.log.message("   3. Paste it below when prompted")
+   ```
 
-3. **Unified Callback Server** (line 681-683):
-   - Use same `startCallbackServer` for both environments
-   - Pass `redirectUri` parameter for correct token exchange
-   - GitHub auto-forwards traffic in Codespaces
-
-4. **Token Exchange** (line 874-880):
-   - Use actual `redirectUri` instead of hardcoded localhost
-   - OAuth spec requires redirect_uri to match authorization request
+3. **URL Pasting Fallback** (line 901-1000):
+   - Wait 3 seconds for automatic callback
+   - Prompt user to paste callback URL
+   - Extract authorization code from URL
+   - Validate state parameter (CSRF protection)
+   - Exchange code for tokens
 
 ### Why This Works
 
-GitHub Codespaces automatically forwards ports to public HTTPS URLs:
-- Port 3005 → `https://{name}-3005.{domain}`
-- Traffic to public URL → localhost:3005 inside Codespace
-- No manual tunneling or proxy required
+**Simplicity**: No complex port forwarding setup required
+**Compatibility**: Works in any remote environment where localhost isn't accessible
+**Security**: State parameter validation prevents CSRF attacks
+**UX**: Clear instructions guide users through the process
 
 ### What Doesn't Work (Previous Approaches)
 
-❌ **Out-of-band flow** (`urn:ietf:wg:oauth:2.0:oob`): ServiceNow doesn't support this
-❌ **Manual code entry**: Poor UX, error-prone
-❌ **Localhost callback**: ServiceNow can't reach localhost from internet
+❌ **Port forwarding URLs**: Requires users to configure ServiceNow with environment-specific URLs
+❌ **Out-of-band flow**: ServiceNow doesn't support this OAuth flow
+❌ **Manual code entry**: Error-prone, users might copy wrong part of URL
 
-✅ **Codespace port forwarding**: Built-in, automatic, secure
+✅ **URL pasting**: Simple, works everywhere, no configuration needed
 
 ## Testing
 

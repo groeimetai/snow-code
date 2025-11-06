@@ -620,53 +620,11 @@ export class ServiceNowOAuth {
       this.stateParameter = this.generateState()
       this.generatePKCE()
 
-      // Check if running in Codespaces
-      const inCodespace = this.isCodespace()
+      // Always use localhost - simplest approach for all environments
       const port = 3005
-
-      // Determine redirect URI based on environment
-      let redirectUri: string
-      if (inCodespace) {
-        const forwardedUrl = this.getCodespaceForwardedUrl()
-        if (!forwardedUrl) {
-          return {
-            success: false,
-            error: "Failed to determine Codespace forwarded URL. Missing environment variables."
-          }
-        }
-        redirectUri = forwardedUrl
-      } else {
-        redirectUri = `http://localhost:${port}/callback`
-      }
+      const redirectUri = `http://localhost:${port}/callback`
 
       prompts.log.message("")
-
-      if (inCodespace) {
-        prompts.log.info("🌐 Detected GitHub Codespaces environment")
-        prompts.log.info("📝 IMPORTANT: Configure ServiceNow OAuth Application:")
-        prompts.log.message("")
-        prompts.log.message(`   Redirect URL: ${redirectUri}`)
-        prompts.log.message("")
-        prompts.log.message("   1. Log into ServiceNow as admin")
-        prompts.log.message("   2. Navigate to: System OAuth > Application Registry")
-        prompts.log.message("   3. Open your OAuth application")
-        prompts.log.message(`   4. Add this redirect URL: ${redirectUri}`)
-        prompts.log.message("   5. Save the configuration")
-        prompts.log.message("")
-
-        const confirmed = await prompts.confirm({
-          message: "Have you added the redirect URL to ServiceNow?",
-          initialValue: false
-        })
-
-        if (prompts.isCancel(confirmed) || !confirmed) {
-          return {
-            success: false,
-            error: "User cancelled - redirect URL not configured in ServiceNow"
-          }
-        }
-        prompts.log.message("")
-      }
 
       // Generate authorization URL
       const authUrl = this.generateAuthUrlWithCallback(normalizedInstance, options.clientId, redirectUri)
@@ -678,8 +636,9 @@ export class ServiceNowOAuth {
       // Auto-open browser
       this.openBrowser(authUrl)
 
-      // Start callback server for both Codespaces and normal environments
-      // In Codespaces, GitHub auto-forwards the public HTTPS URL to localhost:3005
+      // Start callback server
+      // In remote environments (Codespaces, Gitpod, etc), the callback won't reach localhost
+      // The user will be prompted to paste the callback URL after clicking Approve
       const result = await this.startCallbackServer(port, normalizedInstance, options.clientId, options.clientSecret, redirectUri)
 
       if (result.success && result.accessToken) {
@@ -922,16 +881,19 @@ export class ServiceNowOAuth {
         prompts.log.info(`Callback server started on http://localhost:${port}/callback`)
         prompts.log.info("Waiting for OAuth callback...")
 
-        // In Codespaces, offer alternative to paste callback URL as fallback
+        // In Codespaces and remote environments, the callback won't work automatically
         if (inCodespace) {
           prompts.log.message("")
-          prompts.log.info("💡 Fallback: If the automatic callback doesn't work:")
-          prompts.log.message("   1. After clicking 'Approve' in ServiceNow")
-          prompts.log.message("   2. Copy the full URL from your browser (starts with http://localhost:3005/callback)")
-          prompts.log.message("   3. Paste it below when prompted")
+          prompts.log.info("🌐 GitHub Codespaces Detected")
+          prompts.log.message("")
+          prompts.log.info("After clicking 'Approve' in ServiceNow:")
+          prompts.log.message("   1. Your browser will show a 'Can't reach this page' or 404 error")
+          prompts.log.message("   2. Copy the FULL URL from your browser address bar")
+          prompts.log.message("      (it starts with: http://localhost:3005/callback?code=...)")
+          prompts.log.message("   3. Paste it below in a few seconds")
           prompts.log.message("")
 
-          // Wait a bit to see if automatic callback works
+          // Wait a bit to see if automatic callback works (unlikely in Codespaces)
           await new Promise(resolve => setTimeout(resolve, 3000))
 
           if (!resolved) {
