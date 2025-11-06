@@ -165,7 +165,7 @@
     },
     "packages/opencode": {
       "name": "@groeimetai/snow-code",
-      "version": "0.18.19",
+      "version": "0.18.20",
       "bin": {
         "snow-code": "./bin/snow-code",
         "snowcode": "./bin/snow-code",
