@@ -496,23 +496,39 @@ export const AuthLoginCommand = cmd({
           prompts.log.message("")
           prompts.log.step("User Account Setup")
 
-          const isFirstTime = await prompts.confirm({
-            message: "Is this your first time using this machine with this license?",
-            initialValue: true,
+          const accountAction = await prompts.select({
+            message: "Do you want to login or register?",
+            options: [
+              {
+                value: "register",
+                label: "Register",
+                hint: "Create a new user account",
+              },
+              {
+                value: "login",
+                label: "Login",
+                hint: "Login with existing account",
+              },
+            ],
           })
 
-          if (prompts.isCancel(isFirstTime)) throw new UI.CancelledError()
+          if (prompts.isCancel(accountAction)) throw new UI.CancelledError()
 
-          let username: string | undefined
+          let username: string
           let email: string | undefined
+          let password: string
           let role: "developer" | "stakeholder" | "admin"
+          let authData: any
 
-          if (isFirstTime) {
+          // Generate machine ID for device binding
+          const machineId = generateMachineId()
+
+          if (accountAction === "register") {
             // New user registration
             prompts.log.info("Creating your user account...")
 
             username = (await prompts.text({
-              message: "Your username",
+              message: "Choose a username",
               placeholder: "john.doe",
               validate: (value) => {
                 if (!value || value.trim() === "") return "Username is required"
@@ -533,6 +549,25 @@ export const AuthLoginCommand = cmd({
 
             if (prompts.isCancel(email)) throw new UI.CancelledError()
 
+            password = (await prompts.password({
+              message: "Choose a password",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Password is required"
+                if (value.length < 8) return "Password must be at least 8 characters"
+              },
+            })) as string
+
+            if (prompts.isCancel(password)) throw new UI.CancelledError()
+
+            const passwordConfirm = (await prompts.password({
+              message: "Confirm password",
+              validate: (value) => {
+                if (value !== password) return "Passwords do not match"
+              },
+            })) as string
+
+            if (prompts.isCancel(passwordConfirm)) throw new UI.CancelledError()
+
             const roleChoice = (await prompts.select({
               message: "Select your role",
               options: [
@@ -551,6 +586,49 @@ export const AuthLoginCommand = cmd({
 
             if (prompts.isCancel(roleChoice)) throw new UI.CancelledError()
             role = roleChoice as "developer" | "stakeholder" | "admin"
+
+            prompts.log.info(`Machine ID: ${machineId.substring(0, 16)}...`)
+
+            // Register with enterprise backend
+            prompts.log.message("")
+            const spinner = prompts.spinner()
+            spinner.start("Registering user account...")
+
+            try {
+              const response = await fetch(`${enterpriseUrl}/api/user-auth/register`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  licenseKey,
+                  username,
+                  email,
+                  password,
+                  role,
+                }),
+              })
+
+              authData = await response.json()
+
+              if (!response.ok || !authData.success) {
+                spinner.stop("Registration failed", 1)
+                prompts.log.error(authData.error || "Unknown error")
+                prompts.outro("Done")
+                await Instance.dispose()
+                process.exit(1)
+              }
+
+              spinner.stop("Registration successful!")
+            } catch (error: any) {
+              prompts.log.error(`Connection error: ${error.message}`)
+              prompts.log.message("")
+              prompts.log.warn("Unable to connect to enterprise server")
+              prompts.log.info(`URL: ${enterpriseUrl}/api/user-auth/register`)
+              prompts.outro("Done")
+              await Instance.dispose()
+              process.exit(1)
+            }
           } else {
             // Existing user login
             prompts.log.info("Logging in with existing account...")
@@ -565,80 +643,81 @@ export const AuthLoginCommand = cmd({
 
             if (prompts.isCancel(username)) throw new UI.CancelledError()
 
-            // Role will be fetched from backend during login
-            role = "developer" // Default, will be updated after auth
-          }
-
-          // Generate machine ID for device binding
-          const machineId = generateMachineId()
-          prompts.log.info(`Machine ID: ${machineId.substring(0, 16)}...`)
-
-          // Authenticate with enterprise backend
-          prompts.log.message("")
-          const spinner = prompts.spinner()
-          spinner.start("Authenticating with enterprise server...")
-
-          try {
-            const response = await fetch(`${enterpriseUrl}/api/auth/mcp/login`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
+            password = (await prompts.password({
+              message: "Your password",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Password is required"
               },
-              body: JSON.stringify({
-                licenseKey,
-                machineId,
-                role,
-                username,
-                email,
-              }),
-            })
+            })) as string
 
-            const authData = await response.json()
+            if (prompts.isCancel(password)) throw new UI.CancelledError()
 
-            if (!response.ok || !authData.success) {
-              spinner.stop("Authentication failed", 1)
-              prompts.log.error(authData.error || "Unknown error")
+            prompts.log.info(`Machine ID: ${machineId.substring(0, 16)}...`)
+
+            // Login with enterprise backend
+            prompts.log.message("")
+            const spinner = prompts.spinner()
+            spinner.start("Authenticating...")
+
+            try {
+              const response = await fetch(`${enterpriseUrl}/api/user-auth/login`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  licenseKey,
+                  username,
+                  password,
+                }),
+              })
+
+              authData = await response.json()
+
+              if (!response.ok || !authData.success) {
+                spinner.stop("Authentication failed", 1)
+                prompts.log.error(authData.error || "Invalid username or password")
+                prompts.outro("Done")
+                await Instance.dispose()
+                process.exit(1)
+              }
+
+              spinner.stop("Authentication successful!")
+
+              // Extract role and email from response
+              role = authData.user?.role || "developer"
+              email = authData.user?.email
+            } catch (error: any) {
+              prompts.log.error(`Connection error: ${error.message}`)
+              prompts.log.message("")
+              prompts.log.warn("Unable to connect to enterprise server")
+              prompts.log.info(`URL: ${enterpriseUrl}/api/user-auth/login`)
               prompts.outro("Done")
               await Instance.dispose()
               process.exit(1)
             }
+          }
 
-            spinner.stop("Authentication successful!")
+          // Store enterprise auth with user info
+          await Auth.set("enterprise", {
+            type: "enterprise",
+            licenseKey,
+            enterpriseUrl: enterpriseUrl || undefined,
+            token: authData.token,
+            sessionToken: authData.sessionToken,
+            username,
+            email,
+            role: authData.user?.role || role,
+            machineId,
+          })
 
-            // Store enterprise auth with user info
-            await Auth.set("enterprise", {
-              type: "enterprise",
-              licenseKey,
-              enterpriseUrl: enterpriseUrl || undefined,
-              token: authData.token,
-              username,
-              email,
-              role: authData.customer?.role || role,
-              machineId,
-            })
-
-            prompts.log.success(`Welcome, ${username}!`)
-            prompts.log.info(`Role: ${authData.customer?.role || role}`)
-            if (authData.customer?.company) {
-              prompts.log.info(`Company: ${authData.customer.company}`)
-            }
-          } catch (error: any) {
-            spinner.stop("Authentication failed", 1)
-            prompts.log.error(`Connection error: ${error.message}`)
-            prompts.log.message("")
-            prompts.log.warn("Unable to connect to enterprise license server")
-            prompts.log.info(`URL: ${enterpriseUrl}/api/auth/mcp/login`)
-            prompts.log.message("")
-            prompts.log.info("Possible causes:")
-            prompts.log.message("  • License server is not running or accessible")
-            prompts.log.message("  • Network connectivity issues")
-            prompts.log.message("  • Incorrect enterprise URL")
-            prompts.log.message("")
-            prompts.log.info("You can still use Snow-Flow without enterprise features.")
-            prompts.log.info("Contact your administrator for license server details.")
-            prompts.outro("Done")
-            await Instance.dispose()
-            process.exit(1)
+          prompts.log.success(`Welcome, ${username}!`)
+          prompts.log.info(`Role: ${authData.user?.role || role}`)
+          if (authData.customer?.company) {
+            prompts.log.info(`Company: ${authData.customer.company}`)
+          }
+          if (authData.user?.activeSessions !== undefined) {
+            prompts.log.info(`Active sessions: ${authData.user.activeSessions} (max 1 per user)`)
           }
 
           // Optional integrations
@@ -1201,27 +1280,43 @@ export const AuthLoginCommand = cmd({
             prompts.log.message("")
             prompts.log.step("User Account Setup")
 
-            const isFirstTimeEnterprise = await prompts.confirm({
-              message: "Is this your first time using this machine with this license?",
-              initialValue: true,
+            const enterpriseAccountAction = await prompts.select({
+              message: "Do you want to login or register?",
+              options: [
+                {
+                  value: "register",
+                  label: "Register",
+                  hint: "Create a new user account",
+                },
+                {
+                  value: "login",
+                  label: "Login",
+                  hint: "Login with existing account",
+                },
+              ],
             })
 
-            if (prompts.isCancel(isFirstTimeEnterprise)) {
+            if (prompts.isCancel(enterpriseAccountAction)) {
               prompts.outro("Done")
               await Instance.dispose()
               return
             }
 
-            let enterpriseUsername: string | undefined
+            let enterpriseUsername: string
             let enterpriseEmail: string | undefined
+            let enterprisePassword: string
             let enterpriseRole: "developer" | "stakeholder" | "admin"
+            let enterpriseAuthData: any
 
-            if (isFirstTimeEnterprise) {
+            // Generate machine ID for device binding
+            const enterpriseMachineId = generateMachineId()
+
+            if (enterpriseAccountAction === "register") {
               // New user registration
               prompts.log.info("Creating your user account...")
 
               enterpriseUsername = (await prompts.text({
-                message: "Your username",
+                message: "Choose a username",
                 placeholder: "john.doe",
                 validate: (value) => {
                   if (!value || value.trim() === "") return "Username is required"
@@ -1250,6 +1345,33 @@ export const AuthLoginCommand = cmd({
                 return
               }
 
+              enterprisePassword = (await prompts.password({
+                message: "Choose a password",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Password is required"
+                  if (value.length < 8) return "Password must be at least 8 characters"
+                },
+              })) as string
+
+              if (prompts.isCancel(enterprisePassword)) {
+                prompts.outro("Done")
+                await Instance.dispose()
+                return
+              }
+
+              const enterprisePasswordConfirm = (await prompts.password({
+                message: "Confirm password",
+                validate: (value) => {
+                  if (value !== enterprisePassword) return "Passwords do not match"
+                },
+              })) as string
+
+              if (prompts.isCancel(enterprisePasswordConfirm)) {
+                prompts.outro("Done")
+                await Instance.dispose()
+                return
+              }
+
               const enterpriseRoleChoice = (await prompts.select({
                 message: "Select your role",
                 options: [
@@ -1272,6 +1394,49 @@ export const AuthLoginCommand = cmd({
                 return
               }
               enterpriseRole = enterpriseRoleChoice as "developer" | "stakeholder" | "admin"
+
+              prompts.log.info(`Machine ID: ${enterpriseMachineId.substring(0, 16)}...`)
+
+              // Register with enterprise backend
+              prompts.log.message("")
+              const enterpriseSpinner = prompts.spinner()
+              enterpriseSpinner.start("Registering user account...")
+
+              try {
+                const response = await fetch(`${enterpriseServerUrl}/api/user-auth/register`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    licenseKey: enterpriseLicenseKey,
+                    username: enterpriseUsername,
+                    email: enterpriseEmail,
+                    password: enterprisePassword,
+                    role: enterpriseRole,
+                  }),
+                })
+
+                enterpriseAuthData = await response.json()
+
+                if (!response.ok || !enterpriseAuthData.success) {
+                  enterpriseSpinner.stop("Registration failed", 1)
+                  prompts.log.error(enterpriseAuthData.error || "Unknown error")
+                  prompts.outro("Done")
+                  await Instance.dispose()
+                  process.exit(1)
+                }
+
+                enterpriseSpinner.stop("Registration successful!")
+              } catch (error: any) {
+                prompts.log.error(`Connection error: ${error.message}`)
+                prompts.log.message("")
+                prompts.log.warn("Unable to connect to enterprise server")
+                prompts.log.info(`URL: ${enterpriseServerUrl}/api/user-auth/register`)
+                prompts.outro("Done")
+                await Instance.dispose()
+                process.exit(1)
+              }
             } else {
               // Existing user login
               prompts.log.info("Logging in with existing account...")
@@ -1290,82 +1455,87 @@ export const AuthLoginCommand = cmd({
                 return
               }
 
-              // Role will be fetched from backend during login
-              enterpriseRole = "developer" // Default, will be updated after auth
-            }
-
-            // Generate machine ID for device binding
-            const enterpriseMachineId = generateMachineId()
-            prompts.log.info(`Machine ID: ${enterpriseMachineId.substring(0, 16)}...`)
-
-            // Authenticate with enterprise backend
-            prompts.log.message("")
-            const enterpriseSpinner = prompts.spinner()
-            enterpriseSpinner.start("Authenticating with enterprise server...")
-
-            try {
-              const authResponse = await fetch(`${enterpriseServerUrl}/api/auth/mcp/login`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
+              enterprisePassword = (await prompts.password({
+                message: "Your password",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Password is required"
                 },
-                body: JSON.stringify({
-                  licenseKey: enterpriseLicenseKey,
-                  machineId: enterpriseMachineId,
-                  role: enterpriseRole,
-                  username: enterpriseUsername,
-                  email: enterpriseEmail,
-                }),
-              })
+              })) as string
 
-              const authData = await authResponse.json()
+              if (prompts.isCancel(enterprisePassword)) {
+                prompts.outro("Done")
+                await Instance.dispose()
+                return
+              }
 
-              if (!authResponse.ok || !authData.success) {
-                enterpriseSpinner.stop("Authentication failed", 1)
-                prompts.log.error(authData.error || "Unknown error")
+              prompts.log.info(`Machine ID: ${enterpriseMachineId.substring(0, 16)}...`)
+
+              // Login with enterprise backend
+              prompts.log.message("")
+              const enterpriseSpinner = prompts.spinner()
+              enterpriseSpinner.start("Authenticating...")
+
+              try {
+                const response = await fetch(`${enterpriseServerUrl}/api/user-auth/login`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    licenseKey: enterpriseLicenseKey,
+                    username: enterpriseUsername,
+                    password: enterprisePassword,
+                  }),
+                })
+
+                enterpriseAuthData = await response.json()
+
+                if (!response.ok || !enterpriseAuthData.success) {
+                  enterpriseSpinner.stop("Authentication failed", 1)
+                  prompts.log.error(enterpriseAuthData.error || "Invalid username or password")
+                  prompts.outro("Done")
+                  await Instance.dispose()
+                  process.exit(1)
+                }
+
+                enterpriseSpinner.stop("Authentication successful!")
+
+                // Extract role and email from response
+                enterpriseRole = enterpriseAuthData.user?.role || "developer"
+                enterpriseEmail = enterpriseAuthData.user?.email
+              } catch (error: any) {
+                prompts.log.error(`Connection error: ${error.message}`)
+                prompts.log.message("")
+                prompts.log.warn("Unable to connect to enterprise server")
+                prompts.log.info(`URL: ${enterpriseServerUrl}/api/user-auth/login`)
                 prompts.outro("Done")
                 await Instance.dispose()
                 process.exit(1)
               }
+            }
 
-              enterpriseSpinner.stop("Authentication successful!")
+            // Update enterprise auth storage with user info and token
+            const existingEnterpriseAuth = await Auth.all().then(x => x["enterprise"])
+            await Auth.set("enterprise", {
+              ...(existingEnterpriseAuth || {}),
+              type: "enterprise",
+              licenseKey: enterpriseLicenseKey,
+              enterpriseUrl: enterpriseServerUrl || undefined,
+              token: enterpriseAuthData.token,
+              sessionToken: enterpriseAuthData.sessionToken,
+              username: enterpriseUsername,
+              email: enterpriseEmail,
+              role: enterpriseAuthData.user?.role || enterpriseRole,
+              machineId: enterpriseMachineId,
+            })
 
-              prompts.log.success(`Welcome, ${enterpriseUsername}!`)
-              prompts.log.info(`Role: ${authData.customer?.role || enterpriseRole}`)
-              if (authData.customer?.company) {
-                prompts.log.info(`Company: ${authData.customer.company}`)
-              }
-
-              // Update enterprise auth storage with user info and token
-              const existingEnterpriseAuth = await Auth.all().then(x => x["enterprise"])
-              await Auth.set("enterprise", {
-                ...(existingEnterpriseAuth || {}),
-                type: "enterprise",
-                licenseKey: enterpriseLicenseKey,
-                enterpriseUrl: enterpriseServerUrl || undefined,
-                token: authData.token,
-                username: enterpriseUsername,
-                email: enterpriseEmail,
-                role: authData.customer?.role || enterpriseRole,
-                machineId: enterpriseMachineId,
-              })
-            } catch (error: any) {
-              enterpriseSpinner.stop("Authentication failed", 1)
-              prompts.log.error(`Connection error: ${error.message}`)
-              prompts.log.message("")
-              prompts.log.warn("Unable to connect to enterprise license server")
-              prompts.log.info(`URL: ${enterpriseServerUrl}/api/auth/mcp/login`)
-              prompts.log.message("")
-              prompts.log.info("Possible causes:")
-              prompts.log.message("  • License server is not running or accessible")
-              prompts.log.message("  • Network connectivity issues")
-              prompts.log.message("  • Incorrect enterprise URL")
-              prompts.log.message("")
-              prompts.log.info("You can still use Snow-Flow without enterprise features.")
-              prompts.log.info("Contact your administrator for license server details.")
-              prompts.outro("Done")
-              await Instance.dispose()
-              process.exit(1)
+            prompts.log.success(`Welcome, ${enterpriseUsername}!`)
+            prompts.log.info(`Role: ${enterpriseAuthData.user?.role || enterpriseRole}`)
+            if (enterpriseAuthData.customer?.company) {
+              prompts.log.info(`Company: ${enterpriseAuthData.customer.company}`)
+            }
+            if (enterpriseAuthData.user?.activeSessions !== undefined) {
+              prompts.log.info(`Active sessions: ${enterpriseAuthData.user.activeSessions} (max 1 per user)`)
             }
 
             // Optional integrations

@@ -55,6 +55,7 @@ export namespace Auth {
       licenseKey: z.string(),
       enterpriseUrl: z.string().optional(),
       token: z.string().optional(),
+      sessionToken: z.string().optional(),
       username: z.string().optional(),
       email: z.string().optional(),
       role: z.string().optional(),
