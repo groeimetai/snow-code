@@ -25,7 +25,10 @@
     "build": "bun script/build.ts",
     "dev": "bun run ./src/index.ts",
     "postinstall": "node postinstall.cjs || true",
-    "prepublishOnly": "bun script/resolve-catalog.ts"
+    "prepublishOnly": "bun script/resolve-catalog.ts",
+    "release:patch": "npm version patch -m 'chore: Bump version to %s' && git push --no-verify && git push --tags --no-verify",
+    "release:minor": "npm version minor -m 'chore: Bump version to %s' && git push --no-verify && git push --tags --no-verify",
+    "release:major": "npm version major -m 'chore: Bump version to %s' && git push --no-verify && git push --tags --no-verify"
   },
   "bin": {
     "snow-code": "./bin/snow-code",
