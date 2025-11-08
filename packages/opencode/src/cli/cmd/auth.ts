@@ -454,6 +454,71 @@ export const AuthLoginCommand = cmd({
 
           if (prompts.isCancel(enterpriseUrl)) throw new UI.CancelledError()
 
+          // ✅ VALIDATE LICENSE KEY IMMEDIATELY (before user account setup)
+          prompts.log.message("")
+          const licenseSpinner = prompts.spinner()
+          licenseSpinner.start("Validating license key...")
+
+          try {
+            const licenseResponse = await fetch(`${enterpriseUrl}/api/license/validate`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                licenseKey,
+              }),
+              signal: AbortSignal.timeout(10000), // 10 second timeout
+            })
+
+            const licenseData = await licenseResponse.json()
+
+            if (!licenseResponse.ok || !licenseData.success) {
+              licenseSpinner.stop("License key validation failed", 1)
+              prompts.log.error(licenseData.error || "Invalid license key")
+              prompts.log.message("")
+              prompts.log.warn("Please check your license key and try again")
+              prompts.log.info("License key format: SNOW-ENT-*-* or SNOW-SI-*-*")
+              prompts.outro("Done")
+              await Instance.dispose()
+              process.exit(1)
+            }
+
+            licenseSpinner.stop("License key valid!")
+
+            // Show license details if available
+            if (licenseData.license) {
+              prompts.log.message("")
+              prompts.log.success(`License: ${licenseData.license.type || 'Enterprise'}`)
+              if (licenseData.license.company) {
+                prompts.log.info(`Company: ${licenseData.license.company}`)
+              }
+              if (licenseData.license.expiresAt) {
+                const expiryDate = new Date(licenseData.license.expiresAt)
+                prompts.log.info(`Expires: ${expiryDate.toLocaleDateString()}`)
+              }
+            }
+          } catch (licenseError: any) {
+            licenseSpinner.stop("License validation failed", 1)
+            prompts.log.error(`Connection error: ${licenseError.message}`)
+            prompts.log.message("")
+            prompts.log.warn("Unable to validate license key with enterprise server")
+            prompts.log.info(`URL: ${enterpriseUrl}/api/license/validate`)
+
+            const continueAnyway = await prompts.confirm({
+              message: "Continue anyway? (License will be validated during registration)",
+              initialValue: false,
+            })
+
+            if (prompts.isCancel(continueAnyway) || !continueAnyway) {
+              prompts.outro("Done")
+              await Instance.dispose()
+              process.exit(1)
+            }
+
+            prompts.log.warn("Continuing without license validation...")
+          }
+
           // Test connection to enterprise server first
           prompts.log.message("")
           const testSpinner = prompts.spinner()
