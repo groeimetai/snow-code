@@ -49,8 +49,8 @@ function detectPlatformAndArch() {
 
 function findBinary() {
   const { platform, arch } = detectPlatformAndArch()
-  const packageName = `opencode-${platform}-${arch}`
-  const binary = platform === "windows" ? "opencode.exe" : "opencode"
+  const packageName = `@groeimetai/snow-code-${platform}-${arch}`
+  const binary = platform === "windows" ? "snow-code.exe" : "snow-code"
 
   try {
     // Use require.resolve to find the package
@@ -81,7 +81,7 @@ async function regenerateWindowsCmdWrappers() {
 
     // The npm rebuild command does 2 things - Execute lifecycle scripts and rebuild bin links
     // We want to skip lifecycle scripts to avoid infinite loops, so we use --ignore-scripts
-    const cmd = `npm rebuild opencode-ai --ignore-scripts${isGlobal ? " -g" : ""}`
+    const cmd = `npm rebuild @groeimetai/snow-code --ignore-scripts${isGlobal ? " -g" : ""}`
     const opts = {
       stdio: "inherit",
       shell: true,
@@ -93,7 +93,7 @@ async function regenerateWindowsCmdWrappers() {
     console.log("Successfully rebuilt npm bin links")
   } catch (error) {
     console.error("Error rebuilding npm links:", error.message)
-    console.error("npm rebuild failed. You may need to manually run: npm rebuild opencode-ai --ignore-scripts")
+    console.error("npm rebuild failed. You may need to manually run: npm rebuild @groeimetai/snow-code --ignore-scripts")
   }
 }
 
@@ -111,7 +111,7 @@ async function main() {
     }
 
     const binaryPath = findBinary()
-    const binScript = path.join(__dirname, "bin", "opencode")
+    const binScript = path.join(__dirname, "bin", "snow-code")
 
     // Remove existing bin script if it exists
     if (fs.existsSync(binScript)) {
@@ -120,9 +120,9 @@ async function main() {
 
     // Create symlink to the actual binary
     fs.symlinkSync(binaryPath, binScript)
-    console.log(`opencode binary symlinked: ${binScript} -> ${binaryPath}`)
+    console.log(`snow-code binary symlinked: ${binScript} -> ${binaryPath}`)
   } catch (error) {
-    console.error("Failed to create opencode binary symlink:", error.message)
+    console.error("Failed to create snow-code binary symlink:", error.message)
     process.exit(1)
   }
 }

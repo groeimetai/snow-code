@@ -230,7 +230,7 @@ export namespace ToolCache {
    *
    * This is the main export that allows wrapping existing tools with cache logic.
    */
-  export function withCache<P extends z.ZodType, M extends any>(
+  export function withCache<P extends z.ZodType, M extends Record<string, any> = Record<string, any>>(
     tool: Tool.Info<P, M>
   ): Tool.Info<P, M> {
     return {
@@ -249,7 +249,7 @@ export namespace ToolCache {
               ctx.metadata({
                 title: `${cached.result.title} (cached)`,
                 metadata: {
-                  ...cached.result.metadata,
+                  ...(cached.result.metadata || {}),
                   cacheHit: true,
                   cacheAge: Date.now() - cached.timestamp,
                   cacheHits: cached.hits,
@@ -268,7 +268,7 @@ export namespace ToolCache {
             return {
               ...result,
               metadata: {
-                ...result.metadata,
+                ...(result.metadata || {}),
                 cacheHit: false,
               },
             }

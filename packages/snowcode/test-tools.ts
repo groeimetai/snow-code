@@ -19,7 +19,7 @@ async function testTools() {
       const jsonSchema = z.toJSONSchema(tool.parameters)
       console.log(`  ✅ Tool ${tool.id} JSON schema generated successfully`)
     } catch (error) {
-      console.log(`  ❌ Tool ${tool.id} failed: ${error.message}`)
+      console.log(`  ❌ Tool ${tool.id} failed: ${error instanceof Error ? error.message : String(error)}`)
       console.log(`  Parameters type: ${typeof tool.parameters}`)
       console.log(`  Parameters:`, tool.parameters)
     }

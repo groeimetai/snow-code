@@ -32,8 +32,7 @@
   },
   "bin": {
     "snow-code": "./bin/snow-code",
-    "snowcode": "./bin/snow-code",
-    "opencode": "./bin/snow-code"
+    "snowcode": "./bin/snowcode"
   },
   "exports": {
     "./*": "./src/*.ts"

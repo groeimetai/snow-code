@@ -1,10 +1,10 @@
-import { Resource } from "@opencode-ai/console-resource"
-import { Database } from "@opencode-ai/console-core/drizzle/index.js"
-import { UserTable } from "@opencode-ai/console-core/schema/user.sql.js"
-import { AccountTable } from "@opencode-ai/console-core/schema/account.sql.js"
-import { WorkspaceTable } from "@opencode-ai/console-core/schema/workspace.sql.js"
-import { BillingTable, PaymentTable, UsageTable } from "@opencode-ai/console-core/schema/billing.sql.js"
-import { KeyTable } from "@opencode-ai/console-core/schema/key.sql.js"
+import { Resource } from "@groeimetai/snow-code-console-resource"
+import { Database } from "@groeimetai/snow-code-console-core/drizzle/index.js"
+import { UserTable } from "@groeimetai/snow-code-console-core/schema/user.sql.js"
+import { AccountTable } from "@groeimetai/snow-code-console-core/schema/account.sql.js"
+import { WorkspaceTable } from "@groeimetai/snow-code-console-core/schema/workspace.sql.js"
+import { BillingTable, PaymentTable, UsageTable } from "@groeimetai/snow-code-console-core/schema/billing.sql.js"
+import { KeyTable } from "@groeimetai/snow-code-console-core/schema/key.sql.js"
 
 if (Resource.App.stage !== "frank") throw new Error("This script is only for frank")
 

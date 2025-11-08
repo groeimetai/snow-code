@@ -1,5 +1,5 @@
 {
-  "name": "@opencode-ai/slack",
+  "name": "@groeimetai/snow-code-slack",
   "version": "0.15.17",
   "type": "module",
   "scripts": {

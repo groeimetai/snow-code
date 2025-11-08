@@ -65,7 +65,7 @@ for (const [os, arch] of targets) {
     define: {
       SNOWCODE_VERSION: `'${pkg.version}'`,  // Use package.json version
       SNOWCODE_CHANNEL: `'${Script.channel}'`,
-      OPENCODE_TUI_PATH: `'../../../dist/${name}/bin/tui'`,
+      SNOWCODE_TUI_PATH: `'../../../dist/${name}/bin/tui'`,
     },
   })
 

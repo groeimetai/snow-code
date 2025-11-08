@@ -43,14 +43,14 @@ export namespace Ide {
   }
 
   export function alreadyInstalled() {
-    return process.env["OPENCODE_CALLER"] === "vscode"
+    return process.env["SNOWCODE_CALLER"] === "vscode" || process.env["OPENCODE_CALLER"] === "vscode"
   }
 
   export async function install(ide: (typeof SUPPORTED_IDES)[number]["name"]) {
     const cmd = SUPPORTED_IDES.find((i) => i.name === ide)?.cmd
     if (!cmd) throw new Error(`Unknown IDE: ${ide}`)
 
-    const p = spawn([cmd, "--install-extension", "sst-dev.opencode"], {
+    const p = spawn([cmd, "--install-extension", "groeimetai.snow-code-vscode"], {
       stdout: "pipe",
       stderr: "pipe",
     })

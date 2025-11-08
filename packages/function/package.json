@@ -1,5 +1,5 @@
 {
-  "name": "@opencode-ai/function",
+  "name": "@groeimetai/snow-code-function",
   "version": "0.15.17",
   "$schema": "https://json.schemastore.org/package.json",
   "private": true,
