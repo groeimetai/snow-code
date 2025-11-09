@@ -1,5 +1,5 @@
 {
-  "name": "@opencode-ai/console-mail",
+  "name": "@groeimetai/snow-code-console-mail",
   "version": "0.15.17",
   "dependencies": {
     "@jsx-email/all": "2.2.3",

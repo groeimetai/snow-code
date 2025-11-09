@@ -195,7 +195,7 @@ export namespace Config {
       if (!md.data) continue
 
       const name = (() => {
-        const patterns = ["/.snowcode/command/", "/.opencode/command/", "/command/"]
+        const patterns = ["/.snowcode/command/", "/.snowcode/command/", "/command/"]
         const pattern = patterns.find((p) => item.includes(p))
 
         if (pattern) {
@@ -237,8 +237,8 @@ export namespace Config {
       let agentName = path.basename(item, ".md")
       const agentFolderPath = item.includes("/.snowcode/agent/")
         ? item.split("/.snowcode/agent/")[1]
-        : item.includes("/.opencode/agent/")
-          ? item.split("/.opencode/agent/")[1]
+        : item.includes("/.snowcode/agent/")
+          ? item.split("/.snowcode/agent/")[1]
           : item.includes("/agent/")
             ? item.split("/agent/")[1]
             : agentName + ".md"

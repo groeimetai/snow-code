@@ -23,6 +23,22 @@ Usage notes:
 5. Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.), since it is not aware of the user's intent
 6. If the agent description mentions that it should be used proactively, then you should try your best to use it without the user having to ask for it first. Use your judgement.
 
+Advanced: Task Dependencies (DAG Execution)
+For complex multi-step workflows with dependencies, you can specify task_id and dependencies:
+
+- task_id: Optional unique identifier for this task (used for tracking and dependency references)
+- dependencies: Optional array of task_ids that must complete before this task starts
+
+Example with dependencies:
+Task(subagent_type="general", description="Research phase", prompt="Research best practices", task_id="research")
+Task(subagent_type="build", description="Implementation", prompt="Implement based on research", task_id="implement", dependencies=["research"])
+Task(subagent_type="plan", description="Testing", prompt="Test implementation", task_id="test", dependencies=["implement"])
+
+When using dependencies:
+- Tasks with no dependencies execute first (in parallel if multiple)
+- Tasks with dependencies wait for all dependencies to complete
+- Use the dag-orchestrator agent for complex multi-agent coordination with automatic dependency management
+
 Example usage (NOTE: The agents below are fictional examples for illustration only - use the actual agents listed above):
 
 <example_agent_descriptions>

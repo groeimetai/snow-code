@@ -23,6 +23,8 @@ export const TaskTool = Tool.define("task", async () => {
       description: z.string().describe("A short (3-5 words) description of the task"),
       prompt: z.string().describe("The task for the agent to perform"),
       subagent_type: z.string().describe("The type of specialized agent to use for this task"),
+      task_id: z.string().optional().describe("Optional unique identifier for this task (used for dependency tracking)"),
+      dependencies: z.array(z.string()).optional().describe("Optional list of task_ids that must complete before this task starts"),
     }),
     async execute(params, ctx) {
       const agent = await Agent.get(params.subagent_type)
@@ -38,6 +40,8 @@ export const TaskTool = Tool.define("task", async () => {
         title: params.description,
         metadata: {
           sessionId: session.id,
+          taskId: params.task_id,
+          dependencies: params.dependencies || [],
         },
       })
 
@@ -97,6 +101,8 @@ export const TaskTool = Tool.define("task", async () => {
         metadata: {
           summary: all,
           sessionId: session.id,
+          taskId: params.task_id,
+          dependencies: params.dependencies || [],
         },
         output: (result.parts.findLast((x: any) => x.type === "text") as any)?.text ?? "",
       }

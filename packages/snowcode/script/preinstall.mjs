@@ -21,15 +21,16 @@ function main() {
 
   // Modify bin to point to .cmd file on Windows
   packageJson.bin = {
-    opencode: "./bin/opencode.cmd",
+    "snow-code": "./bin/snowcode.cmd",
+    "snowcode": "./bin/snowcode.cmd",
   }
 
   // Write it back
   fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2))
-  console.log("Updated package.json bin to use opencode.cmd")
+  console.log("Updated package.json bin to use snowcode.cmd")
 
   // Now you can also remove the Unix script if you want
-  const unixScript = path.join(__dirname, "bin", "opencode")
+  const unixScript = path.join(__dirname, "bin", "snow-code")
   if (fs.existsSync(unixScript)) {
     console.log("Removing Unix shell script")
     fs.unlinkSync(unixScript)

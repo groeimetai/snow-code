@@ -86,7 +86,7 @@ for (const file of pkgjsons) {
 await $`bun install`
 
 console.log("\n=== opencode ===\n")
-await import(`../packages/opencode/script/publish.ts`)
+await import(`../packages/snowcode/script/publish.ts`)
 
 console.log("\n=== sdk ===\n")
 await import(`../packages/sdk/js/script/publish.ts`)
@@ -103,5 +103,5 @@ if (!Script.preview) {
   await $`git fetch origin`
   await $`git cherry-pick HEAD..origin/dev`.nothrow()
   await $`git push origin HEAD --tags --no-verify --force-with-lease`
-  await $`gh release create v${Script.version} --title "v${Script.version}" --notes ${notes.join("\n") ?? "No notable changes"} ./packages/opencode/dist/*.zip`
+  await $`gh release create v${Script.version} --title "v${Script.version}" --notes ${notes.join("\n") ?? "No notable changes"} ./packages/snowcode/dist/*.zip`
 }

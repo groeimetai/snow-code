@@ -17,23 +17,23 @@ import { $ } from "bun"
 import { bootstrap } from "../bootstrap"
 
 declare global {
-  const OPENCODE_TUI_PATH: string
+  const SNOWCODE_TUI_PATH: string
 }
 
-if (typeof OPENCODE_TUI_PATH !== "undefined") {
-  await import(OPENCODE_TUI_PATH as string, {
+if (typeof SNOWCODE_TUI_PATH !== "undefined") {
+  await import(SNOWCODE_TUI_PATH as string, {
     with: { type: "file" },
   })
 }
 
 export const TuiCommand = cmd({
   command: "$0 [project]",
-  describe: "start opencode tui",
+  describe: "start snow-code tui",
   builder: (yargs) =>
     yargs
       .positional("project", {
         type: "string",
-        describe: "path to start opencode in",
+        describe: "path to start snow-code in",
       })
       .option("model", {
         type: "string",
@@ -235,7 +235,7 @@ export const TuiCommand = cmd({
         UI.empty()
         UI.println(UI.logo("   "))
         const result = await Bun.spawn({
-          cmd: [...getOpencodeCommand(), "auth", "login"],
+          cmd: [...getSnowcodeCommand(), "auth", "login"],
           cwd: process.cwd(),
           stdout: "inherit",
           stderr: "inherit",
@@ -249,14 +249,14 @@ export const TuiCommand = cmd({
 })
 
 /**
- * Get the correct command to run opencode CLI
- * In development: ["bun", "run", "packages/opencode/src/index.ts"]
- * In production: ["/path/to/opencode"]
+ * Get the correct command to run snow-code CLI
+ * In development: ["bun", "run", "packages/snowcode/src/index.ts"]
+ * In production: ["/path/to/snow-code"]
  */
-function getOpencodeCommand(): string[] {
-  // Check if OPENCODE_BIN_PATH is set (used by shell wrapper scripts)
-  if (process.env["OPENCODE_BIN_PATH"]) {
-    return [process.env["OPENCODE_BIN_PATH"]]
+function getSnowcodeCommand(): string[] {
+  // Check if SNOWCODE_BIN_PATH is set (used by shell wrapper scripts)
+  if (process.env["SNOWCODE_BIN_PATH"] || process.env["OPENCODE_BIN_PATH"]) {
+    return [process.env["SNOWCODE_BIN_PATH"] || process.env["OPENCODE_BIN_PATH"]!]
   }
 
   const execPath = process.execPath.toLowerCase()

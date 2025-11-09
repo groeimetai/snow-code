@@ -9,8 +9,8 @@ process.chdir(dir)
 const { binaries } = await import("./build.ts")
 {
   const name = `${pkg.name}-${process.platform}-${process.arch}`
-  console.log(`smoke test: running dist/${name}/bin/opencode --version`)
-  await $`./dist/${name}/bin/opencode --version`
+  console.log(`smoke test: running dist/${name}/bin/snow-code --version`)
+  await $`./dist/${name}/bin/snow-code --version`
 }
 
 await $`mkdir -p ./dist/${pkg.name}`
@@ -107,7 +107,7 @@ if (!Script.preview) {
     "  cd packages/tui",
     `  CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=\${pkgver}" -o tui cmd/opencode/main.go`,
     "  cd ../opencode",
-    `  bun build --define OPENCODE_TUI_PATH="'$(realpath ../tui/tui)'" --define OPENCODE_VERSION="'\${pkgver}'" --compile --target=bun-linux-x64 --outfile=opencode ./src/index.ts`,
+    `  bun build --define SNOWCODE_TUI_PATH="'$(realpath ../tui/tui)'" --define SNOWCODE_VERSION="'\${pkgver}'" --compile --target=bun-linux-x64 --outfile=snow-code ./src/index.ts`,
     "}",
     "",
     "package() {",
