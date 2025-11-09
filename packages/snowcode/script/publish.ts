@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { $ } from "bun"
 import pkg from "../package.json"
-import { Script } from "@opencode-ai/script"
+import { Script } from "@groeimetai/snow-code-script"
 
 const dir = new URL("..", import.meta.url).pathname
 process.chdir(dir)

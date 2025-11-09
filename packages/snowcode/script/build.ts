@@ -10,7 +10,7 @@ process.chdir(dir)
 import { $ } from "bun"
 
 import pkg from "../package.json"
-import { Script } from "@opencode-ai/script"
+import { Script } from "@groeimetai/snow-code-script"
 
 const GOARCH: Record<string, string> = {
   arm64: "arm64",
@@ -44,7 +44,7 @@ for (const [os, arch] of targets) {
   console.log(`building ${os}-${arch}`)
   const name = `${pkg.name}-${os}-${arch}`
   await $`mkdir -p dist/${name}/bin`
-  await $`CGO_ENABLED=0 GOOS=${os} GOARCH=${GOARCH[arch]} go build -ldflags="-s -w -X main.Version=${pkg.version}" -o ../opencode/dist/${name}/bin/tui ../tui/cmd/opencode/main.go`
+  await $`CGO_ENABLED=0 GOOS=${os} GOARCH=${GOARCH[arch]} go build -ldflags="-s -w -X main.Version=${pkg.version}" -o ../snowcode/dist/${name}/bin/tui ../tui/cmd/snowcode/snowcode/main.go`
     .cwd("../tui")
     .quiet()
 
