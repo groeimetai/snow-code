@@ -65,23 +65,23 @@ jobs:
         run: |
           # Install from monorepo root to get all workspace dependencies
           bun install
-          # Also install in packages/opencode for local deps
-          cd packages/opencode
+          # Also install in packages/snowcode for local deps
+          cd packages/snowcode
           bun install --no-save
 
       - name: Build platform binary
         run: |
-          cd packages/opencode
+          cd packages/snowcode
           bun run build
         env:
           TARGET_OS: ${{ matrix.os }}
           TARGET_ARCH: ${{ matrix.arch }}
-          OPENCODE_CHANNEL: latest
+          SNOWCODE_CHANNEL: latest
 
       - name: Verify build
         shell: bash
         run: |
-          cd packages/opencode
+          cd packages/snowcode
           BINARY_NAME="snow-code-${{ matrix.os }}-${{ matrix.arch }}"
           if [ "${{ matrix.os }}" = "windows" ]; then
             BINARY_PATH="dist/@groeimetai/$BINARY_NAME/bin/snow-code.exe"
@@ -100,7 +100,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: snow-code-${{ matrix.os }}-${{ matrix.arch }}
-          path: packages/opencode/dist/@groeimetai/snow-code-${{ matrix.os }}-${{ matrix.arch }}/
+          path: packages/snowcode/dist/@groeimetai/snow-code-${{ matrix.os }}-${{ matrix.arch }}/
           retention-days: 7
 
   # Publish all binaries to npm
@@ -125,7 +125,7 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: packages/opencode/dist/@groeimetai/
+          path: packages/snowcode/dist/@groeimetai/
 
       - name: Setup npm authentication
         run: |
@@ -139,12 +139,12 @@ jobs:
           elif [[ $GITHUB_REF == refs/tags/v* ]]; then
             echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
           else
-            echo "version=$(cat packages/opencode/package.json | grep '"version"' | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')" >> $GITHUB_OUTPUT
+            echo "version=$(cat packages/snowcode/package.json | grep '"version"' | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')" >> $GITHUB_OUTPUT
           fi
 
       - name: Publish platform binaries
         run: |
-          cd packages/opencode/dist/@groeimetai
+          cd packages/snowcode/dist/@groeimetai
           for dir in snow-code-*; do
             if [ -d "$dir" ]; then
               echo "Publishing $dir..."
@@ -156,7 +156,7 @@ jobs:
 
       - name: Publish main package
         run: |
-          cd packages/opencode
+          cd packages/snowcode
           npm publish --access public || echo "Failed to publish main package (may already exist)"
 
       - name: Create GitHub Release
