@@ -682,8 +682,8 @@ export async function runEnterpriseFlow(): Promise<{ success: boolean }> {
 
     const enterpriseUrl = (await prompts.text({
       message: "Enterprise License Server URL (optional)",
-      placeholder: "https://portal.snow-flow.dev",
-      initialValue: "https://portal.snow-flow.dev",
+      placeholder: "https://enterprise.snow-flow.dev",
+      initialValue: "https://enterprise.snow-flow.dev",
       validate: (value) => {
         if (!value || value.trim() === "") return "URL is required"
         try {
