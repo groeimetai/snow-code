@@ -708,10 +708,9 @@ export async function runEnterpriseFlow(): Promise<{ success: boolean }> {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${licenseKey}`,
         },
-        body: JSON.stringify({
-          licenseKey,
-        }),
+        body: JSON.stringify({}),
         signal: AbortSignal.timeout(10000), // 10 second timeout
       })
 
