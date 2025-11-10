@@ -716,7 +716,8 @@ export async function runEnterpriseFlow(): Promise<{ success: boolean }> {
 
       const licenseData = await licenseResponse.json()
 
-      if (!licenseResponse.ok || !licenseData.success) {
+      // Check ONLY HTTP status (like old method) - portal backend doesn't return 'success' field
+      if (!licenseResponse.ok) {
         licenseSpinner.stop("License key validation failed", 1)
         prompts.log.error(licenseData.error || "Invalid license key")
         prompts.log.message("")
