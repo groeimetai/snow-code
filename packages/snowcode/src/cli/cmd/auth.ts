@@ -11,6 +11,7 @@ import { Global } from "../../global"
 import { Plugin } from "../../plugin"
 import { Instance } from "../../project/instance"
 import { ServiceNowOAuth } from "../../auth/servicenow-oauth"
+import { runProviderFlow, runServiceNowFlow, runEnterpriseFlow } from "./auth-flows"
 
 /**
  * Generate a unique machine ID for device binding
@@ -148,7 +149,14 @@ export const AuthCommand = cmd({
   command: "auth",
   describe: "manage credentials",
   builder: (yargs) =>
-    yargs.command(AuthLoginCommand).command(AuthLogoutCommand).command(AuthListCommand).demandCommand(),
+    yargs
+      .command(AuthLoginCommand)
+      .command(AuthProviderCommand)
+      .command(AuthServiceNowCommand)
+      .command(AuthEnterpriseCommand)
+      .command(AuthLogoutCommand)
+      .command(AuthListCommand)
+      .demandCommand(),
   async handler() {},
 })
 
@@ -199,9 +207,118 @@ export const AuthListCommand = cmd({
   },
 })
 
+/**
+ * Provider authentication command
+ * Handles LLM provider selection and authentication (Claude, GPT, Gemini, etc.)
+ */
+export const AuthProviderCommand = cmd({
+  command: "provider",
+  describe: "configure LLM provider (Claude, GPT, Gemini, etc.)",
+  async handler() {
+    await Instance.provide({
+      directory: process.cwd(),
+      async fn() {
+        UI.empty()
+        prompts.intro("Configure LLM Provider")
+
+        const result = await runProviderFlow()
+
+        if (result.success) {
+          prompts.log.message("")
+          prompts.log.success("✅ Provider configured successfully")
+          prompts.log.message("")
+          prompts.log.info("Next steps:")
+          prompts.log.message("  • Run: snow-code auth servicenow - Configure ServiceNow")
+          prompts.log.message("  • Run: snow-code auth enterprise - Configure Enterprise (optional)")
+          prompts.log.message('  • Run: snow-flow swarm "<objective>" - Start developing')
+          prompts.outro("Done")
+        } else {
+          prompts.log.error("Provider configuration failed")
+          prompts.outro("Done")
+        }
+
+        await Instance.dispose()
+        process.exit(result.success ? 0 : 1)
+      },
+    })
+  },
+})
+
+/**
+ * ServiceNow authentication command
+ * Handles ServiceNow instance OAuth or basic authentication
+ */
+export const AuthServiceNowCommand = cmd({
+  command: "servicenow",
+  describe: "configure ServiceNow instance OAuth credentials",
+  async handler() {
+    await Instance.provide({
+      directory: process.cwd(),
+      async fn() {
+        UI.empty()
+        prompts.intro("Configure ServiceNow")
+
+        const result = await runServiceNowFlow()
+
+        if (result.success) {
+          prompts.log.message("")
+          prompts.log.success("✅ ServiceNow configured successfully")
+          prompts.log.message("")
+          prompts.log.info("Next steps:")
+          prompts.log.message("  • Run: snow-code auth enterprise - Configure Enterprise (optional)")
+          prompts.log.message('  • Run: snow-flow swarm "<objective>" - Start developing')
+          prompts.outro("Done")
+        } else {
+          prompts.log.error("ServiceNow configuration failed")
+          prompts.outro("Done")
+        }
+
+        await Instance.dispose()
+        process.exit(result.success ? 0 : 1)
+      },
+    })
+  },
+})
+
+/**
+ * Enterprise authentication command
+ * Handles Snow-Flow Enterprise license, user registration/login, and integrations
+ */
+export const AuthEnterpriseCommand = cmd({
+  command: "enterprise",
+  describe: "configure Snow-Flow Enterprise license (Jira, Azure DevOps, Confluence)",
+  async handler() {
+    await Instance.provide({
+      directory: process.cwd(),
+      async fn() {
+        UI.empty()
+        prompts.intro("Configure Snow-Flow Enterprise")
+
+        const result = await runEnterpriseFlow()
+
+        if (result.success) {
+          prompts.log.message("")
+          prompts.log.success("✅ Enterprise configured successfully")
+          prompts.log.message("")
+          prompts.log.info("Next steps:")
+          prompts.log.message('  • Run: snow-flow swarm "<objective>" - Start developing with enterprise tools')
+          prompts.log.message("  • Run: snow-flow portal - Open enterprise portal")
+          prompts.outro("Done")
+        } else {
+          prompts.log.error("Enterprise configuration failed")
+          prompts.outro("Done")
+        }
+
+        await Instance.dispose()
+        process.exit(result.success ? 0 : 1)
+      },
+    })
+  },
+})
+
 export const AuthLoginCommand = cmd({
   command: "login [url]",
-  describe: "log in to a provider",
+  describe: "complete authentication: Provider + ServiceNow + Enterprise",
   builder: (yargs) =>
     yargs.positional("url", {
       describe: "opencode auth provider",
@@ -212,1717 +329,77 @@ export const AuthLoginCommand = cmd({
       directory: process.cwd(),
       async fn() {
         UI.empty()
-        prompts.intro("Add credential")
+        prompts.intro("Complete Authentication Flow")
+
+        // Handle wellknown OAuth provider (e.g., GitHub OAuth)
         if (args.url) {
-          const wellknown = await fetch(`${args.url}/.well-known/opencode`).then((x) => x.json())
-          prompts.log.info(`Running \`${wellknown.auth.command.join(" ")}\``)
-          const proc = Bun.spawn({
-            cmd: wellknown.auth.command,
-            stdout: "pipe",
-          })
-          const exit = await proc.exited
-          if (exit !== 0) {
-            prompts.log.error("Failed")
-            prompts.outro("Done")
-            await Instance.dispose()
-            process.exit(0)
-          }
-          const token = await new Response(proc.stdout).text()
-          await Auth.set(args.url, {
-            type: "wellknown",
-            key: wellknown.auth.env,
-            token: token.trim(),
-          })
-          prompts.log.success("Logged into " + args.url)
-          prompts.outro("Done")
-          await Instance.dispose()
-          process.exit(0)
-        }
-        await ModelsDev.refresh().catch(() => {})
-        const providers = await ModelsDev.get()
-        const priority: Record<string, number> = {
-          anthropic: 0,
-          "github-copilot": 1,
-          openai: 2,
-          google: 3,
-          openrouter: 4,
-          vercel: 5,
-          opencode: 99,
-        }
-        let provider = await prompts.autocomplete({
-          message: "Select provider",
-          maxItems: 10,
-          options: [
-            ...pipe(
-              providers,
-              values(),
-              sortBy(
-                (x) => priority[x.id] ?? 99,
-                (x) => x.name ?? x.id,
-              ),
-              map((x) => ({
-                label: x.name,
-                value: x.id,
-                hint: priority[x.id] === 0 ? "recommended" : undefined,
-              })),
-            ),
-            {
-              value: "other",
-              label: "Other",
-            },
-          ],
-        })
-
-        if (prompts.isCancel(provider)) throw new UI.CancelledError()
-
-        // Handle ServiceNow authentication
-        if (provider === "servicenow") {
-          prompts.log.step("ServiceNow Authentication")
-
-          const instance = (await prompts.text({
-            message: "ServiceNow instance URL",
-            placeholder: "dev12345.service-now.com",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "Instance URL is required"
-              const cleaned = value.replace(/^https?:\/\//, "").replace(/\/$/, "")
-              if (
-                !cleaned.includes(".service-now.com") &&
-                !cleaned.includes("localhost") &&
-                !cleaned.includes("127.0.0.1")
-              ) {
-                return "Must be a ServiceNow domain (e.g., dev12345.service-now.com)"
-              }
-            },
-          })) as string
-
-          if (prompts.isCancel(instance)) throw new UI.CancelledError()
-
-          const authMethod = (await prompts.select({
-            message: "Authentication method",
-            options: [
-              { value: "oauth", label: "OAuth 2.0", hint: "recommended" },
-              { value: "basic", label: "Basic Auth", hint: "username/password" },
-            ],
-          })) as string
-
-          if (prompts.isCancel(authMethod)) throw new UI.CancelledError()
-
-          if (authMethod === "oauth") {
-            const clientId = (await prompts.text({
-              message: "OAuth Client ID",
-              placeholder: "32-character hex string from ServiceNow",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Client ID is required"
-                if (value.length < 32) return "Client ID too short (expected 32+ characters)"
-              },
-            })) as string
-
-            if (prompts.isCancel(clientId)) throw new UI.CancelledError()
-
-            const clientSecret = (await prompts.password({
-              message: "OAuth Client Secret",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Client Secret is required"
-                if (value.length < 32) return "Client Secret too short (expected 32+ characters)"
-              },
-            })) as string
-
-            if (prompts.isCancel(clientSecret)) throw new UI.CancelledError()
-
-            // Run full OAuth flow
-            const oauth = new ServiceNowOAuth()
-            const result = await oauth.authenticate({
-              instance,
-              clientId,
-              clientSecret,
-            })
-
-            if (result.success) {
-              // Write to .env file
-              await updateEnvFile([
-                { key: "SNOW_INSTANCE", value: instance },
-                { key: "SNOW_AUTH_METHOD", value: "oauth" },
-                { key: "SNOW_CLIENT_ID", value: clientId },
-                { key: "SNOW_CLIENT_SECRET", value: clientSecret },
-              ])
-              // Update SnowCode MCP configs
-              await updateSnowCodeMCPConfigs(instance, clientId, clientSecret)
-              prompts.log.success("ServiceNow authentication successful")
-              prompts.log.info("Credentials saved to .env and SnowCode configs")
-            } else {
-              prompts.log.error(`Authentication failed: ${result.error}`)
-            }
-          } else {
-            // Basic auth
-            const username = (await prompts.text({
-              message: "ServiceNow username",
-              placeholder: "admin",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Username is required"
-              },
-            })) as string
-
-            if (prompts.isCancel(username)) throw new UI.CancelledError()
-
-            const password = (await prompts.password({
-              message: "ServiceNow password",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Password is required"
-              },
-            })) as string
-
-            if (prompts.isCancel(password)) throw new UI.CancelledError()
-
-            // Save to Auth store
-            await Auth.set("servicenow", {
-              type: "servicenow-basic",
-              instance,
-              username,
-              password,
-            })
-
-            // Write to .env file
-            await updateEnvFile([
-              { key: "SNOW_INSTANCE", value: instance },
-              { key: "SNOW_AUTH_METHOD", value: "basic" },
-              { key: "SNOW_USERNAME", value: username },
-              { key: "SNOW_PASSWORD", value: password },
-            ])
-            // Note: Basic auth doesn't use OAuth, so we update MCP configs with instance only
-            // MCP servers will use username/password from .env instead
-            await updateSnowCodeMCPConfigs(instance, "", "")
-
-            prompts.log.success("ServiceNow credentials saved")
-            prompts.log.info("Credentials saved to .env and SnowCode configs")
-          }
-
-          // After ServiceNow setup, ask about Enterprise (optional)
-          prompts.log.message("")
-          const configureEnterprise = await prompts.confirm({
-            message: "Configure Snow-Flow Enterprise? (optional)",
-            initialValue: false,
-          })
-
-          if (prompts.isCancel(configureEnterprise) || !configureEnterprise) {
-            prompts.log.message("")
-            prompts.log.success("✅ Authentication complete!")
-            prompts.log.message("")
-            prompts.log.info("Next steps:")
-            prompts.log.message("")
-            prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
-            prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
-            prompts.outro("Done")
-            await Instance.dispose()
-            process.exit(0)
-          }
-
-          // User wants Enterprise, set provider and fall through
-          prompts.log.message("")
-          provider = "enterprise"
-          // Fall through to Enterprise handler below
-        }
-
-        // Handle Enterprise authentication
-        if (provider === "enterprise") {
-          prompts.log.step("Snow-Flow Enterprise Setup")
-
-          const licenseKey = (await prompts.password({
-            message: "Enterprise License Key (format: SNOW-ENT-*-* or SNOW-SI-*-*)",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "License key is required"
-              if (!value.startsWith("SNOW-ENT-") && !value.startsWith("SNOW-SI-")) {
-                return "Invalid license key format (should start with SNOW-ENT- or SNOW-SI-)"
-              }
-            },
-          })) as string
-
-          if (prompts.isCancel(licenseKey)) throw new UI.CancelledError()
-
-          const enterpriseUrl = (await prompts.text({
-            message: "Enterprise License Server URL (optional)",
-            placeholder: "https://portal.snow-flow.dev",
-            initialValue: "https://portal.snow-flow.dev",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "URL is required"
-              try {
-                new URL(value)
-              } catch {
-                return "Invalid URL format (must include https://)"
-              }
-            },
-          })) as string
-
-          if (prompts.isCancel(enterpriseUrl)) throw new UI.CancelledError()
-
-          // ✅ VALIDATE LICENSE KEY IMMEDIATELY (before user account setup)
-          prompts.log.message("")
-          const licenseSpinner = prompts.spinner()
-          licenseSpinner.start("Validating license key...")
-
           try {
-            const licenseResponse = await fetch(`${enterpriseUrl}/api/license/validate`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                licenseKey,
-              }),
-              signal: AbortSignal.timeout(10000), // 10 second timeout
+            const wellknown = await fetch(`${args.url}/.well-known/opencode`).then((x) => x.json())
+            prompts.log.info(`Running \`${wellknown.auth.command.join(" ")}\``)
+            const proc = Bun.spawn({
+              cmd: wellknown.auth.command,
+              stdout: "pipe",
             })
-
-            const licenseData = await licenseResponse.json()
-
-            if (!licenseResponse.ok || !licenseData.success) {
-              licenseSpinner.stop("License key validation failed", 1)
-              prompts.log.error(licenseData.error || "Invalid license key")
-              prompts.log.message("")
-              prompts.log.warn("Please check your license key and try again")
-              prompts.log.info("License key format: SNOW-ENT-*-* or SNOW-SI-*-*")
-              prompts.outro("Done")
-              await Instance.dispose()
-              process.exit(1)
-            }
-
-            licenseSpinner.stop("License key valid!")
-
-            // Show license details if available
-            if (licenseData.license) {
-              prompts.log.message("")
-              prompts.log.success(`License: ${licenseData.license.type || 'Enterprise'}`)
-              if (licenseData.license.company) {
-                prompts.log.info(`Company: ${licenseData.license.company}`)
-              }
-              if (licenseData.license.expiresAt) {
-                const expiryDate = new Date(licenseData.license.expiresAt)
-                prompts.log.info(`Expires: ${expiryDate.toLocaleDateString()}`)
-              }
-            }
-          } catch (licenseError: any) {
-            licenseSpinner.stop("License validation failed", 1)
-            prompts.log.error(`Connection error: ${licenseError.message}`)
-            prompts.log.message("")
-            prompts.log.warn("Unable to validate license key with enterprise server")
-            prompts.log.info(`URL: ${enterpriseUrl}/api/license/validate`)
-
-            const continueAnyway = await prompts.confirm({
-              message: "Continue anyway? (License will be validated during registration)",
-              initialValue: false,
-            })
-
-            if (prompts.isCancel(continueAnyway) || !continueAnyway) {
-              prompts.outro("Done")
-              await Instance.dispose()
-              process.exit(1)
-            }
-
-            prompts.log.warn("Continuing without license validation...")
-          }
-
-          // Test connection to enterprise server first
-          prompts.log.message("")
-          const testSpinner = prompts.spinner()
-          testSpinner.start("Testing connection to enterprise server...")
-
-          try {
-            const testResponse = await fetch(`${enterpriseUrl}/api/health`, {
-              method: "GET",
-              signal: AbortSignal.timeout(5000), // 5 second timeout
-            })
-            testSpinner.stop("Connection successful!")
-          } catch (testError: any) {
-            testSpinner.stop("Connection failed", 1)
-            prompts.log.warn(`Unable to reach ${enterpriseUrl}`)
-            prompts.log.message("")
-
-            const skipEnterprise = await prompts.confirm({
-              message: "Enterprise server is not accessible. Skip enterprise setup?",
-              initialValue: true,
-            })
-
-            if (prompts.isCancel(skipEnterprise) || skipEnterprise) {
-              prompts.log.message("")
-              prompts.log.success("✅ Authentication complete! (without enterprise features)")
-              prompts.log.message("")
-              prompts.log.info("Next steps:")
-              prompts.log.message("")
-              prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
-              prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
+            const exit = await proc.exited
+            if (exit !== 0) {
+              prompts.log.error("Failed")
               prompts.outro("Done")
               await Instance.dispose()
               process.exit(0)
             }
-
-            // User wants to continue anyway - proceed with setup
-            prompts.log.warn("Continuing with enterprise setup...")
-          }
-
-          // User Registration/Login Flow
-          prompts.log.message("")
-          prompts.log.step("User Account Setup")
-
-          const accountAction = await prompts.select({
-            message: "Do you want to login or register?",
-            options: [
-              {
-                value: "register",
-                label: "Register",
-                hint: "Create a new user account",
-              },
-              {
-                value: "login",
-                label: "Login",
-                hint: "Login with existing account",
-              },
-            ],
-          })
-
-          if (prompts.isCancel(accountAction)) throw new UI.CancelledError()
-
-          let username: string
-          let email: string | undefined
-          let password: string
-          let role: "developer" | "stakeholder" | "admin"
-          let authData: any
-
-          // Generate machine ID for device binding
-          const machineId = generateMachineId()
-
-          if (accountAction === "register") {
-            // New user registration
-            prompts.log.info("Creating your user account...")
-
-            username = (await prompts.text({
-              message: "Choose a username",
-              placeholder: "john.doe",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Username is required"
-                if (value.length < 3) return "Username must be at least 3 characters"
-              },
-            })) as string
-
-            if (prompts.isCancel(username)) throw new UI.CancelledError()
-
-            email = (await prompts.text({
-              message: "Your email",
-              placeholder: "john.doe@company.com",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Email is required"
-                if (!value.includes("@")) return "Please enter a valid email"
-              },
-            })) as string
-
-            if (prompts.isCancel(email)) throw new UI.CancelledError()
-
-            password = (await prompts.password({
-              message: "Choose a password",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Password is required"
-                if (value.length < 8) return "Password must be at least 8 characters"
-              },
-            })) as string
-
-            if (prompts.isCancel(password)) throw new UI.CancelledError()
-
-            const passwordConfirm = (await prompts.password({
-              message: "Confirm password",
-              validate: (value) => {
-                if (value !== password) return "Passwords do not match"
-              },
-            })) as string
-
-            if (prompts.isCancel(passwordConfirm)) throw new UI.CancelledError()
-
-            const roleChoice = (await prompts.select({
-              message: "Select your role",
-              options: [
-                {
-                  value: "developer",
-                  label: "Developer",
-                  hint: "Full MCP access + ServiceNow tools",
-                },
-                {
-                  value: "stakeholder",
-                  label: "Stakeholder",
-                  hint: "Portal-only access for monitoring",
-                },
-              ],
-            })) as string
-
-            if (prompts.isCancel(roleChoice)) throw new UI.CancelledError()
-            role = roleChoice as "developer" | "stakeholder" | "admin"
-
-            prompts.log.info(`Machine ID: ${machineId.substring(0, 16)}...`)
-
-            // Register with enterprise backend
-            prompts.log.message("")
-            const spinner = prompts.spinner()
-            spinner.start("Registering user account...")
-
-            try {
-              const response = await fetch(`${enterpriseUrl}/api/user-auth/register`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  licenseKey,
-                  username,
-                  email,
-                  password,
-                  role,
-                }),
-              })
-
-              authData = await response.json()
-
-              if (!response.ok || !authData.success) {
-                spinner.stop("Registration failed", 1)
-                prompts.log.error(authData.error || "Unknown error")
-                prompts.outro("Done")
-                await Instance.dispose()
-                process.exit(1)
-              }
-
-              spinner.stop("Registration successful!")
-            } catch (error: any) {
-              prompts.log.error(`Connection error: ${error.message}`)
-              prompts.log.message("")
-              prompts.log.warn("Unable to connect to enterprise server")
-              prompts.log.info(`URL: ${enterpriseUrl}/api/user-auth/register`)
-              prompts.outro("Done")
-              await Instance.dispose()
-              process.exit(1)
-            }
-          } else {
-            // Existing user login
-            prompts.log.info("Logging in with existing account...")
-
-            username = (await prompts.text({
-              message: "Your username",
-              placeholder: "john.doe",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Username is required"
-              },
-            })) as string
-
-            if (prompts.isCancel(username)) throw new UI.CancelledError()
-
-            password = (await prompts.password({
-              message: "Your password",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Password is required"
-              },
-            })) as string
-
-            if (prompts.isCancel(password)) throw new UI.CancelledError()
-
-            prompts.log.info(`Machine ID: ${machineId.substring(0, 16)}...`)
-
-            // Login with enterprise backend
-            prompts.log.message("")
-            const spinner = prompts.spinner()
-            spinner.start("Authenticating...")
-
-            try {
-              const response = await fetch(`${enterpriseUrl}/api/user-auth/login`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  licenseKey,
-                  username,
-                  password,
-                }),
-              })
-
-              authData = await response.json()
-
-              if (!response.ok || !authData.success) {
-                spinner.stop("Authentication failed", 1)
-                prompts.log.error(authData.error || "Invalid username or password")
-                prompts.outro("Done")
-                await Instance.dispose()
-                process.exit(1)
-              }
-
-              spinner.stop("Authentication successful!")
-
-              // Extract role and email from response
-              role = authData.user?.role || "developer"
-              email = authData.user?.email
-            } catch (error: any) {
-              prompts.log.error(`Connection error: ${error.message}`)
-              prompts.log.message("")
-              prompts.log.warn("Unable to connect to enterprise server")
-              prompts.log.info(`URL: ${enterpriseUrl}/api/user-auth/login`)
-              prompts.outro("Done")
-              await Instance.dispose()
-              process.exit(1)
-            }
-          }
-
-          // Store enterprise auth with user info
-          await Auth.set("enterprise", {
-            type: "enterprise",
-            licenseKey,
-            enterpriseUrl: enterpriseUrl || undefined,
-            token: authData.token,
-            sessionToken: authData.sessionToken,
-            username,
-            email,
-            role: authData.user?.role || role,
-            machineId,
-          })
-
-          prompts.log.success(`Welcome, ${username}!`)
-          prompts.log.info(`Role: ${authData.user?.role || role}`)
-          if (authData.customer?.company) {
-            prompts.log.info(`Company: ${authData.customer.company}`)
-          }
-          if (authData.user?.activeSessions !== undefined) {
-            prompts.log.info(`Active sessions: ${authData.user.activeSessions} (max 1 per user)`)
-          }
-
-          // Optional integrations
-          const configureIntegrations = await prompts.confirm({
-            message: "Configure optional integrations (Jira, Azure DevOps)?",
-            initialValue: false,
-          })
-
-          let jiraBaseUrl: string | undefined
-          let jiraEmail: string | undefined
-          let jiraApiToken: string | undefined
-
-          if (!prompts.isCancel(configureIntegrations) && configureIntegrations) {
-            jiraBaseUrl = (await prompts.text({
-              message: "Jira Base URL (optional)",
-              placeholder: "https://company.atlassian.net",
-            })) as string
-
-            if (!prompts.isCancel(jiraBaseUrl) && jiraBaseUrl) {
-              jiraEmail = (await prompts.text({
-                message: "Jira Email",
-                placeholder: "admin@company.com",
-              })) as string
-
-              if (!prompts.isCancel(jiraEmail)) {
-                jiraApiToken = (await prompts.password({
-                  message: "Jira API Token",
-                })) as string
-              }
-            }
-          }
-
-          // Save to Auth store
-          await Auth.set("enterprise", {
-            type: "enterprise",
-            licenseKey,
-            enterpriseUrl: enterpriseUrl || undefined,
-            jiraBaseUrl: jiraBaseUrl || undefined,
-            jiraEmail: jiraEmail || undefined,
-            jiraApiToken: jiraApiToken || undefined,
-          })
-
-          // Write to .env file
-          const envUpdates: Array<{ key: string; value: string }> = [
-            { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: licenseKey },
-          ]
-          if (enterpriseUrl) envUpdates.push({ key: "SNOW_ENTERPRISE_URL", value: enterpriseUrl })
-          if (jiraBaseUrl) envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: jiraBaseUrl })
-          if (jiraEmail) envUpdates.push({ key: "SNOW_JIRA_EMAIL", value: jiraEmail })
-          if (jiraApiToken) envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: jiraApiToken })
-          await updateEnvFile(envUpdates)
-
-          // Add snow-flow-enterprise MCP server to SnowCode config
-          const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
-          const configPath = path.join(globalSnowCodeDir, "snowcode.json")
-          try {
-            const file = Bun.file(configPath)
-            if (await file.exists()) {
-              const configText = await file.text()
-              const config = JSON.parse(configText)
-              if (!config.mcp) config.mcp = {}
-              config.mcp["snow-flow-enterprise"] = {
-                type: "remote",
-                url: "https://enterprise.snow-flow.dev/mcp/sse",
-                headers: { Authorization: `Bearer ${licenseKey}` },
-                enabled: true,
-              }
-              await Bun.write(configPath, JSON.stringify(config, null, 2))
-              prompts.log.info("Added snow-flow-enterprise MCP server to config")
-            }
+            const token = await new Response(proc.stdout).text()
+            await Auth.set(args.url, {
+              type: "wellknown",
+              key: wellknown.auth.env,
+              token: token.trim(),
+            })
+            prompts.log.success("Logged into " + args.url)
+            prompts.outro("Done")
+            await Instance.dispose()
+            process.exit(0)
           } catch (error: any) {
-            // Silently skip enterprise MCP configuration errors
-          }
-
-          prompts.log.message("")
-          prompts.log.success("Enterprise configuration saved")
-          prompts.log.info("Credentials saved to .env file")
-          prompts.log.message("")
-          prompts.log.success("✅ Authentication complete!")
-          prompts.log.message("")
-          prompts.log.info("Next steps:")
-          prompts.log.message("")
-          prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
-          prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
-          prompts.outro("Done")
-          await Instance.dispose()
-          process.exit(0)
-        }
-
-        // Model selection step - integrated into the auth flow
-        let selectedModel: string | undefined
-        if (
-          provider !== "other" &&
-          provider !== "amazon-bedrock" &&
-          provider !== "google-vertex" &&
-          provider !== "servicenow" &&
-          provider !== "enterprise"
-        ) {
-          const providerData = providers[provider]
-          if (providerData && providerData.models && Object.keys(providerData.models).length > 0) {
-            // Custom sorting for Anthropic: version-based (4.5 → 4.1 → 4 → 3.5 → 3)
-            const extractAnthropicVersion = (model: any): number => {
-              const match = model.id.match(/claude-(?:opus|sonnet|haiku)-(\d+)(?:\.(\d+))?/)
-              if (!match) return 0
-              const major = parseInt(match[1]) || 0
-              const minor = parseInt(match[2]) || 0
-              return major * 10 + minor
-            }
-
-            // Custom sorting for OpenAI: version-based (gpt-5 → gpt-4.1 → gpt-4o → o3 → o1)
-            const extractOpenAIVersion = (model: any): number => {
-              // GPT-5 family (highest priority)
-              if (model.id.includes('gpt-5')) {
-                if (model.id.includes('pro')) return 5100
-                if (model.id.includes('codex')) return 5090
-                if (model.id === 'gpt-5') return 5080
-                if (model.id.includes('mini')) return 5070
-                if (model.id.includes('nano')) return 5060
-                return 5000
-              }
-              // GPT-4.1 family
-              if (model.id.includes('gpt-4.1')) {
-                if (model.id.includes('mini')) return 4110
-                return 4120
-              }
-              // GPT-4o family (4.x = 4000 + x*10)
-              if (model.id.includes('gpt-4o')) {
-                if (model.id.includes('mini')) return 4080
-                return 4100
-              }
-              // GPT-4 family
-              if (model.id.includes('gpt-4')) {
-                if (model.id.includes('turbo')) return 4050
-                return 4040
-              }
-              // O-series (o4 > o3 > o1)
-              if (model.id.includes('o4')) {
-                if (model.id.includes('mini')) return 3950
-                return 3960
-              }
-              if (model.id.includes('o3')) {
-                if (model.id.includes('pro')) return 3920
-                if (model.id.includes('mini')) return 3900
-                if (model.id.includes('deep-research')) return 3910
-                return 3915
-              }
-              if (model.id.includes('o1')) {
-                if (model.id.includes('pro')) return 3850
-                if (model.id.includes('mini')) return 3840
-                if (model.id.includes('preview')) return 3845
-                return 3842
-              }
-              // GPT-3.5
-              if (model.id.includes('gpt-3.5')) return 3500
-              // Codex
-              if (model.id.includes('codex')) return 3000
-              // Default: use release date as fallback
-              return parseInt(model.release_date.replace(/-/g, '')) || 0
-            }
-
-            // Custom sorting for Google (Gemini): newer versions first
-            const extractGeminiVersion = (model: any): number => {
-              const match = model.id.match(/gemini-(\d+)(?:\.(\d+))?/)
-              if (!match) {
-                // Fallback to release date
-                return parseInt(model.release_date.replace(/-/g, '')) || 0
-              }
-              const major = parseInt(match[1]) || 0
-              const minor = parseInt(match[2]) || 0
-              return major * 100 + minor
-            }
-
-            const getSortKey = (provider: string) => {
-              if (provider === "anthropic") return (x: any) => -extractAnthropicVersion(x)
-              if (provider === "openai") return (x: any) => -extractOpenAIVersion(x)
-              if (provider === "google") return (x: any) => -extractGeminiVersion(x)
-              return (x: any) => -parseInt(x.release_date.replace(/-/g, '') || '0')
-            }
-
-            const modelOptions = pipe(
-              providerData.models,
-              values(),
-              sortBy(
-                (x) => (x.status === "alpha" || x.status === "beta" ? 1 : 0),
-                getSortKey(provider),
-              ),
-              map((model) => {
-                const contextWindow = model.limit.context ? ` (${(model.limit.context / 1000).toFixed(0)}K context)` : ""
-                const status = model.status ? ` [${model.status}]` : ""
-                return {
-                  label: model.name + contextWindow + status,
-                  value: model.id,
-                  hint: model.experimental ? "experimental" : undefined,
-                }
-              }),
-            )
-
-            if (modelOptions.length > 0) {
-              const modelChoice = await prompts.autocomplete({
-                message: `Select default model for ${providerData.name}`,
-                maxItems: 10,
-                options: modelOptions,
-              })
-
-              if (!prompts.isCancel(modelChoice)) {
-                selectedModel = `${provider}/${modelChoice}`
-                prompts.log.success(`Default model: ${providerData.models[modelChoice]?.name}`)
-              }
-            }
-          }
-        }
-
-        const plugin = await Plugin.list().then((x) => x.find((x) => x.auth?.provider === provider))
-        if (plugin && plugin.auth) {
-          let index = 0
-          if (plugin.auth.methods.length > 1) {
-            const method = await prompts.select({
-              message: "Login method",
-              options: [
-                ...plugin.auth.methods.map((x: any, index: number) => ({
-                  label: x.label,
-                  value: index.toString(),
-                })),
-              ],
-            })
-            if (prompts.isCancel(method)) throw new UI.CancelledError()
-            index = parseInt(method as string)
-          }
-          const method = plugin.auth.methods[index]
-          if (method.type === "oauth") {
-            await new Promise((resolve) => setTimeout(resolve, 10))
-            const authorize = await method.authorize()
-
-            if (authorize.url) {
-              prompts.log.info("Go to: " + authorize.url)
-            }
-
-            if (authorize.method === "auto") {
-              if (authorize.instructions) {
-                prompts.log.info(authorize.instructions)
-              }
-              const spinner = prompts.spinner()
-              spinner.start("Waiting for authorization...")
-              const result = await authorize.callback()
-              if (result.type === "failed") {
-                spinner.stop("Failed to authorize", 1)
-              }
-              if (result.type === "success") {
-                if ("refresh" in result) {
-                  await Auth.set(provider, {
-                    type: "oauth",
-                    refresh: result.refresh,
-                    access: result.access,
-                    expires: result.expires,
-                  })
-                }
-                if ("key" in result) {
-                  await Auth.set(provider, {
-                    type: "api",
-                    key: result.key,
-                  })
-                }
-                spinner.stop("Login successful")
-              }
-            }
-
-            if (authorize.method === "code") {
-              const code = await prompts.text({
-                message: "Paste the authorization code here: ",
-                validate: (x) => (x && x.length > 0 ? undefined : "Required"),
-              })
-              if (prompts.isCancel(code)) throw new UI.CancelledError()
-              const result = await authorize.callback(code)
-              if (result.type === "failed") {
-                prompts.log.error("Failed to authorize")
-              }
-              if (result.type === "success") {
-                if ("refresh" in result) {
-                  await Auth.set(provider, {
-                    type: "oauth",
-                    refresh: result.refresh,
-                    access: result.access,
-                    expires: result.expires,
-                  })
-                }
-                if ("key" in result) {
-                  await Auth.set(provider, {
-                    type: "api",
-                    key: result.key,
-                  })
-                }
-                prompts.log.success("Login successful")
-              }
-            }
-
-            // Save selected model to global config if chosen
-            if (selectedModel) {
-              try {
-                const globalConfigPath = path.join(os.homedir(), ".config", "snowcode", "config.json")
-                let globalConfig = {}
-                try {
-                  const file = Bun.file(globalConfigPath)
-                  if (await file.exists()) {
-                    globalConfig = JSON.parse(await file.text())
-                  }
-                } catch {}
-                globalConfig = { ...globalConfig, model: selectedModel }
-                await Bun.write(globalConfigPath, JSON.stringify(globalConfig, null, 2))
-                prompts.log.info(`Saved default model: ${selectedModel}`)
-              } catch (err) {
-                prompts.log.warn("Could not save model preference to config")
-              }
-            }
-            // Automatically continue to ServiceNow setup (required for snow-flow)
-            prompts.log.message("")
-            prompts.log.step("ServiceNow Configuration")
-            prompts.log.info("Snow-Flow requires ServiceNow connection for development")
-            prompts.log.message("")
-
-            // Run ServiceNow setup directly (handler was already passed earlier)
-            const snowInstance = (await prompts.text({
-              message: "ServiceNow instance URL",
-              placeholder: "dev12345.service-now.com",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Instance URL is required"
-                const cleaned = value.replace(/^https?:\/\//, "").replace(/\/$/, "")
-                if (
-                  !cleaned.includes(".service-now.com") &&
-                  !cleaned.includes("localhost") &&
-                  !cleaned.includes("127.0.0.1")
-                ) {
-                  return "Must be a ServiceNow domain (e.g., dev12345.service-now.com)"
-                }
-              },
-            })) as string
-
-            if (prompts.isCancel(snowInstance)) {
-              prompts.outro("Done")
-              await Instance.dispose()
-              return
-            }
-
-            const snowAuthMethod = (await prompts.select({
-              message: "Authentication method",
-              options: [
-                { value: "oauth", label: "OAuth 2.0", hint: "recommended" },
-                { value: "basic", label: "Basic Auth", hint: "username/password" },
-              ],
-            })) as string
-
-            if (prompts.isCancel(snowAuthMethod)) {
-              prompts.outro("Done")
-              await Instance.dispose()
-              return
-            }
-
-            if (snowAuthMethod === "oauth") {
-              const snowClientId = (await prompts.text({
-                message: "OAuth Client ID",
-                placeholder: "32-character hex string from ServiceNow",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Client ID is required"
-                  if (value.length < 32) return "Client ID too short (expected 32+ characters)"
-                },
-              })) as string
-
-              if (prompts.isCancel(snowClientId)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              const snowClientSecret = (await prompts.password({
-                message: "OAuth Client Secret",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Client Secret is required"
-                  if (value.length < 32) return "Client Secret too short (expected 32+ characters)"
-                },
-              })) as string
-
-              if (prompts.isCancel(snowClientSecret)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              // Run full OAuth flow
-              const oauth = new ServiceNowOAuth()
-              const result = await oauth.authenticate({
-                instance: snowInstance,
-                clientId: snowClientId,
-                clientSecret: snowClientSecret,
-              })
-
-              if (result.success) {
-                // Write to .env file
-                await updateEnvFile([
-                  { key: "SNOW_INSTANCE", value: snowInstance },
-                  { key: "SNOW_AUTH_METHOD", value: "oauth" },
-                  { key: "SNOW_CLIENT_ID", value: snowClientId },
-                  { key: "SNOW_CLIENT_SECRET", value: snowClientSecret },
-                ])
-                // Update SnowCode MCP configs
-                await updateSnowCodeMCPConfigs(snowInstance, snowClientId, snowClientSecret)
-                prompts.log.success("ServiceNow authentication successful")
-                prompts.log.info("Credentials saved to .env and SnowCode configs")
-              } else {
-                prompts.log.error(`Authentication failed: ${result.error}`)
-              }
-            } else {
-              // Basic auth
-              const snowUsername = (await prompts.text({
-                message: "ServiceNow username",
-                placeholder: "admin",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Username is required"
-                },
-              })) as string
-
-              if (prompts.isCancel(snowUsername)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              const snowPassword = (await prompts.password({
-                message: "ServiceNow password",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Password is required"
-                },
-              })) as string
-
-              if (prompts.isCancel(snowPassword)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              // Save to Auth store
-              await Auth.set("servicenow", {
-                type: "servicenow-basic",
-                instance: snowInstance,
-                username: snowUsername,
-                password: snowPassword,
-              })
-
-              // Write to .env file
-              await updateEnvFile([
-                { key: "SNOW_INSTANCE", value: snowInstance },
-                { key: "SNOW_AUTH_METHOD", value: "basic" },
-                { key: "SNOW_USERNAME", value: snowUsername },
-                { key: "SNOW_PASSWORD", value: snowPassword },
-              ])
-              // Note: Basic auth doesn't use OAuth, so we update MCP configs with instance only
-              await updateSnowCodeMCPConfigs(snowInstance, "", "")
-
-              prompts.log.success("ServiceNow credentials saved")
-              prompts.log.info("Credentials saved to .env and SnowCode configs")
-            }
-
-            // After ServiceNow setup, ask about Enterprise (optional)
-            prompts.log.message("")
-            const configureEnterpriseAfterLLM = await prompts.confirm({
-              message: "Configure Snow-Flow Enterprise? (optional)",
-              initialValue: false,
-            })
-
-            if (prompts.isCancel(configureEnterpriseAfterLLM) || !configureEnterpriseAfterLLM) {
-              prompts.log.message("")
-              prompts.log.success("✅ Authentication complete!")
-              prompts.log.message("")
-              prompts.log.info("Next steps:")
-              prompts.log.message("")
-              prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
-              prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
-              prompts.outro("Done")
-              await Instance.dispose()
-              process.exit(0)
-            }
-
-            // User wants Enterprise - handle it directly
-            prompts.log.message("")
-            prompts.log.step("Snow-Flow Enterprise Setup")
-
-            const enterpriseLicenseKey = (await prompts.password({
-              message: "Enterprise License Key (format: SNOW-ENT-*-* or SNOW-SI-*-*)",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "License key is required"
-                if (!value.startsWith("SNOW-ENT-") && !value.startsWith("SNOW-SI-")) {
-                  return "Invalid license key format (should start with SNOW-ENT- or SNOW-SI-)"
-                }
-              },
-            })) as string
-
-            if (prompts.isCancel(enterpriseLicenseKey)) {
-              prompts.outro("Done")
-              await Instance.dispose()
-              return
-            }
-
-            const enterpriseServerUrl = (await prompts.text({
-              message: "Enterprise License Server URL (optional)",
-              placeholder: "https://portal.snow-flow.dev",
-              initialValue: "https://portal.snow-flow.dev",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "URL is required"
-                try {
-                  new URL(value)
-                } catch {
-                  return "Invalid URL format (must include https://)"
-                }
-              },
-            })) as string
-
-            if (prompts.isCancel(enterpriseServerUrl)) {
-              prompts.outro("Done")
-              await Instance.dispose()
-              return
-            }
-
-            // Test connection to enterprise server first
-            prompts.log.message("")
-            const enterpriseTestSpinner = prompts.spinner()
-            enterpriseTestSpinner.start("Testing connection to enterprise server...")
-
-            try {
-              const testResponse = await fetch(`${enterpriseServerUrl}/api/health`, {
-                method: "GET",
-                signal: AbortSignal.timeout(5000), // 5 second timeout
-              })
-              enterpriseTestSpinner.stop("Connection successful!")
-            } catch (testError: any) {
-              enterpriseTestSpinner.stop("Connection failed", 1)
-              prompts.log.warn(`Unable to reach ${enterpriseServerUrl}`)
-              prompts.log.message("")
-
-              const skipEnterpriseSetup = await prompts.confirm({
-                message: "Enterprise server is not accessible. Skip enterprise setup?",
-                initialValue: true,
-              })
-
-              if (prompts.isCancel(skipEnterpriseSetup) || skipEnterpriseSetup) {
-                prompts.log.message("")
-                prompts.log.success("✅ Authentication complete! (without enterprise features)")
-                prompts.log.message("")
-                prompts.log.info("Next steps:")
-                prompts.log.message("")
-                prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
-                prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
-                prompts.outro("Done")
-                await Instance.dispose()
-                process.exit(0)
-              }
-
-              // User wants to continue anyway - proceed with setup
-              prompts.log.warn("Continuing with enterprise setup...")
-            }
-
-            // User Registration/Login Flow
-            prompts.log.message("")
-            prompts.log.step("User Account Setup")
-
-            const enterpriseAccountAction = await prompts.select({
-              message: "Do you want to login or register?",
-              options: [
-                {
-                  value: "register",
-                  label: "Register",
-                  hint: "Create a new user account",
-                },
-                {
-                  value: "login",
-                  label: "Login",
-                  hint: "Login with existing account",
-                },
-              ],
-            })
-
-            if (prompts.isCancel(enterpriseAccountAction)) {
-              prompts.outro("Done")
-              await Instance.dispose()
-              return
-            }
-
-            let enterpriseUsername: string
-            let enterpriseEmail: string | undefined
-            let enterprisePassword: string
-            let enterpriseRole: "developer" | "stakeholder" | "admin"
-            let enterpriseAuthData: any
-
-            // Generate machine ID for device binding
-            const enterpriseMachineId = generateMachineId()
-
-            if (enterpriseAccountAction === "register") {
-              // New user registration
-              prompts.log.info("Creating your user account...")
-
-              enterpriseUsername = (await prompts.text({
-                message: "Choose a username",
-                placeholder: "john.doe",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Username is required"
-                  if (value.length < 3) return "Username must be at least 3 characters"
-                },
-              })) as string
-
-              if (prompts.isCancel(enterpriseUsername)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              enterpriseEmail = (await prompts.text({
-                message: "Your email",
-                placeholder: "john.doe@company.com",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Email is required"
-                  if (!value.includes("@")) return "Please enter a valid email"
-                },
-              })) as string
-
-              if (prompts.isCancel(enterpriseEmail)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              enterprisePassword = (await prompts.password({
-                message: "Choose a password",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Password is required"
-                  if (value.length < 8) return "Password must be at least 8 characters"
-                },
-              })) as string
-
-              if (prompts.isCancel(enterprisePassword)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              const enterprisePasswordConfirm = (await prompts.password({
-                message: "Confirm password",
-                validate: (value) => {
-                  if (value !== enterprisePassword) return "Passwords do not match"
-                },
-              })) as string
-
-              if (prompts.isCancel(enterprisePasswordConfirm)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              const enterpriseRoleChoice = (await prompts.select({
-                message: "Select your role",
-                options: [
-                  {
-                    value: "developer",
-                    label: "Developer",
-                    hint: "Full MCP access + ServiceNow tools",
-                  },
-                  {
-                    value: "stakeholder",
-                    label: "Stakeholder",
-                    hint: "Portal-only access for monitoring",
-                  },
-                ],
-              })) as string
-
-              if (prompts.isCancel(enterpriseRoleChoice)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-              enterpriseRole = enterpriseRoleChoice as "developer" | "stakeholder" | "admin"
-
-              prompts.log.info(`Machine ID: ${enterpriseMachineId.substring(0, 16)}...`)
-
-              // Register with enterprise backend
-              prompts.log.message("")
-              const enterpriseSpinner = prompts.spinner()
-              enterpriseSpinner.start("Registering user account...")
-
-              try {
-                const response = await fetch(`${enterpriseServerUrl}/api/user-auth/register`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    licenseKey: enterpriseLicenseKey,
-                    username: enterpriseUsername,
-                    email: enterpriseEmail,
-                    password: enterprisePassword,
-                    role: enterpriseRole,
-                  }),
-                })
-
-                enterpriseAuthData = await response.json()
-
-                if (!response.ok || !enterpriseAuthData.success) {
-                  enterpriseSpinner.stop("Registration failed", 1)
-                  prompts.log.error(enterpriseAuthData.error || "Unknown error")
-                  prompts.outro("Done")
-                  await Instance.dispose()
-                  process.exit(1)
-                }
-
-                enterpriseSpinner.stop("Registration successful!")
-              } catch (error: any) {
-                prompts.log.error(`Connection error: ${error.message}`)
-                prompts.log.message("")
-                prompts.log.warn("Unable to connect to enterprise server")
-                prompts.log.info(`URL: ${enterpriseServerUrl}/api/user-auth/register`)
-                prompts.outro("Done")
-                await Instance.dispose()
-                process.exit(1)
-              }
-            } else {
-              // Existing user login
-              prompts.log.info("Logging in with existing account...")
-
-              enterpriseUsername = (await prompts.text({
-                message: "Your username",
-                placeholder: "john.doe",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Username is required"
-                },
-              })) as string
-
-              if (prompts.isCancel(enterpriseUsername)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              enterprisePassword = (await prompts.password({
-                message: "Your password",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Password is required"
-                },
-              })) as string
-
-              if (prompts.isCancel(enterprisePassword)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              prompts.log.info(`Machine ID: ${enterpriseMachineId.substring(0, 16)}...`)
-
-              // Login with enterprise backend
-              prompts.log.message("")
-              const enterpriseSpinner = prompts.spinner()
-              enterpriseSpinner.start("Authenticating...")
-
-              try {
-                const response = await fetch(`${enterpriseServerUrl}/api/user-auth/login`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    licenseKey: enterpriseLicenseKey,
-                    username: enterpriseUsername,
-                    password: enterprisePassword,
-                  }),
-                })
-
-                enterpriseAuthData = await response.json()
-
-                if (!response.ok || !enterpriseAuthData.success) {
-                  enterpriseSpinner.stop("Authentication failed", 1)
-                  prompts.log.error(enterpriseAuthData.error || "Invalid username or password")
-                  prompts.outro("Done")
-                  await Instance.dispose()
-                  process.exit(1)
-                }
-
-                enterpriseSpinner.stop("Authentication successful!")
-
-                // Extract role and email from response
-                enterpriseRole = enterpriseAuthData.user?.role || "developer"
-                enterpriseEmail = enterpriseAuthData.user?.email
-              } catch (error: any) {
-                prompts.log.error(`Connection error: ${error.message}`)
-                prompts.log.message("")
-                prompts.log.warn("Unable to connect to enterprise server")
-                prompts.log.info(`URL: ${enterpriseServerUrl}/api/user-auth/login`)
-                prompts.outro("Done")
-                await Instance.dispose()
-                process.exit(1)
-              }
-            }
-
-            // Update enterprise auth storage with user info and token
-            const existingEnterpriseAuth = await Auth.all().then(x => x["enterprise"])
-            await Auth.set("enterprise", {
-              ...(existingEnterpriseAuth || {}),
-              type: "enterprise",
-              licenseKey: enterpriseLicenseKey,
-              enterpriseUrl: enterpriseServerUrl || undefined,
-              token: enterpriseAuthData.token,
-              sessionToken: enterpriseAuthData.sessionToken,
-              username: enterpriseUsername,
-              email: enterpriseEmail,
-              role: enterpriseAuthData.user?.role || enterpriseRole,
-              machineId: enterpriseMachineId,
-            })
-
-            prompts.log.success(`Welcome, ${enterpriseUsername}!`)
-            prompts.log.info(`Role: ${enterpriseAuthData.user?.role || enterpriseRole}`)
-            if (enterpriseAuthData.customer?.company) {
-              prompts.log.info(`Company: ${enterpriseAuthData.customer.company}`)
-            }
-            if (enterpriseAuthData.user?.activeSessions !== undefined) {
-              prompts.log.info(`Active sessions: ${enterpriseAuthData.user.activeSessions} (max 1 per user)`)
-            }
-
-            // Optional integrations
-            const configureJira = await prompts.confirm({
-              message: "Configure optional integrations (Jira, Azure DevOps)?",
-              initialValue: false,
-            })
-
-            let enterpriseJiraBaseUrl: string | undefined
-            let enterpriseJiraEmail: string | undefined
-            let enterpriseJiraApiToken: string | undefined
-
-            if (!prompts.isCancel(configureJira) && configureJira) {
-              enterpriseJiraBaseUrl = (await prompts.text({
-                message: "Jira Base URL (optional)",
-                placeholder: "https://company.atlassian.net",
-              })) as string
-
-              if (!prompts.isCancel(enterpriseJiraBaseUrl) && enterpriseJiraBaseUrl) {
-                enterpriseJiraEmail = (await prompts.text({
-                  message: "Jira Email",
-                  placeholder: "admin@company.com",
-                })) as string
-
-                if (!prompts.isCancel(enterpriseJiraEmail)) {
-                  enterpriseJiraApiToken = (await prompts.password({
-                    message: "Jira API Token",
-                  })) as string
-                }
-              }
-            }
-
-            // Save Enterprise config to Auth store
-            await Auth.set("enterprise", {
-              type: "enterprise",
-              licenseKey: enterpriseLicenseKey,
-              enterpriseUrl: enterpriseServerUrl || undefined,
-              jiraBaseUrl: enterpriseJiraBaseUrl || undefined,
-              jiraEmail: enterpriseJiraEmail || undefined,
-              jiraApiToken: enterpriseJiraApiToken || undefined,
-            })
-
-            // Write to .env file
-            const envUpdates: Array<{ key: string; value: string }> = [
-              { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: enterpriseLicenseKey },
-            ]
-            if (enterpriseServerUrl)
-              envUpdates.push({ key: "SNOW_ENTERPRISE_URL", value: enterpriseServerUrl })
-            if (enterpriseJiraBaseUrl)
-              envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: enterpriseJiraBaseUrl })
-            if (enterpriseJiraEmail) envUpdates.push({ key: "SNOW_JIRA_EMAIL", value: enterpriseJiraEmail })
-            if (enterpriseJiraApiToken)
-              envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: enterpriseJiraApiToken })
-            await updateEnvFile(envUpdates)
-
-            // Add snow-flow-enterprise MCP server to SnowCode config
-            const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
-            const configPath = path.join(globalSnowCodeDir, "snowcode.json")
-            try {
-              const file = Bun.file(configPath)
-              if (await file.exists()) {
-                const configText = await file.text()
-                const config = JSON.parse(configText)
-                if (!config.mcp) config.mcp = {}
-                config.mcp["snow-flow-enterprise"] = {
-                  type: "remote",
-                  url: "https://enterprise.snow-flow.dev/mcp/sse",
-                  headers: { Authorization: `Bearer ${enterpriseLicenseKey}` },
-                  enabled: true,
-                }
-                await Bun.write(configPath, JSON.stringify(config, null, 2))
-                prompts.log.info("Added snow-flow-enterprise MCP server to config")
-              }
-            } catch (error: any) {
-              // Silently skip enterprise MCP configuration errors
-            }
-
-            prompts.log.message("")
-            prompts.log.success("Enterprise configuration saved")
-            prompts.log.info("Credentials saved to .env file")
-            prompts.log.message("")
-            prompts.log.success("✅ Authentication complete!")
-            prompts.log.message("")
-            prompts.log.info("Next steps:")
-            prompts.log.message("")
-            prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
-            prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
+            prompts.log.error(`Failed to authenticate with ${args.url}: ${error.message}`)
             prompts.outro("Done")
             await Instance.dispose()
-            process.exit(0)
+            process.exit(1)
           }
         }
 
-        if (provider === "other") {
-          provider = await prompts.text({
-            message: "Enter provider id",
-            validate: (x) => (x && x.match(/^[0-9a-z-]+$/) ? undefined : "a-z, 0-9 and hyphens only"),
-          })
-          if (prompts.isCancel(provider)) throw new UI.CancelledError()
-          provider = provider.replace(/^@ai-sdk\//, "")
-          if (prompts.isCancel(provider)) throw new UI.CancelledError()
-          prompts.log.warn(
-            `This only stores a credential for ${provider} - you will need configure it in opencode.json, check the docs for examples.`,
-          )
-        }
-
-        if (provider === "amazon-bedrock") {
-          prompts.log.info(
-            "Amazon bedrock can be configured with standard AWS environment variables like AWS_BEARER_TOKEN_BEDROCK, AWS_PROFILE or AWS_ACCESS_KEY_ID",
-          )
-          prompts.log.message("")
-          prompts.log.success("✅ Authentication complete!")
-          prompts.log.message("")
-          prompts.log.info("Next steps:")
-          prompts.log.message("")
-          prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
-          prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
-          prompts.outro("Done")
-          await Instance.dispose()
-          process.exit(0)
-        }
-
-        if (provider === "google-vertex") {
-          prompts.log.info(
-            "Google Cloud Vertex AI uses Application Default Credentials. Set GOOGLE_APPLICATION_CREDENTIALS or run 'gcloud auth application-default login'. Optionally set GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION (or VERTEX_LOCATION)",
-          )
-          prompts.log.message("")
-          prompts.log.success("✅ Authentication complete!")
-          prompts.log.message("")
-          prompts.log.info("Next steps:")
-          prompts.log.message("")
-          prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
-          prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
-          prompts.outro("Done")
-          await Instance.dispose()
-          process.exit(0)
-        }
-
-        if (provider === "opencode") {
-          prompts.log.info("Create an api key at https://opencode.ai/auth")
-        }
-
-        if (provider === "vercel") {
-          prompts.log.info("You can create an api key at https://vercel.link/ai-gateway-token")
-        }
-
-        const key = await prompts.password({
-          message: "Enter your API key",
-          validate: (x) => (x && x.length > 0 ? undefined : "Required"),
-        })
-        if (prompts.isCancel(key)) throw new UI.CancelledError()
-        await Auth.set(provider, {
-          type: "api",
-          key,
-        })
-
-        // Save selected model to global config if chosen
-        if (selectedModel) {
-          try {
-            const globalConfigPath = path.join(os.homedir(), ".config", "snowcode", "config.json")
-            let globalConfig = {}
-            try {
-              const file = Bun.file(globalConfigPath)
-              if (await file.exists()) {
-                globalConfig = JSON.parse(await file.text())
-              }
-            } catch {}
-            globalConfig = { ...globalConfig, model: selectedModel }
-            await Bun.write(globalConfigPath, JSON.stringify(globalConfig, null, 2))
-            prompts.log.info(`Saved default model: ${selectedModel}`)
-          } catch (err) {
-            prompts.log.warn("Could not save model preference to config")
-          }
-        }
-
-        // Automatically continue to ServiceNow setup (required for snow-flow)
+        // Standard flow: Provider → ServiceNow → Enterprise (optional)
         prompts.log.message("")
-        prompts.log.step("ServiceNow Configuration")
+        prompts.log.info("This will configure:")
+        prompts.log.message("  1️⃣  LLM Provider (Claude, GPT, Gemini, etc.)")
+        prompts.log.message("  2️⃣  ServiceNow Instance OAuth")
+        prompts.log.message("  3️⃣  Snow-Flow Enterprise (optional)")
+        prompts.log.message("")
+
+        // Step 1: Provider Authentication
+        prompts.log.step("Step 1: LLM Provider")
+        const providerResult = await runProviderFlow()
+
+        if (!providerResult.success) {
+          prompts.log.error("Provider configuration failed")
+          prompts.outro("Done")
+          await Instance.dispose()
+          process.exit(1)
+        }
+
+        // Step 2: ServiceNow Authentication
+        prompts.log.message("")
+        prompts.log.step("Step 2: ServiceNow Configuration")
         prompts.log.info("Snow-Flow requires ServiceNow connection for development")
         prompts.log.message("")
 
-        const snowInstance = (await prompts.text({
-          message: "ServiceNow instance URL",
-          placeholder: "dev12345.service-now.com",
-          validate: (value) => {
-            if (!value || value.trim() === "") return "Instance URL is required"
-            const cleaned = value.replace(/^https?:\/\//, "").replace(/\/$/, "")
-            if (
-              !cleaned.includes(".service-now.com") &&
-              !cleaned.includes("localhost") &&
-              !cleaned.includes("127.0.0.1")
-            ) {
-              return "Must be a ServiceNow domain (e.g., dev12345.service-now.com)"
-            }
-          },
-        })) as string
+        const servicenowResult = await runServiceNowFlow()
 
-        if (prompts.isCancel(snowInstance)) {
+        if (!servicenowResult.success) {
+          prompts.log.error("ServiceNow configuration failed")
           prompts.outro("Done")
           await Instance.dispose()
-          return
+          process.exit(1)
         }
 
-        const snowAuthMethod = (await prompts.select({
-          message: "Authentication method",
-          options: [
-            { value: "oauth", label: "OAuth 2.0", hint: "recommended" },
-            { value: "basic", label: "Basic Auth", hint: "username/password" },
-          ],
-        })) as string
-
-        if (prompts.isCancel(snowAuthMethod)) {
-          prompts.outro("Done")
-          await Instance.dispose()
-          return
-        }
-
-        if (snowAuthMethod === "oauth") {
-          const snowClientId = (await prompts.text({
-            message: "OAuth Client ID",
-            placeholder: "32-character hex string from ServiceNow",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "Client ID is required"
-              if (value.length < 32) return "Client ID too short (expected 32+ characters)"
-            },
-          })) as string
-
-          if (prompts.isCancel(snowClientId)) {
-            prompts.outro("Done")
-            await Instance.dispose()
-            return
-          }
-
-          const snowClientSecret = (await prompts.password({
-            message: "OAuth Client Secret",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "Client Secret is required"
-              if (value.length < 32) return "Client Secret too short (expected 32+ characters)"
-            },
-          })) as string
-
-          if (prompts.isCancel(snowClientSecret)) {
-            prompts.outro("Done")
-            await Instance.dispose()
-            return
-          }
-
-          // Run full OAuth flow
-          const oauth = new ServiceNowOAuth()
-          const result = await oauth.authenticate({
-            instance: snowInstance,
-            clientId: snowClientId,
-            clientSecret: snowClientSecret,
-          })
-
-          if (result.success) {
-            // Write to .env file
-            await updateEnvFile([
-              { key: "SNOW_INSTANCE", value: snowInstance },
-              { key: "SNOW_AUTH_METHOD", value: "oauth" },
-              { key: "SNOW_CLIENT_ID", value: snowClientId },
-              { key: "SNOW_CLIENT_SECRET", value: snowClientSecret },
-            ])
-            // Update SnowCode MCP configs
-            await updateSnowCodeMCPConfigs(snowInstance, snowClientId, snowClientSecret)
-            prompts.log.success("ServiceNow authentication successful")
-            prompts.log.info("Credentials saved to .env and SnowCode configs")
-          } else {
-            prompts.log.error(`Authentication failed: ${result.error}`)
-          }
-        } else {
-          // Basic auth
-          const snowUsername = (await prompts.text({
-            message: "ServiceNow username",
-            placeholder: "admin",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "Username is required"
-            },
-          })) as string
-
-          if (prompts.isCancel(snowUsername)) {
-            prompts.outro("Done")
-            await Instance.dispose()
-            return
-          }
-
-          const snowPassword = (await prompts.password({
-            message: "ServiceNow password",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "Password is required"
-            },
-          })) as string
-
-          if (prompts.isCancel(snowPassword)) {
-            prompts.outro("Done")
-            await Instance.dispose()
-            return
-          }
-
-          // Save to Auth store
-          await Auth.set("servicenow", {
-            type: "servicenow-basic",
-            instance: snowInstance,
-            username: snowUsername,
-            password: snowPassword,
-          })
-
-          // Write to .env file
-          await updateEnvFile([
-            { key: "SNOW_INSTANCE", value: snowInstance },
-            { key: "SNOW_AUTH_METHOD", value: "basic" },
-            { key: "SNOW_USERNAME", value: snowUsername },
-            { key: "SNOW_PASSWORD", value: snowPassword },
-          ])
-          // Note: Basic auth doesn't use OAuth, so we update MCP configs with instance only
-          await updateSnowCodeMCPConfigs(snowInstance, "", "")
-
-          prompts.log.success("ServiceNow credentials saved")
-          prompts.log.info("Credentials saved to .env and SnowCode configs")
-        }
-
-        // After ServiceNow setup, ask about Enterprise (optional)
+        // Step 3: Enterprise (Optional)
         prompts.log.message("")
         const configureEnterprise = await prompts.confirm({
           message: "Configure Snow-Flow Enterprise? (optional)",
@@ -1931,220 +408,15 @@ export const AuthLoginCommand = cmd({
 
         if (!prompts.isCancel(configureEnterprise) && configureEnterprise) {
           prompts.log.message("")
-          prompts.log.step("Snow-Flow Enterprise Setup")
+          prompts.log.step("Step 3: Snow-Flow Enterprise")
+          const enterpriseResult = await runEnterpriseFlow()
 
-          const licenseKey = (await prompts.password({
-            message: "Enterprise License Key (format: SNOW-ENT-*-* or SNOW-SI-*-*)",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "License key is required"
-              if (!value.startsWith("SNOW-ENT-") && !value.startsWith("SNOW-SI-")) {
-                return "Invalid license key format (should start with SNOW-ENT- or SNOW-SI-)"
-              }
-            },
-          })) as string
-
-          if (!prompts.isCancel(licenseKey)) {
-            const enterpriseUrl = (await prompts.text({
-              message: "Enterprise License Server URL (optional)",
-              placeholder: "https://portal.snow-flow.dev",
-              initialValue: "https://portal.snow-flow.dev",
-            })) as string
-
-            // External integrations configuration
-            const configureExternal = await prompts.confirm({
-              message: "Configure external integrations? (optional)",
-              initialValue: false,
-            })
-
-            let jiraBaseUrl, jiraEmail, jiraApiToken
-            let azureOrg, azureProject, azurePat
-            let confluenceUrl, confluenceEmail, confluenceApiToken
-
-            if (!prompts.isCancel(configureExternal) && configureExternal) {
-              const integrations = await prompts.multiselect({
-                message: "Select integrations to configure",
-                options: [
-                  { value: "jira", label: "Jira" },
-                  { value: "azure", label: "Azure DevOps" },
-                  { value: "confluence", label: "Confluence" },
-                ],
-              }) as string[]
-
-              if (!prompts.isCancel(integrations)) {
-                // Jira configuration
-                if (integrations.includes("jira")) {
-                  jiraBaseUrl = (await prompts.text({
-                    message: "Jira Base URL",
-                    placeholder: "https://company.atlassian.net",
-                  })) as string
-
-                  if (!prompts.isCancel(jiraBaseUrl) && jiraBaseUrl) {
-                    jiraEmail = (await prompts.text({
-                      message: "Jira Email",
-                      placeholder: "admin@company.com",
-                    })) as string
-
-                    if (!prompts.isCancel(jiraEmail)) {
-                      jiraApiToken = (await prompts.password({
-                        message: "Jira API Token",
-                      })) as string
-                    }
-                  }
-                }
-
-                // Azure DevOps configuration
-                if (integrations.includes("azure")) {
-                  azureOrg = (await prompts.text({
-                    message: "Azure DevOps Organization",
-                    placeholder: "mycompany",
-                  })) as string
-
-                  if (!prompts.isCancel(azureOrg) && azureOrg) {
-                    azureProject = (await prompts.text({
-                      message: "Azure DevOps Project",
-                      placeholder: "MyProject",
-                    })) as string
-
-                    if (!prompts.isCancel(azureProject)) {
-                      azurePat = (await prompts.password({
-                        message: "Azure Personal Access Token (PAT)",
-                      })) as string
-                    }
-                  }
-                }
-
-                // Confluence configuration
-                if (integrations.includes("confluence")) {
-                  confluenceUrl = (await prompts.text({
-                    message: "Confluence Base URL",
-                    placeholder: "https://company.atlassian.net/wiki",
-                  })) as string
-
-                  if (!prompts.isCancel(confluenceUrl) && confluenceUrl) {
-                    confluenceEmail = (await prompts.text({
-                      message: "Confluence Email",
-                      placeholder: "admin@company.com",
-                    })) as string
-
-                    if (!prompts.isCancel(confluenceEmail)) {
-                      confluenceApiToken = (await prompts.password({
-                        message: "Confluence API Token",
-                      })) as string
-                    }
-                  }
-                }
-              }
-            }
-
-            // Save to Auth store
-            await Auth.set("enterprise", {
-              type: "enterprise",
-              licenseKey,
-              enterpriseUrl: enterpriseUrl || undefined,
-              jiraBaseUrl: jiraBaseUrl || undefined,
-              jiraEmail: jiraEmail || undefined,
-              jiraApiToken: jiraApiToken || undefined,
-              azureOrg: azureOrg || undefined,
-              azureProject: azureProject || undefined,
-              azurePat: azurePat || undefined,
-              confluenceUrl: confluenceUrl || undefined,
-              confluenceEmail: confluenceEmail || undefined,
-              confluenceApiToken: confluenceApiToken || undefined,
-            })
-
-            // Write to .env file
-            const envUpdates: Array<{ key: string; value: string }> = [
-              { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: licenseKey },
-            ]
-            if (enterpriseUrl) envUpdates.push({ key: "SNOW_ENTERPRISE_URL", value: enterpriseUrl })
-            if (jiraBaseUrl) envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: jiraBaseUrl })
-            if (jiraEmail) envUpdates.push({ key: "SNOW_JIRA_EMAIL", value: jiraEmail })
-            if (jiraApiToken) envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: jiraApiToken })
-            if (azureOrg) envUpdates.push({ key: "SNOW_AZURE_ORG", value: azureOrg })
-            if (azureProject) envUpdates.push({ key: "SNOW_AZURE_PROJECT", value: azureProject })
-            if (azurePat) envUpdates.push({ key: "SNOW_AZURE_PAT", value: azurePat })
-            if (confluenceUrl) envUpdates.push({ key: "SNOW_CONFLUENCE_URL", value: confluenceUrl })
-            if (confluenceEmail) envUpdates.push({ key: "SNOW_CONFLUENCE_EMAIL", value: confluenceEmail })
-            if (confluenceApiToken) envUpdates.push({ key: "SNOW_CONFLUENCE_API_TOKEN", value: confluenceApiToken })
-            await updateEnvFile(envUpdates)
-
-            // Add snow-flow-enterprise MCP server to SnowCode config
-            const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
-            const configPath = path.join(globalSnowCodeDir, "snowcode.json")
-            try {
-              const file = Bun.file(configPath)
-              if (await file.exists()) {
-                const configText = await file.text()
-                const config = JSON.parse(configText)
-                if (!config.mcp) config.mcp = {}
-                config.mcp["snow-flow-enterprise"] = {
-                  type: "remote",
-                  url: "https://enterprise.snow-flow.dev/mcp/sse",
-                  headers: { Authorization: `Bearer ${licenseKey}` },
-                  enabled: true,
-                }
-                await Bun.write(configPath, JSON.stringify(config, null, 2))
-                prompts.log.info("Added snow-flow-enterprise MCP server to config")
-              }
-            } catch (error: any) {
-              // Silently skip enterprise MCP configuration errors
-            }
-
-            // Sync integration settings to enterprise backend
-            try {
-              const enterpriseApiUrl = enterpriseUrl || "https://portal.snow-flow.dev"
-              await fetch(`${enterpriseApiUrl}/api/integrations`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${licenseKey}`,
-                },
-                body: JSON.stringify({
-                  jira: jiraBaseUrl
-                    ? {
-                        baseUrl: jiraBaseUrl,
-                        email: jiraEmail,
-                        // API token is NOT sent - kept local for security
-                      }
-                    : undefined,
-                  azure: azureOrg
-                    ? {
-                        organization: azureOrg,
-                        project: azureProject,
-                        // PAT is NOT sent - kept local for security
-                      }
-                    : undefined,
-                  confluence: confluenceUrl
-                    ? {
-                        baseUrl: confluenceUrl,
-                        email: confluenceEmail,
-                        // API token is NOT sent - kept local for security
-                      }
-                    : undefined,
-                }),
-              })
-            } catch (error) {
-              // Silently fail - integrations are still saved locally
-            }
-
-            prompts.log.success("Enterprise configuration saved")
-            prompts.log.info("Credentials saved to .env file")
-
-            // Show completion and exit (prevents duplicate completion message)
-            prompts.log.message("")
-            prompts.log.success("✅ Authentication complete!")
-            prompts.log.message("")
-            prompts.log.info("Next steps:")
-            prompts.log.message("")
-            prompts.log.message('  • Run: snow-flow swarm "<objective>" to start developing')
-            prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
-            prompts.outro("Done")
-            await Instance.dispose()
-            process.exit(0)
+          if (!enterpriseResult.success) {
+            prompts.log.warn("Enterprise configuration failed - continuing without enterprise features")
           }
         }
 
-        // If enterprise was not configured, show completion here
+        // All done!
         prompts.log.message("")
         prompts.log.success("✅ Authentication complete!")
         prompts.log.message("")
@@ -2159,7 +431,6 @@ export const AuthLoginCommand = cmd({
     })
   },
 })
-
 export const AuthLogoutCommand = cmd({
   command: "logout",
   describe: "log out from a configured provider",
