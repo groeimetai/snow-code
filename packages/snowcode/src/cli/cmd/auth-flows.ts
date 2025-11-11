@@ -711,14 +711,15 @@ export async function runEnterpriseFlow(): Promise<{ success: boolean }> {
       const licenseResponse = await fetch(`${enterpriseUrl}/api/license/validate`, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${licenseKey}`,
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({ licenseKey: licenseKey }),
         signal: AbortSignal.timeout(10000), // 10 second timeout
       })
 
       const licenseData = await licenseResponse.json()
 
-      // Check ONLY HTTP status (like old method) - portal backend doesn't return 'success' field
+      // Check ONLY HTTP status - portal backend returns 'success' field
       if (!licenseResponse.ok) {
         licenseSpinner.stop("License key validation failed", 1)
         prompts.log.error(licenseData.error || "Invalid license key")
