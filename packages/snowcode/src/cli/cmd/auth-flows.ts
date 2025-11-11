@@ -666,11 +666,12 @@ export async function runEnterpriseFlow(): Promise<{ success: boolean }> {
   try {
     prompts.log.step("Snow-Flow Enterprise Setup")
 
-    const licenseKey = (await prompts.password({
+    let licenseKey = (await prompts.password({
       message: "Enterprise License Key (format: SNOW-ENT-*-* or SNOW-SI-*-*)",
       validate: (value) => {
         if (!value || value.trim() === "") return "License key is required"
-        if (!value.startsWith("SNOW-ENT-") && !value.startsWith("SNOW-SI-")) {
+        const trimmed = value.trim()
+        if (!trimmed.startsWith("SNOW-ENT-") && !trimmed.startsWith("SNOW-SI-")) {
           return "Invalid license key format (should start with SNOW-ENT- or SNOW-SI-)"
         }
       },
@@ -679,6 +680,9 @@ export async function runEnterpriseFlow(): Promise<{ success: boolean }> {
     if (prompts.isCancel(licenseKey)) {
       return { success: false }
     }
+
+    // Trim whitespace from license key
+    licenseKey = licenseKey.trim()
 
     const enterpriseUrl = (await prompts.text({
       message: "Enterprise License Server URL (optional)",
@@ -707,10 +711,8 @@ export async function runEnterpriseFlow(): Promise<{ success: boolean }> {
       const licenseResponse = await fetch(`${enterpriseUrl}/api/license/validate`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           "Authorization": `Bearer ${licenseKey}`,
         },
-        body: JSON.stringify({}),
         signal: AbortSignal.timeout(10000), // 10 second timeout
       })
 
