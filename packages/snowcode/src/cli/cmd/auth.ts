@@ -752,6 +752,103 @@ export const AuthLoginCommand = cmd({
               // Extract role and email from response
               role = authData.user?.role || "developer"
               email = authData.user?.email
+
+              // 🔐 CHECK IF PASSWORD RESET IS REQUIRED
+              try {
+                const userId = authData.user?.userId || crypto.createHash('sha256').update(email || username).digest('hex')
+                const resetCheckResponse = await fetch(`${enterpriseUrl}/api/user-auth/password-reset-required?userId=${userId}`, {
+                  signal: AbortSignal.timeout(5000),
+                })
+
+                if (resetCheckResponse.ok) {
+                  const resetData = await resetCheckResponse.json()
+
+                  if (resetData.passwordResetRequired) {
+                    prompts.log.message("")
+                    prompts.log.warn("⚠️  Password reset required")
+                    prompts.log.info("You must change your temporary password before continuing")
+                    prompts.log.message("")
+
+                    const newPassword = (await prompts.password({
+                      message: "Enter your new password",
+                      validate: (value) => {
+                        if (!value || value.trim() === "") return "Password is required"
+                        if (value.length < 8) return "Password must be at least 8 characters"
+                        if (value === password) return "New password must be different from current password"
+                      },
+                    })) as string
+
+                    if (prompts.isCancel(newPassword)) {
+                      prompts.log.error("Password reset cancelled")
+                      prompts.outro("Done")
+                      await Instance.dispose()
+                      process.exit(1)
+                    }
+
+                    const confirmPassword = (await prompts.password({
+                      message: "Confirm your new password",
+                      validate: (value) => {
+                        if (value !== newPassword) return "Passwords do not match"
+                      },
+                    })) as string
+
+                    if (prompts.isCancel(confirmPassword)) {
+                      prompts.log.error("Password reset cancelled")
+                      prompts.outro("Done")
+                      await Instance.dispose()
+                      process.exit(1)
+                    }
+
+                    // Reset password
+                    prompts.log.message("")
+                    const resetSpinner = prompts.spinner()
+                    resetSpinner.start("Resetting password...")
+
+                    try {
+                      const resetResponse = await fetch(`${enterpriseUrl}/api/user-auth/reset-password`, {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                          userId,
+                          currentPassword: password,
+                          newPassword,
+                        }),
+                        signal: AbortSignal.timeout(10000),
+                      })
+
+                      const resetResult = await resetResponse.json()
+
+                      if (!resetResponse.ok || !resetResult.success) {
+                        resetSpinner.stop("Password reset failed", 1)
+                        prompts.log.error(resetResult.error || "Failed to reset password")
+                        prompts.log.warn("Please try again or contact support")
+                        prompts.outro("Done")
+                        await Instance.dispose()
+                        process.exit(1)
+                      }
+
+                      resetSpinner.stop("Password reset successful!")
+                      prompts.log.success("✅ Your password has been updated")
+                      prompts.log.info("You can now use your new password for future logins")
+
+                      // Update password variable for storage
+                      password = newPassword
+                    } catch (resetError: any) {
+                      resetSpinner.stop("Password reset failed", 1)
+                      prompts.log.error(`Connection error: ${resetError.message}`)
+                      prompts.log.warn("Unable to reset password. Please try again later.")
+                      prompts.outro("Done")
+                      await Instance.dispose()
+                      process.exit(1)
+                    }
+                  }
+                }
+              } catch (checkError) {
+                // Silently continue if password reset check fails
+                // This ensures backward compatibility if endpoint doesn't exist
+              }
             } catch (error: any) {
               prompts.log.error(`Connection error: ${error.message}`)
               prompts.log.message("")
@@ -1568,6 +1665,103 @@ export const AuthLoginCommand = cmd({
                 // Extract role and email from response
                 enterpriseRole = enterpriseAuthData.user?.role || "developer"
                 enterpriseEmail = enterpriseAuthData.user?.email
+
+                // 🔐 CHECK IF PASSWORD RESET IS REQUIRED
+                try {
+                  const userId = enterpriseAuthData.user?.userId || crypto.createHash('sha256').update(enterpriseEmail || enterpriseUsername).digest('hex')
+                  const resetCheckResponse = await fetch(`${enterpriseServerUrl}/api/user-auth/password-reset-required?userId=${userId}`, {
+                    signal: AbortSignal.timeout(5000),
+                  })
+
+                  if (resetCheckResponse.ok) {
+                    const resetData = await resetCheckResponse.json()
+
+                    if (resetData.passwordResetRequired) {
+                      prompts.log.message("")
+                      prompts.log.warn("⚠️  Password reset required")
+                      prompts.log.info("You must change your temporary password before continuing")
+                      prompts.log.message("")
+
+                      const newPassword = (await prompts.password({
+                        message: "Enter your new password",
+                        validate: (value) => {
+                          if (!value || value.trim() === "") return "Password is required"
+                          if (value.length < 8) return "Password must be at least 8 characters"
+                          if (value === enterprisePassword) return "New password must be different from current password"
+                        },
+                      })) as string
+
+                      if (prompts.isCancel(newPassword)) {
+                        prompts.log.error("Password reset cancelled")
+                        prompts.outro("Done")
+                        await Instance.dispose()
+                        process.exit(1)
+                      }
+
+                      const confirmPassword = (await prompts.password({
+                        message: "Confirm your new password",
+                        validate: (value) => {
+                          if (value !== newPassword) return "Passwords do not match"
+                        },
+                      })) as string
+
+                      if (prompts.isCancel(confirmPassword)) {
+                        prompts.log.error("Password reset cancelled")
+                        prompts.outro("Done")
+                        await Instance.dispose()
+                        process.exit(1)
+                      }
+
+                      // Reset password
+                      prompts.log.message("")
+                      const resetSpinner = prompts.spinner()
+                      resetSpinner.start("Resetting password...")
+
+                      try {
+                        const resetResponse = await fetch(`${enterpriseServerUrl}/api/user-auth/reset-password`, {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                          },
+                          body: JSON.stringify({
+                            userId,
+                            currentPassword: enterprisePassword,
+                            newPassword,
+                          }),
+                          signal: AbortSignal.timeout(10000),
+                        })
+
+                        const resetResult = await resetResponse.json()
+
+                        if (!resetResponse.ok || !resetResult.success) {
+                          resetSpinner.stop("Password reset failed", 1)
+                          prompts.log.error(resetResult.error || "Failed to reset password")
+                          prompts.log.warn("Please try again or contact support")
+                          prompts.outro("Done")
+                          await Instance.dispose()
+                          process.exit(1)
+                        }
+
+                        resetSpinner.stop("Password reset successful!")
+                        prompts.log.success("✅ Your password has been updated")
+                        prompts.log.info("You can now use your new password for future logins")
+
+                        // Update password variable for storage
+                        enterprisePassword = newPassword
+                      } catch (resetError: any) {
+                        resetSpinner.stop("Password reset failed", 1)
+                        prompts.log.error(`Connection error: ${resetError.message}`)
+                        prompts.log.warn("Unable to reset password. Please try again later.")
+                        prompts.outro("Done")
+                        await Instance.dispose()
+                        process.exit(1)
+                      }
+                    }
+                  }
+                } catch (checkError) {
+                  // Silently continue if password reset check fails
+                  // This ensures backward compatibility if endpoint doesn't exist
+                }
               } catch (error: any) {
                 prompts.log.error(`Connection error: ${error.message}`)
                 prompts.log.message("")
