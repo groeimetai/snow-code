@@ -25,10 +25,10 @@ jobs:
           # macOS builds
           - os: darwin
             arch: arm64
-            runner: macos-14  # M1 runner
+            runner: macos-latest  # M1/M2/M3 runner
           - os: darwin
             arch: x64
-            runner: macos-13  # Intel runner
+            runner: macos-15  # Intel runner (macos-13 deprecated)
 
           # Linux builds
           - os: linux
