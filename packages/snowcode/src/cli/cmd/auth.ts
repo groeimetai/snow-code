@@ -579,10 +579,10 @@ export const AuthLoginCommand = cmd({
 
           if (prompts.isCancel(accountAction)) throw new UI.CancelledError()
 
-          let username: string
+          let username: string = ""
           let email: string | undefined
           let password: string
-          let role: "developer" | "stakeholder" | "admin"
+          let role: "developer" | "stakeholder" | "admin" = "developer"
           let authData: any
 
           // Generate machine ID for device binding
