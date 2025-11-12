@@ -1053,25 +1053,71 @@ export const AuthLoginCommand = cmd({
           await updateEnvFile(envUpdates)
 
           // Add snow-flow-enterprise MCP server to SnowCode config
-          const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
-          const configPath = path.join(globalSnowCodeDir, "snowcode.json")
+          // Uses stdio proxy architecture: SnowCode → Enterprise Proxy (stdio) → Enterprise Backend (HTTPS)
           try {
+            const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
+            const configPath = path.join(globalSnowCodeDir, "config.json")
+
+            // Ensure .snowcode directory exists
+            await Bun.write(path.join(globalSnowCodeDir, ".keep"), "")
+
+            // Read existing config or create new one
             const file = Bun.file(configPath)
+            var config: any = {}
             if (await file.exists()) {
               const configText = await file.text()
-              const config = JSON.parse(configText)
-              if (!config.mcp) config.mcp = {}
-              config.mcp["snow-flow-enterprise"] = {
-                type: "remote",
-                url: "https://enterprise.snow-flow.dev/mcp/sse",
-                headers: { Authorization: `Bearer ${licenseKey}` },
-                enabled: true,
-              }
-              await Bun.write(configPath, JSON.stringify(config, null, 2))
-              prompts.log.info("Added snow-flow-enterprise MCP server to config")
+              config = JSON.parse(configText)
             }
+
+            // Initialize mcp section if it doesn't exist
+            if (!config.mcp) config.mcp = {}
+
+            // Find the enterprise proxy path (installed via snow-flow package)
+            var enterpriseProxyPath = ""
+            const possiblePaths = [
+              path.join(process.cwd(), "node_modules", "snow-flow", "dist", "mcp", "enterprise-proxy", "index.js"),
+              path.join(os.homedir(), ".npm", "lib", "node_modules", "snow-flow", "dist", "mcp", "enterprise-proxy", "index.js"),
+              "/usr/local/lib/node_modules/snow-flow/dist/mcp/enterprise-proxy/index.js",
+            ]
+
+            for (const testPath of possiblePaths) {
+              if (await Bun.file(testPath).exists()) {
+                enterpriseProxyPath = testPath
+                break
+              }
+            }
+
+            // Fallback to npx if path not found
+            if (!enterpriseProxyPath) {
+              enterpriseProxyPath = "npx"
+            }
+
+            // Build environment variables for the proxy
+            const env: Record<string, string> = {
+              SNOW_LICENSE_KEY: licenseKey,
+              SNOW_ENTERPRISE_URL: enterpriseUrl || "https://enterprise.snow-flow.dev",
+            }
+
+            // Add Jira credentials if provided
+            if (jiraBaseUrl && jiraEmail && jiraApiToken) {
+              env.JIRA_HOST = jiraBaseUrl
+              env.JIRA_EMAIL = jiraEmail
+              env.JIRA_API_TOKEN = jiraApiToken
+            }
+
+            // Configure stdio proxy (correct architecture!)
+            config.mcp["snow-flow-enterprise"] = {
+              command: enterpriseProxyPath === "npx" ? "npx" : "node",
+              args: enterpriseProxyPath === "npx" ? ["snow-flow-enterprise-proxy"] : [enterpriseProxyPath],
+              env,
+            }
+
+            // Write updated config
+            await Bun.write(configPath, JSON.stringify(config, null, 2))
+            prompts.log.info("Added snow-flow-enterprise MCP server to config")
           } catch (error: any) {
-            // Silently skip enterprise MCP configuration errors
+            prompts.log.warn(`Failed to add enterprise MCP server: ${error.message}`)
+            prompts.log.info("You can configure it later with: snow-flow enterprise setup")
           }
 
           prompts.log.message("")
