@@ -1594,38 +1594,97 @@ export const AuthLoginCommand = cmd({
             const enterpriseMachineId = generateMachineId()
 
             if (enterpriseAccountAction === "register") {
-              // New user registration
-              prompts.log.info("Creating your user account...")
+              // New user registration with retry loop
+              let enterpriseRegistrationSuccess = false
 
-              enterpriseUsername = (await prompts.text({
-                message: "Choose a username",
-                placeholder: "john.doe",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Username is required"
-                  if (value.length < 3) return "Username must be at least 3 characters"
-                },
-              })) as string
+              while (!enterpriseRegistrationSuccess) {
+                prompts.log.info("Creating your user account...")
 
-              if (prompts.isCancel(enterpriseUsername)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
+                // Username validation with availability check
+                let enterpriseUsernameValid = false
+                while (!enterpriseUsernameValid) {
+                  enterpriseUsername = (await prompts.text({
+                    message: "Choose a username",
+                    placeholder: "john.doe",
+                    validate: (value) => {
+                      if (!value || value.trim() === "") return "Username is required"
+                      if (value.length < 3) return "Username must be at least 3 characters"
+                    },
+                  })) as string
 
-              enterpriseEmail = (await prompts.text({
-                message: "Your email",
-                placeholder: "john.doe@company.com",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Email is required"
-                  if (!value.includes("@")) return "Please enter a valid email"
-                },
-              })) as string
+                  if (prompts.isCancel(enterpriseUsername)) {
+                    prompts.outro("Done")
+                    await Instance.dispose()
+                    return
+                  }
 
-              if (prompts.isCancel(enterpriseEmail)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
+                  // Check if username is available
+                  try {
+                    const checkResponse = await fetch(
+                      `${enterpriseServerUrl}/api/user-auth/check-availability?username=${encodeURIComponent(enterpriseUsername)}&licenseKey=${encodeURIComponent(enterpriseLicenseKey)}`,
+                      { method: "GET", signal: AbortSignal.timeout(10000) }
+                    )
+
+                    if (checkResponse.ok) {
+                      const checkData = await checkResponse.json()
+                      if (!checkData.usernameAvailable) {
+                        prompts.log.error("⚠️  Username already taken")
+                        prompts.log.message("")
+                        continue // Ask for username again
+                      }
+                      enterpriseUsernameValid = true
+                    } else {
+                      // If check fails, proceed anyway (server might not have endpoint yet)
+                      enterpriseUsernameValid = true
+                    }
+                  } catch (error) {
+                    // Network error - proceed anyway
+                    enterpriseUsernameValid = true
+                  }
+                }
+
+                // Email validation with availability check
+                let enterpriseEmailValid = false
+                while (!enterpriseEmailValid) {
+                  enterpriseEmail = (await prompts.text({
+                    message: "Your email",
+                    placeholder: "john.doe@company.com",
+                    validate: (value) => {
+                      if (!value || value.trim() === "") return "Email is required"
+                      if (!value.includes("@")) return "Please enter a valid email"
+                    },
+                  })) as string
+
+                  if (prompts.isCancel(enterpriseEmail)) {
+                    prompts.outro("Done")
+                    await Instance.dispose()
+                    return
+                  }
+
+                  // Check if email is available
+                  try {
+                    const checkResponse = await fetch(
+                      `${enterpriseServerUrl}/api/user-auth/check-availability?email=${encodeURIComponent(enterpriseEmail)}&licenseKey=${encodeURIComponent(enterpriseLicenseKey)}`,
+                      { method: "GET", signal: AbortSignal.timeout(10000) }
+                    )
+
+                    if (checkResponse.ok) {
+                      const checkData = await checkResponse.json()
+                      if (!checkData.emailAvailable) {
+                        prompts.log.error("⚠️  Email already registered")
+                        prompts.log.message("")
+                        continue // Ask for email again
+                      }
+                      enterpriseEmailValid = true
+                    } else {
+                      // If check fails, proceed anyway
+                      enterpriseEmailValid = true
+                    }
+                  } catch (error) {
+                    // Network error - proceed anyway
+                    enterpriseEmailValid = true
+                  }
+                }
 
               enterprisePassword = (await prompts.password({
                 message: "Choose a password",
@@ -1704,12 +1763,27 @@ export const AuthLoginCommand = cmd({
                 if (!response.ok || !enterpriseAuthData.success) {
                   enterpriseSpinner.stop("Registration failed", 1)
                   prompts.log.error(enterpriseAuthData.error || "Unknown error")
+
+                  // Check if error is due to duplicate username/email
+                  if (enterpriseAuthData.error && (
+                    enterpriseAuthData.error.includes("username") ||
+                    enterpriseAuthData.error.includes("email") ||
+                    enterpriseAuthData.error.includes("already exists")
+                  )) {
+                    prompts.log.message("")
+                    prompts.log.warn("Please try a different username or email")
+                    prompts.log.message("")
+                    continue // Retry registration with different credentials
+                  }
+
+                  // Other errors - exit
                   prompts.outro("Done")
                   await Instance.dispose()
                   process.exit(1)
                 }
 
                 enterpriseSpinner.stop("Registration successful!")
+                enterpriseRegistrationSuccess = true // Break out of retry loop
               } catch (error: any) {
                 prompts.log.error(`Connection error: ${error.message}`)
                 prompts.log.message("")
@@ -1719,6 +1793,7 @@ export const AuthLoginCommand = cmd({
                 await Instance.dispose()
                 process.exit(1)
               }
+            } // End of while (!enterpriseRegistrationSuccess) loop
             } else {
               // Existing user login
               prompts.log.info("Logging in with existing account...")
