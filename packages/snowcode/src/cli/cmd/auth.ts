@@ -739,13 +739,21 @@ export const AuthLoginCommand = cmd({
                   spinner.stop("Registration failed", 1)
                   prompts.log.error(authData.error || "Unknown error")
                   prompts.log.message("")
-                  prompts.log.warn("⚠️  Please try again with different credentials...")
+
+                  // Ask if user wants to try again
+                  const tryAgain = await prompts.confirm({
+                    message: "Would you like to try again with different credentials?",
+                    initialValue: true,
+                  })
+
+                  if (prompts.isCancel(tryAgain) || !tryAgain) {
+                    prompts.outro("Registration cancelled")
+                    await Instance.dispose()
+                    process.exit(1)
+                  }
+
                   prompts.log.message("")
-
-                  // Wait a moment so user can read the message
-                  await new Promise(resolve => setTimeout(resolve, 1500))
-
-                  continue  // Automatically retry registration
+                  continue  // Retry registration
                 }
 
                 spinner.stop("Registration successful!")
@@ -757,13 +765,21 @@ export const AuthLoginCommand = cmd({
                 prompts.log.warn("Unable to connect to enterprise server")
                 prompts.log.info(`URL: ${enterpriseUrl}/api/user-auth/register`)
                 prompts.log.message("")
-                prompts.log.warn("⚠️  Retrying in 3 seconds...")
+
+                // Ask if user wants to try again
+                const tryAgain = await prompts.confirm({
+                  message: "Would you like to try again?",
+                  initialValue: true,
+                })
+
+                if (prompts.isCancel(tryAgain) || !tryAgain) {
+                  prompts.outro("Registration cancelled")
+                  await Instance.dispose()
+                  process.exit(1)
+                }
+
                 prompts.log.message("")
-
-                // Wait before retrying
-                await new Promise(resolve => setTimeout(resolve, 3000))
-
-                continue  // Automatically retry registration
+                continue  // Retry registration
               }
             }
           } else {
@@ -818,13 +834,21 @@ export const AuthLoginCommand = cmd({
                   spinner.stop("Authentication failed", 1)
                   prompts.log.error(authData.error || "Invalid username or password")
                   prompts.log.message("")
-                  prompts.log.warn("⚠️  Please try again...")
+
+                  // Ask if user wants to try again
+                  const tryAgain = await prompts.confirm({
+                    message: "Would you like to try again?",
+                    initialValue: true,
+                  })
+
+                  if (prompts.isCancel(tryAgain) || !tryAgain) {
+                    prompts.outro("Login cancelled")
+                    await Instance.dispose()
+                    process.exit(1)
+                  }
+
                   prompts.log.message("")
-
-                  // Wait a moment so user can read the message
-                  await new Promise(resolve => setTimeout(resolve, 1500))
-
-                  continue  // Automatically retry login
+                  continue  // Retry login
                 }
 
                 spinner.stop("Authentication successful!")
@@ -937,13 +961,21 @@ export const AuthLoginCommand = cmd({
                 prompts.log.warn("Unable to connect to enterprise server")
                 prompts.log.info(`URL: ${enterpriseUrl}/api/user-auth/login`)
                 prompts.log.message("")
-                prompts.log.warn("⚠️  Retrying in 3 seconds...")
+
+                // Ask if user wants to try again
+                const tryAgain = await prompts.confirm({
+                  message: "Would you like to try again?",
+                  initialValue: true,
+                })
+
+                if (prompts.isCancel(tryAgain) || !tryAgain) {
+                  prompts.outro("Login cancelled")
+                  await Instance.dispose()
+                  process.exit(1)
+                }
+
                 prompts.log.message("")
-
-                // Wait before retrying
-                await new Promise(resolve => setTimeout(resolve, 3000))
-
-                continue  // Automatically retry login
+                continue  // Retry login
               }
             }
           }
