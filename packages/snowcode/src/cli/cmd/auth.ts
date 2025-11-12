@@ -589,172 +589,221 @@ export const AuthLoginCommand = cmd({
           const machineId = generateMachineId()
 
           if (accountAction === "register") {
-            // New user registration
-            prompts.log.info("Creating your user account...")
+            // New user registration with retry loop
+            let registrationSuccess = false
 
-            username = (await prompts.text({
-              message: "Choose a username",
-              placeholder: "john.doe",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Username is required"
-                if (value.length < 3) return "Username must be at least 3 characters"
-              },
-            })) as string
+            while (!registrationSuccess) {
+              prompts.log.info("Creating your user account...")
 
-            if (prompts.isCancel(username)) throw new UI.CancelledError()
-
-            email = (await prompts.text({
-              message: "Your email",
-              placeholder: "john.doe@company.com",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Email is required"
-                if (!value.includes("@")) return "Please enter a valid email"
-              },
-            })) as string
-
-            if (prompts.isCancel(email)) throw new UI.CancelledError()
-
-            password = (await prompts.password({
-              message: "Choose a password",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Password is required"
-                if (value.length < 8) return "Password must be at least 8 characters"
-              },
-            })) as string
-
-            if (prompts.isCancel(password)) throw new UI.CancelledError()
-
-            const passwordConfirm = (await prompts.password({
-              message: "Confirm password",
-              validate: (value) => {
-                if (value !== password) return "Passwords do not match"
-              },
-            })) as string
-
-            if (prompts.isCancel(passwordConfirm)) throw new UI.CancelledError()
-
-            const roleChoice = (await prompts.select({
-              message: "Select your role",
-              options: [
-                {
-                  value: "developer",
-                  label: "Developer",
-                  hint: "Full MCP access + ServiceNow tools",
+              username = (await prompts.text({
+                message: "Choose a username",
+                placeholder: "john.doe",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Username is required"
+                  if (value.length < 3) return "Username must be at least 3 characters"
                 },
-                {
-                  value: "stakeholder",
-                  label: "Stakeholder",
-                  hint: "Portal-only access for monitoring",
+              })) as string
+
+              if (prompts.isCancel(username)) throw new UI.CancelledError()
+
+              email = (await prompts.text({
+                message: "Your email",
+                placeholder: "john.doe@company.com",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Email is required"
+                  if (!value.includes("@")) return "Please enter a valid email"
                 },
-              ],
-            })) as string
+              })) as string
 
-            if (prompts.isCancel(roleChoice)) throw new UI.CancelledError()
-            role = roleChoice as "developer" | "stakeholder" | "admin"
+              if (prompts.isCancel(email)) throw new UI.CancelledError()
 
-            prompts.log.info(`Machine ID: ${machineId.substring(0, 16)}...`)
-
-            // Register with enterprise backend
-            prompts.log.message("")
-            const spinner = prompts.spinner()
-            spinner.start("Registering user account...")
-
-            try {
-              const response = await fetch(`${enterpriseUrl}/api/user-auth/register`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
+              password = (await prompts.password({
+                message: "Choose a password",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Password is required"
+                  if (value.length < 8) return "Password must be at least 8 characters"
                 },
-                body: JSON.stringify({
-                  licenseKey,
-                  username,
-                  email,
-                  password,
-                  role,
-                }),
-              })
+              })) as string
 
-              authData = await response.json()
+              if (prompts.isCancel(password)) throw new UI.CancelledError()
 
-              if (!response.ok || !authData.success) {
-                spinner.stop("Registration failed", 1)
-                prompts.log.error(authData.error || "Unknown error")
-                prompts.outro("Done")
-                await Instance.dispose()
-                process.exit(1)
-              }
+              const passwordConfirm = (await prompts.password({
+                message: "Confirm password",
+                validate: (value) => {
+                  if (value !== password) return "Passwords do not match"
+                },
+              })) as string
 
-              spinner.stop("Registration successful!")
-            } catch (error: any) {
-              prompts.log.error(`Connection error: ${error.message}`)
+              if (prompts.isCancel(passwordConfirm)) throw new UI.CancelledError()
+
+              const roleChoice = (await prompts.select({
+                message: "Select your role",
+                options: [
+                  {
+                    value: "developer",
+                    label: "Developer",
+                    hint: "Full MCP access + ServiceNow tools",
+                  },
+                  {
+                    value: "stakeholder",
+                    label: "Stakeholder",
+                    hint: "Portal-only access for monitoring",
+                  },
+                ],
+              })) as string
+
+              if (prompts.isCancel(roleChoice)) throw new UI.CancelledError()
+              role = roleChoice as "developer" | "stakeholder" | "admin"
+
+              prompts.log.info(`Machine ID: ${machineId.substring(0, 16)}...`)
+
+              // Register with enterprise backend
               prompts.log.message("")
-              prompts.log.warn("Unable to connect to enterprise server")
-              prompts.log.info(`URL: ${enterpriseUrl}/api/user-auth/register`)
-              prompts.outro("Done")
-              await Instance.dispose()
-              process.exit(1)
+              const spinner = prompts.spinner()
+              spinner.start("Registering user account...")
+
+              try {
+                const response = await fetch(`${enterpriseUrl}/api/user-auth/register`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    licenseKey,
+                    username,
+                    email,
+                    password,
+                    role,
+                  }),
+                })
+
+                authData = await response.json()
+
+                if (!response.ok || !authData.success) {
+                  spinner.stop("Registration failed", 1)
+                  prompts.log.error(authData.error || "Unknown error")
+                  prompts.log.message("")
+
+                  // Ask if user wants to try again
+                  const tryAgain = await prompts.confirm({
+                    message: "Would you like to try again with different credentials?",
+                    initialValue: true,
+                  })
+
+                  if (prompts.isCancel(tryAgain) || !tryAgain) {
+                    prompts.outro("Registration cancelled")
+                    await Instance.dispose()
+                    process.exit(1)
+                  }
+
+                  prompts.log.message("")
+                  continue  // Retry registration
+                }
+
+                spinner.stop("Registration successful!")
+                registrationSuccess = true
+              } catch (error: any) {
+                spinner.stop("Connection error", 1)
+                prompts.log.error(`Connection error: ${error.message}`)
+                prompts.log.message("")
+                prompts.log.warn("Unable to connect to enterprise server")
+                prompts.log.info(`URL: ${enterpriseUrl}/api/user-auth/register`)
+                prompts.log.message("")
+
+                // Ask if user wants to try again
+                const tryAgain = await prompts.confirm({
+                  message: "Would you like to try again?",
+                  initialValue: true,
+                })
+
+                if (prompts.isCancel(tryAgain) || !tryAgain) {
+                  prompts.outro("Registration cancelled")
+                  await Instance.dispose()
+                  process.exit(1)
+                }
+
+                prompts.log.message("")
+                continue  // Retry registration
+              }
             }
           } else {
-            // Existing user login
-            prompts.log.info("Logging in with existing account...")
+            // Existing user login with retry loop
+            let loginSuccess = false
 
-            username = (await prompts.text({
-              message: "Your username",
-              placeholder: "john.doe",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Username is required"
-              },
-            })) as string
+            while (!loginSuccess) {
+              prompts.log.info("Logging in with existing account...")
 
-            if (prompts.isCancel(username)) throw new UI.CancelledError()
-
-            password = (await prompts.password({
-              message: "Your password",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Password is required"
-              },
-            })) as string
-
-            if (prompts.isCancel(password)) throw new UI.CancelledError()
-
-            prompts.log.info(`Machine ID: ${machineId.substring(0, 16)}...`)
-
-            // Login with enterprise backend
-            prompts.log.message("")
-            const spinner = prompts.spinner()
-            spinner.start("Authenticating...")
-
-            try {
-              const response = await fetch(`${enterpriseUrl}/api/user-auth/login`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
+              username = (await prompts.text({
+                message: "Your username",
+                placeholder: "john.doe",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Username is required"
                 },
-                body: JSON.stringify({
-                  licenseKey,
-                  username,
-                  password,
-                }),
-              })
+              })) as string
 
-              authData = await response.json()
+              if (prompts.isCancel(username)) throw new UI.CancelledError()
 
-              if (!response.ok || !authData.success) {
-                spinner.stop("Authentication failed", 1)
-                prompts.log.error(authData.error || "Invalid username or password")
-                prompts.outro("Done")
-                await Instance.dispose()
-                process.exit(1)
-              }
+              password = (await prompts.password({
+                message: "Your password",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Password is required"
+                },
+              })) as string
 
-              spinner.stop("Authentication successful!")
+              if (prompts.isCancel(password)) throw new UI.CancelledError()
 
-              // Extract role and email from response
-              role = authData.user?.role || "developer"
-              email = authData.user?.email
+              prompts.log.info(`Machine ID: ${machineId.substring(0, 16)}...`)
 
-              // 🔐 CHECK IF PASSWORD RESET IS REQUIRED
+              // Login with enterprise backend
+              prompts.log.message("")
+              const spinner = prompts.spinner()
+              spinner.start("Authenticating...")
+
               try {
+                const response = await fetch(`${enterpriseUrl}/api/user-auth/login`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    licenseKey,
+                    username,
+                    password,
+                  }),
+                })
+
+                authData = await response.json()
+
+                if (!response.ok || !authData.success) {
+                  spinner.stop("Authentication failed", 1)
+                  prompts.log.error(authData.error || "Invalid username or password")
+                  prompts.log.message("")
+
+                  // Ask if user wants to try again
+                  const tryAgain = await prompts.confirm({
+                    message: "Would you like to try again?",
+                    initialValue: true,
+                  })
+
+                  if (prompts.isCancel(tryAgain) || !tryAgain) {
+                    prompts.outro("Login cancelled")
+                    await Instance.dispose()
+                    process.exit(1)
+                  }
+
+                  prompts.log.message("")
+                  continue  // Retry login
+                }
+
+                spinner.stop("Authentication successful!")
+                loginSuccess = true
+
+                // Extract role and email from response
+                role = authData.user?.role || "developer"
+                email = authData.user?.email
+
+                // 🔐 CHECK IF PASSWORD RESET IS REQUIRED
+                try {
                 const userId = authData.user?.userId || crypto.createHash('sha256').update(email || username).digest('hex')
                 const resetCheckResponse = await fetch(`${enterpriseUrl}/api/user-auth/password-reset-required?userId=${userId}`, {
                   signal: AbortSignal.timeout(5000),
@@ -845,18 +894,33 @@ export const AuthLoginCommand = cmd({
                     }
                   }
                 }
-              } catch (checkError) {
-                // Silently continue if password reset check fails
-                // This ensures backward compatibility if endpoint doesn't exist
+                } catch (checkError) {
+                  // Silently continue if password reset check fails
+                  // This ensures backward compatibility if endpoint doesn't exist
+                }
+              } catch (error: any) {
+                spinner.stop("Connection error", 1)
+                prompts.log.error(`Connection error: ${error.message}`)
+                prompts.log.message("")
+                prompts.log.warn("Unable to connect to enterprise server")
+                prompts.log.info(`URL: ${enterpriseUrl}/api/user-auth/login`)
+                prompts.log.message("")
+
+                // Ask if user wants to try again
+                const tryAgain = await prompts.confirm({
+                  message: "Would you like to try again?",
+                  initialValue: true,
+                })
+
+                if (prompts.isCancel(tryAgain) || !tryAgain) {
+                  prompts.outro("Login cancelled")
+                  await Instance.dispose()
+                  process.exit(1)
+                }
+
+                prompts.log.message("")
+                continue  // Retry login
               }
-            } catch (error: any) {
-              prompts.log.error(`Connection error: ${error.message}`)
-              prompts.log.message("")
-              prompts.log.warn("Unable to connect to enterprise server")
-              prompts.log.info(`URL: ${enterpriseUrl}/api/user-auth/login`)
-              prompts.outro("Done")
-              await Instance.dispose()
-              process.exit(1)
             }
           }
 
