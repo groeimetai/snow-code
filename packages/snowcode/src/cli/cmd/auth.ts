@@ -595,27 +595,83 @@ export const AuthLoginCommand = cmd({
             while (!registrationSuccess) {
               prompts.log.info("Creating your user account...")
 
-              username = (await prompts.text({
-                message: "Choose a username",
-                placeholder: "john.doe",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Username is required"
-                  if (value.length < 3) return "Username must be at least 3 characters"
-                },
-              })) as string
+              // Username validation with availability check
+              let usernameValid = false
+              while (!usernameValid) {
+                username = (await prompts.text({
+                  message: "Choose a username",
+                  placeholder: "john.doe",
+                  validate: (value) => {
+                    if (!value || value.trim() === "") return "Username is required"
+                    if (value.length < 3) return "Username must be at least 3 characters"
+                  },
+                })) as string
 
-              if (prompts.isCancel(username)) throw new UI.CancelledError()
+                if (prompts.isCancel(username)) throw new UI.CancelledError()
 
-              email = (await prompts.text({
-                message: "Your email",
-                placeholder: "john.doe@company.com",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Email is required"
-                  if (!value.includes("@")) return "Please enter a valid email"
-                },
-              })) as string
+                // Check if username is available
+                try {
+                  const checkResponse = await fetch(
+                    `${enterpriseUrl}/api/user-auth/check-availability?username=${encodeURIComponent(username)}&licenseKey=${encodeURIComponent(licenseKey)}`,
+                    { method: "GET", signal: AbortSignal.timeout(10000) }
+                  )
 
-              if (prompts.isCancel(email)) throw new UI.CancelledError()
+                  if (checkResponse.ok) {
+                    const checkData = await checkResponse.json()
+                    if (!checkData.usernameAvailable) {
+                      prompts.log.error("⚠️  Username already taken")
+                      prompts.log.message("")
+                      continue // Ask for username again
+                    }
+                    usernameValid = true
+                  } else {
+                    // If check fails, proceed anyway (server might not have endpoint yet)
+                    usernameValid = true
+                  }
+                } catch (error) {
+                  // Network error - proceed anyway
+                  usernameValid = true
+                }
+              }
+
+              // Email validation with availability check
+              let emailValid = false
+              while (!emailValid) {
+                email = (await prompts.text({
+                  message: "Your email",
+                  placeholder: "john.doe@company.com",
+                  validate: (value) => {
+                    if (!value || value.trim() === "") return "Email is required"
+                    if (!value.includes("@")) return "Please enter a valid email"
+                  },
+                })) as string
+
+                if (prompts.isCancel(email)) throw new UI.CancelledError()
+
+                // Check if email is available
+                try {
+                  const checkResponse = await fetch(
+                    `${enterpriseUrl}/api/user-auth/check-availability?email=${encodeURIComponent(email)}&licenseKey=${encodeURIComponent(licenseKey)}`,
+                    { method: "GET", signal: AbortSignal.timeout(10000) }
+                  )
+
+                  if (checkResponse.ok) {
+                    const checkData = await checkResponse.json()
+                    if (!checkData.emailAvailable) {
+                      prompts.log.error("⚠️  Email already registered")
+                      prompts.log.message("")
+                      continue // Ask for email again
+                    }
+                    emailValid = true
+                  } else {
+                    // If check fails, proceed anyway (server might not have endpoint yet)
+                    emailValid = true
+                  }
+                } catch (error) {
+                  // Network error - proceed anyway
+                  emailValid = true
+                }
+              }
 
               password = (await prompts.password({
                 message: "Choose a password",
