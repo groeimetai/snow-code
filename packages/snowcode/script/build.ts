@@ -75,6 +75,28 @@ for (const [os, arch] of targets) {
   }
 
   await $`rm -rf ./dist/${name}/bin/tui`
+
+  // Create postinstall script for non-Windows platforms to set binary permissions
+  if (os !== "windows") {
+    const postinstallScript = `#!/usr/bin/env node
+const fs = require('fs');
+const path = require('path');
+
+// Make this platform's binary executable after install
+try {
+  const binaryPath = path.join(__dirname, 'bin', 'snow-code');
+
+  if (fs.existsSync(binaryPath)) {
+    fs.chmodSync(binaryPath, 0o755);
+    console.log('✅ Made snow-code binary executable');
+  }
+} catch (error) {
+  // Silently fail - permissions might be set already
+}
+`
+    await Bun.file(`dist/${name}/postinstall.cjs`).write(postinstallScript)
+  }
+
   await Bun.file(`dist/${name}/package.json`).write(
     JSON.stringify(
       {
@@ -82,6 +104,11 @@ for (const [os, arch] of targets) {
         version: pkg.version,  // Use package.json version, not Script.version
         os: [os === "windows" ? "win32" : os],
         cpu: [arch],
+        ...(os !== "windows" && {
+          scripts: {
+            postinstall: "node postinstall.cjs || true"
+          }
+        })
       },
       null,
       2,
