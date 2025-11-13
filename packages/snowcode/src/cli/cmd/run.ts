@@ -1,5 +1,7 @@
 import type { Argv } from "yargs"
 import path from "path"
+import { writeFileSync } from "fs"
+import { tmpdir } from "os"
 import { Bus } from "../../bus"
 import { Provider } from "../../provider/provider"
 import { Session } from "../../session"
@@ -364,16 +366,37 @@ export const RunCommand = cmd({
             UI.println()
             const formattedOutput = formatToolOutput(part.state.output, part.tool)
 
-            // For very large outputs (> 500 lines), show truncated version
+            // For outputs longer than 30 lines, show collapsed version
             const lines = formattedOutput.split('\n')
-            if (lines.length > 500) {
-              UI.println(UI.Style.TEXT_DIM + `[Output truncated - showing first 100 and last 50 lines of ${lines.length} total]`)
+            const COLLAPSE_THRESHOLD = 30
+            const SHOW_FIRST = 15
+            const SHOW_LAST = 10
+
+            if (lines.length > COLLAPSE_THRESHOLD) {
+              // Save full output to temp file
+              const timestamp = Date.now()
+              const outputFile = path.join(tmpdir(), `snow-code-output-${timestamp}.txt`)
+              try {
+                writeFileSync(outputFile, formattedOutput, 'utf8')
+              } catch (err) {
+                // Fallback if file write fails
+              }
+
+              const hiddenLines = lines.length - SHOW_FIRST - SHOW_LAST
+
+              // Show first lines
+              UI.println(lines.slice(0, SHOW_FIRST).join('\n'))
               UI.println()
-              UI.println(lines.slice(0, 100).join('\n'))
+
+              // Show indicator
+              UI.println(UI.Style.TEXT_DIM + `... ${hiddenLines} lines hidden (${lines.length} total lines) ...`)
+              if (outputFile) {
+                UI.println(UI.Style.TEXT_DIM + `Full output: ${outputFile}`)
+              }
               UI.println()
-              UI.println(UI.Style.TEXT_DIM + `[... ${lines.length - 150} lines hidden ...]`)
-              UI.println()
-              UI.println(lines.slice(-50).join('\n'))
+
+              // Show last lines
+              UI.println(lines.slice(-SHOW_LAST).join('\n'))
             } else {
               UI.println(formattedOutput)
             }
