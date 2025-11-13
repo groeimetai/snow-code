@@ -36,7 +36,7 @@ OAuth callbacks don't work in remote development environments (GitHub Codespaces
 ## Technical Details
 
 ### Files Changed
-- `packages/snowcode/src/auth/servicenow-oauth.ts`
+- `packages/snow-code/src/auth/servicenow-oauth.ts`
 
 ### Key Changes
 
