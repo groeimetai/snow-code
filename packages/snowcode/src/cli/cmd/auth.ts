@@ -55,8 +55,8 @@ async function updateEnvFile(updates: Array<{ key: string; value: string }>) {
  * Helper function to update SnowCode MCP config files with ServiceNow credentials
  */
 async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clientSecret: string) {
-  const projectSnowCodeDir = path.join(process.cwd(), ".snowcode")
-  const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
+  const projectSnowCodeDir = path.join(process.cwd(), ".snow-code")
+  const globalSnowCodeDir = path.join(os.homedir(), ".snow-code")
   const globalConfigDir = path.join(os.homedir(), ".config", "snowcode")
 
   // Ensure instance is a full URL
@@ -1055,10 +1055,10 @@ export const AuthLoginCommand = cmd({
           // Add snow-flow-enterprise MCP server to SnowCode config
           // Uses stdio proxy architecture: SnowCode → Enterprise Proxy (stdio) → Enterprise Backend (HTTPS)
           try {
-            const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
+            const globalSnowCodeDir = path.join(os.homedir(), ".snow-code")
             const configPath = path.join(globalSnowCodeDir, "config.json")
 
-            // Ensure .snowcode directory exists
+            // Ensure .snow-code directory exists
             await Bun.write(path.join(globalSnowCodeDir, ".keep"), "")
 
             // Read existing config or create new one
@@ -2092,7 +2092,7 @@ export const AuthLoginCommand = cmd({
             await updateEnvFile(envUpdates)
 
             // Add snow-flow-enterprise MCP server to SnowCode config
-            const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
+            const globalSnowCodeDir = path.join(os.homedir(), ".snow-code")
             const configPath = path.join(globalSnowCodeDir, "snowcode.json")
             try {
               const file = Bun.file(configPath)
@@ -2504,7 +2504,7 @@ export const AuthLoginCommand = cmd({
             await updateEnvFile(envUpdates)
 
             // Add snow-flow-enterprise MCP server to SnowCode config
-            const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
+            const globalSnowCodeDir = path.join(os.homedir(), ".snow-code")
             const configPath = path.join(globalSnowCodeDir, "snowcode.json")
             try {
               const file = Bun.file(configPath)

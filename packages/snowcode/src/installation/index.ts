@@ -64,7 +64,7 @@ export namespace Installation {
   }
 
   export async function method() {
-    if (process.execPath.includes(path.join(".snowcode", "bin"))) return "curl"
+    if (process.execPath.includes(path.join(".snow-code", "bin"))) return "curl"
     if (process.execPath.includes(path.join(".local", "bin"))) return "curl"
     const exec = process.execPath.toLowerCase()
 
