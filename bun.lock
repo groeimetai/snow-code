@@ -207,9 +207,9 @@
         "typescript": "catalog:",
       },
     },
-    "packages/snowcode": {
+    "packages/snow-code": {
       "name": "@groeimetai/snow-code",
-      "version": "0.19.2",
+      "version": "0.19.3",
       "bin": {
         "snow-code": "./bin/snow-code",
         "snowcode": "./bin/snowcode",
@@ -673,7 +673,7 @@
 
     "@fontsource/inter": ["@fontsource/inter@5.2.8", "", {}, "sha512-P6r5WnJoKiNVV+zvW2xM13gNdFhAEpQ9dQJHt3naLvfg+LkF2ldgSLiF4T41lf1SQCM9QmkqPTn4TH568IRagg=="],
 
-    "@groeimetai/snow-code": ["@groeimetai/snow-code@workspace:packages/snowcode"],
+    "@groeimetai/snow-code": ["@groeimetai/snow-code@workspace:packages/snow-code"],
 
     "@groeimetai/snow-code-console-app": ["@groeimetai/snow-code-console-app@workspace:packages/console/app"],
 
