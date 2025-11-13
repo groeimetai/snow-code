@@ -24,11 +24,8 @@ const parser = lazy(async () => {
   const { default: treeWasm } = await import("web-tree-sitter/tree-sitter.wasm" as string, {
     with: { type: "wasm" },
   })
-  await Parser.init({
-    locateFile() {
-      return treeWasm
-    },
-  })
+  // In web-tree-sitter 0.25+, init() takes the wasm directly
+  await Parser.init(treeWasm)
   const { default: bashWasm } = await import("tree-sitter-bash/tree-sitter-bash.wasm" as string, {
     with: { type: "wasm" },
   })
