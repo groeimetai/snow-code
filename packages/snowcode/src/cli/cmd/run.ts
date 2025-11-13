@@ -31,6 +31,46 @@ const TOOL: Record<string, [string, string]> = {
 }
 
 /**
+ * Format tool input parameters like Claude Code does
+ * Shows: ToolName (param1=value1, param2=value2, ...)
+ */
+function formatToolInput(input: Record<string, any>, maxValueLength = 80): string {
+  const params = Object.entries(input)
+    .map(([key, value]) => {
+      let displayValue: string
+
+      if (typeof value === 'boolean') {
+        displayValue = String(value)
+      } else if (typeof value === 'string') {
+        // Strip XML/HTML tags and CDATA
+        let cleaned = value
+          .replace(/<!\[CDATA\[|\]\]>/g, '')
+          .replace(/<[^>]+>/g, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+
+        // Truncate if too long
+        if (cleaned.length > maxValueLength) {
+          cleaned = cleaned.substring(0, maxValueLength) + '...'
+        }
+
+        displayValue = cleaned
+      } else if (Array.isArray(value)) {
+        displayValue = `[${value.length} items]`
+      } else if (typeof value === 'object' && value !== null) {
+        displayValue = '{...}'
+      } else {
+        displayValue = String(value)
+      }
+
+      return `${key}=${displayValue}`
+    })
+    .join(', ')
+
+  return params
+}
+
+/**
  * Format tool output for display
  * MCP tools often return large JSON strings - format them nicely like Claude Code does
  */
@@ -258,7 +298,7 @@ export const RunCommand = cmd({
           if (!streamingOutputs.has(part.callID)) {
             const title =
               part.state.title ||
-              (Object.keys(part.state.input).length > 0 ? JSON.stringify(part.state.input) : "Unknown")
+              (Object.keys(part.state.input).length > 0 ? `(${formatToolInput(part.state.input)})` : "")
             printEvent(color, tool, title)
             streamingOutputs.set(part.callID, { lastOutput: "", linesPrinted: 0 })
           }
@@ -301,8 +341,8 @@ export const RunCommand = cmd({
           const title =
             part.state.title ||
             (Object.keys(part.state.input).length > 0
-              ? JSON.stringify(part.state.input)
-              : "Unknown")
+              ? `(${formatToolInput(part.state.input)})`
+              : "")
 
           // Clear streaming output if it exists
           const tracker = streamingOutputs.get(part.callID)
