@@ -2,7 +2,7 @@ import fs from "fs/promises"
 import { xdgData, xdgCache, xdgConfig, xdgState } from "xdg-basedir"
 import path from "path"
 
-const app = "snowcode"
+const app = "snow-code"
 
 const data = path.join(xdgData!, app)
 const cache = path.join(xdgCache!, app)
