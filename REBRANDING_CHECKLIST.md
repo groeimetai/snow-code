@@ -38,7 +38,7 @@ cd /Users/nielsvanderwerf/snow-code
 mv .opencode .snowcode
 
 # 1.2 Rename main package directory
-mv packages/opencode packages/snowcode
+mv packages/opencode packages/snow-code
 
 # 1.3 Rename TUI command directory
 mv packages/tui/cmd/opencode packages/tui/cmd/snowcode
@@ -54,7 +54,7 @@ find . -type d -name "*opencode*" | grep -v node_modules | grep -v .git
 ```
 
 - [ ] `.opencode/` → `.snowcode/`
-- [ ] `packages/opencode/` → `packages/snowcode/`
+- [ ] `packages/opencode/` → `packages/snow-code/`
 - [ ] `packages/tui/cmd/opencode/` → `packages/tui/cmd/snowcode/`
 - [ ] `opencode.json` theme → `snowcode.json`
 
@@ -66,17 +66,17 @@ find . -type d -name "*opencode*" | grep -v node_modules | grep -v .git
 cd /Users/nielsvanderwerf/snow-code
 
 # 2.1 Rename Windows batch file
-mv packages/snowcode/bin/opencode.cmd packages/snowcode/bin/snowcode.cmd
+mv packages/snow-code/bin/opencode.cmd packages/snow-code/bin/snowcode.cmd
 
 # 2.2 Update symlinks if they exist
-cd packages/snowcode/bin
+cd packages/snow-code/bin
 rm -f opencode 2>/dev/null
 ln -s snow-code snowcode  # Create snowcode symlink
 ```
 
 **Verification:**
 ```bash
-ls -la packages/snowcode/bin/
+ls -la packages/snow-code/bin/
 # Should show: snow-code, snowcode, snowcode.cmd
 ```
 
@@ -95,7 +95,7 @@ find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) \
   -not -path "*/node_modules/*" \
   -not -path "*/.git/*" \
   -not -path "*/dist/*" \
-  -exec sed -i '' 's|packages/opencode/|packages/snowcode/|g' {} \;
+  -exec sed -i '' 's|packages/opencode/|packages/snow-code/|g' {} \;
 
 # 3.2 Update from statements
 find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) \
@@ -137,7 +137,7 @@ grep -r "from.*opencode/" --include="*.ts" --include="*.js" \
 }
 ```
 
-#### 4.2 packages/snowcode/package.json (CRITICAL)
+#### 4.2 packages/snow-code/package.json (CRITICAL)
 ```json
 {
   "name": "@groeimetai/snow-code",  // Was: "opencode"
@@ -196,7 +196,7 @@ find . -name "package.json" -not -path "*/node_modules/*" \
 
 Checklist:
 - [ ] Root package.json
-- [ ] packages/snowcode/package.json
+- [ ] packages/snow-code/package.json
 - [ ] sdks/vscode/package.json
 - [ ] All other package.json files (10 remaining)
 
@@ -285,7 +285,7 @@ Replace "opencode instance" with "snow-code instance".
 #### 7.4 Codespaces Fix
 **File:** `./CODESPACES_AUTH_FIX.md`
 
-Update path: `packages/opencode/src/auth/` → `packages/snowcode/src/auth/`
+Update path: `packages/opencode/src/auth/` → `packages/snow-code/src/auth/`
 
 Checklist:
 - [ ] sdks/vscode/README.md
@@ -380,7 +380,7 @@ await import(`../packages/opencode/script/publish.ts`)
 // NEW:
 const previous = await fetch("https://registry.npmjs.org/@groeimetai/snow-code/latest")
 console.log("\n=== snow-code ===\n")
-await import(`../packages/snowcode/script/publish.ts`)
+await import(`../packages/snow-code/script/publish.ts`)
 ```
 
 #### 10.2 Stats Script
@@ -471,7 +471,7 @@ Checklist:
 git add -A
 git commit -m "rebrand: Replace all OpenCode branding with Snow-Code
 
-- Renamed directories: .opencode → .snowcode, packages/opencode → packages/snowcode
+- Renamed directories: .opencode → .snowcode, packages/opencode → packages/snow-code
 - Updated all package.json files with @groeimetai/snow-code
 - Updated all imports and path references
 - Updated VS Code extension commands and branding
@@ -492,7 +492,7 @@ BREAKING CHANGES:
 
 ```bash
 # Test local installation
-cd packages/snowcode
+cd packages/snow-code
 bun run build
 npm link
 

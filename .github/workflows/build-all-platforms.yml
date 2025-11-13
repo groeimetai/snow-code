@@ -65,13 +65,13 @@ jobs:
         run: |
           # Install from monorepo root to get all workspace dependencies
           bun install
-          # Also install in packages/snowcode for local deps
-          cd packages/snowcode
+          # Also install in packages/snow-code for local deps
+          cd packages/snow-code
           bun install --no-save
 
       - name: Build platform binary
         run: |
-          cd packages/snowcode
+          cd packages/snow-code
           bun run build
         env:
           TARGET_OS: ${{ matrix.os }}
@@ -81,7 +81,7 @@ jobs:
       - name: Verify build
         shell: bash
         run: |
-          cd packages/snowcode
+          cd packages/snow-code
           BINARY_NAME="snow-code-${{ matrix.os }}-${{ matrix.arch }}"
           if [ "${{ matrix.os }}" = "windows" ]; then
             BINARY_PATH="dist/@groeimetai/$BINARY_NAME/bin/snow-code.exe"
@@ -100,7 +100,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: snow-code-${{ matrix.os }}-${{ matrix.arch }}
-          path: packages/snowcode/dist/@groeimetai/snow-code-${{ matrix.os }}-${{ matrix.arch }}/
+          path: packages/snow-code/dist/@groeimetai/snow-code-${{ matrix.os }}-${{ matrix.arch }}/
           retention-days: 7
 
   # Publish all binaries to npm
@@ -125,7 +125,7 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: packages/snowcode/dist/@groeimetai/
+          path: packages/snow-code/dist/@groeimetai/
 
       - name: Setup npm authentication
         run: |
@@ -139,12 +139,12 @@ jobs:
           elif [[ $GITHUB_REF == refs/tags/v* ]]; then
             echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
           else
-            echo "version=$(cat packages/snowcode/package.json | grep '"version"' | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')" >> $GITHUB_OUTPUT
+            echo "version=$(cat packages/snow-code/package.json | grep '"version"' | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')" >> $GITHUB_OUTPUT
           fi
 
       - name: Publish platform binaries
         run: |
-          cd packages/snowcode/dist/@groeimetai
+          cd packages/snow-code/dist/@groeimetai
           for dir in snow-code-*; do
             if [ -d "$dir" ]; then
               echo "Publishing $dir..."
@@ -156,7 +156,7 @@ jobs:
 
       - name: Publish main package
         run: |
-          cd packages/snowcode
+          cd packages/snow-code
           npm publish --access public || echo "Failed to publish main package (may already exist)"
 
       - name: Create GitHub Release

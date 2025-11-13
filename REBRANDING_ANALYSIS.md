@@ -40,7 +40,7 @@ Package.json files affected: 13
 | Current Path | New Path | Impact |
 |-------------|----------|--------|
 | `.opencode/` | `.snowcode/` | **HIGH** - Config directory, affects all tools |
-| `packages/opencode/` | `packages/snowcode/` | **CRITICAL** - Main package |
+| `packages/opencode/` | `packages/snow-code/` | **CRITICAL** - Main package |
 | `packages/tui/cmd/opencode/` | `packages/tui/cmd/snowcode/` | **HIGH** - TUI binary |
 | `packages/tui/internal/theme/themes/opencode.json` | `snowcode.json` | **MEDIUM** - Theme file |
 
@@ -263,7 +263,7 @@ const npmDownloads = await fetchNpmDownloads("@groeimetai/snow-code")
 1. ✅ **Rename directories:**
    ```bash
    mv .opencode .snowcode
-   mv packages/opencode packages/snowcode
+   mv packages/opencode packages/snow-code
    mv packages/tui/cmd/opencode packages/tui/cmd/snowcode
    ```
 

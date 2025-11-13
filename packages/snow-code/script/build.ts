@@ -44,7 +44,7 @@ for (const [os, arch] of targets) {
   console.log(`building ${os}-${arch}`)
   const name = `${pkg.name}-${os}-${arch}`
   await $`mkdir -p dist/${name}/bin`
-  await $`CGO_ENABLED=0 GOOS=${os} GOARCH=${GOARCH[arch]} go build -ldflags="-s -w -X main.Version=${pkg.version}" -o ../snowcode/dist/${name}/bin/tui ../tui/cmd/snowcode/snowcode/main.go`
+  await $`CGO_ENABLED=0 GOOS=${os} GOARCH=${GOARCH[arch]} go build -ldflags="-s -w -X main.Version=${pkg.version}" -o ../snow-code/dist/${name}/bin/tui ../tui/cmd/snowcode/snowcode/main.go`
     .cwd("../tui")
     .quiet()
 
