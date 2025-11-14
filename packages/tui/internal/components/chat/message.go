@@ -399,13 +399,29 @@ func renderText(
 		info = author + timestamp
 	}
 	if !showToolDetails && toolCalls != nil && len(toolCalls) > 0 {
-		for _, toolCall := range toolCalls {
+		for i, toolCall := range toolCalls {
 			title := renderToolTitle(toolCall, width-2)
 			style := styles.NewStyle()
 			if toolCall.State.Status == opencode.ToolPartStateStatusError {
 				style = style.Foreground(t.Error())
 			}
 			title = style.Render(title)
+
+			// Add content hint for the last tool call only
+			isLastToolCall := i == len(toolCalls)-1
+			if isLastToolCall && (toolCall.State.Status == opencode.ToolPartStateStatusCompleted || toolCall.State.Status == opencode.ToolPartStateStatusError) {
+				fullOutput := GetFullToolOutput(toolCall)
+				hint := ""
+				if fullOutput == "" {
+					// No output
+					hint = styles.NewStyle().Background(backgroundColor).Foreground(t.TextMuted()).Render(" (No content)")
+				} else if len(fullOutput) > 500 {
+					// Has significant output that can be expanded
+					hint = styles.NewStyle().Background(backgroundColor).Foreground(t.TextMuted()).Render(" (ctrl+o to expand)")
+				}
+				title = title + hint
+			}
+
 			title = "\n∟ " + title
 			content = content + title
 		}
@@ -849,51 +865,42 @@ func renderToolTitle(
 		return styles.NewStyle().Background(t.BackgroundPanel()).Width(width - 6).Render(titleWithIndicator)
 	}
 
-	toolArgs := ""
 	toolArgsMap := make(map[string]any)
 	if toolCall.State.Input != nil {
 		value := toolCall.State.Input
 		if m, ok := value.(map[string]any); ok {
 			toolArgsMap = m
-
-			keys := make([]string, 0, len(toolArgsMap))
-			for key := range toolArgsMap {
-				keys = append(keys, key)
-			}
-			slices.Sort(keys)
-			firstKey := ""
-			if len(keys) > 0 {
-				firstKey = keys[0]
-			}
-
-			toolArgs = renderArgs(&toolArgsMap, firstKey)
 		}
 	}
 
 	title := renderToolName(toolCall.Tool)
 	switch toolCall.Tool {
 	case "read":
-		toolArgs = renderArgs(&toolArgsMap, "filePath")
-		title = fmt.Sprintf("%s %s", title, toolArgs)
+		if filename, ok := toolArgsMap["filePath"].(string); ok {
+			title = fmt.Sprintf("%s(%s)", title, util.Relative(filename))
+		}
 	case "edit", "write":
 		if filename, ok := toolArgsMap["filePath"].(string); ok {
-			title = fmt.Sprintf("%s %s", title, util.Relative(filename))
+			title = fmt.Sprintf("%s(%s)", title, util.Relative(filename))
 		}
 	case "bash":
 		if description, ok := toolArgsMap["description"].(string); ok {
-			title = fmt.Sprintf("%s %s", title, description)
+			title = fmt.Sprintf("%s(%s)", title, description)
+		} else if command, ok := toolArgsMap["command"].(string); ok {
+			title = fmt.Sprintf("%s(%s)", title, command)
 		}
 	case "task":
 		description := toolArgsMap["description"]
 		subagent := toolArgsMap["subagent_type"]
 		if description != nil && subagent != nil {
-			title = fmt.Sprintf("%s[%s] %s", title, subagent, description)
+			title = fmt.Sprintf("%s[%s](%s)", title, subagent, description)
 		} else if description != nil {
-			title = fmt.Sprintf("%s %s", title, description)
+			title = fmt.Sprintf("%s(%s)", title, description)
 		}
 	case "webfetch":
-		toolArgs = renderArgs(&toolArgsMap, "url")
-		title = fmt.Sprintf("%s %s", title, toolArgs)
+		if url, ok := toolArgsMap["url"].(string); ok {
+			title = fmt.Sprintf("%s(%s)", title, url)
+		}
 	case "todowrite":
 		title = getTodoTitle(toolCall)
 	case "todoread":
@@ -903,8 +910,27 @@ func renderToolTitle(
 			title = renderToolName(actualTool)
 		}
 	default:
-		toolName := renderToolName(toolCall.Tool)
-		title = fmt.Sprintf("%s %s", toolName, toolArgs)
+		// For MCP tools and other tools, use compact format with first meaningful parameter
+		keys := make([]string, 0, len(toolArgsMap))
+		for key := range toolArgsMap {
+			keys = append(keys, key)
+		}
+		slices.Sort(keys)
+
+		// Find first string parameter to show
+		var firstParam string
+		for _, key := range keys {
+			if value, ok := toolArgsMap[key].(string); ok && value != "" && len(value) < 100 {
+				firstParam = value
+				break
+			}
+		}
+
+		if firstParam != "" {
+			title = fmt.Sprintf("%s(%s)", renderToolName(toolCall.Tool), firstParam)
+		} else {
+			title = renderToolName(toolCall.Tool) + "()"
+		}
 	}
 
 	// Adjust width to account for status indicator (● + space = ~3 chars)
