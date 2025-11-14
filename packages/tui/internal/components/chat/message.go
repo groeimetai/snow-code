@@ -806,15 +806,47 @@ func getTodoTitle(toolCall opencode.ToolPart) string {
 	return "Plan"
 }
 
+func renderStatusIndicator(status opencode.ToolPartStateStatus) string {
+	// Unicode filled circle (●) for status indicator
+	indicator := "●"
+	t := theme.CurrentTheme()
+
+	switch status {
+	case opencode.ToolPartStateStatusPending, opencode.ToolPartStateStatusRunning:
+		// White/muted color for in-progress
+		return styles.NewStyle().Foreground(t.TextMuted()).Render(indicator)
+	case opencode.ToolPartStateStatusCompleted:
+		// Green for completed
+		return styles.NewStyle().Foreground(t.Success()).Render(indicator)
+	case opencode.ToolPartStateStatusError:
+		// Red for error
+		return styles.NewStyle().Foreground(t.Error()).Render(indicator)
+	default:
+		// Default to muted
+		return styles.NewStyle().Foreground(t.TextMuted()).Render(indicator)
+	}
+}
+
+// GetFullToolOutput extracts the full output from a tool call
+func GetFullToolOutput(toolCall opencode.ToolPart) string {
+	if toolCall.State.Output != "" {
+		return toolCall.State.Output
+	}
+	return ""
+}
+
 func renderToolTitle(
 	toolCall opencode.ToolPart,
 	width int,
 ) string {
+	// Add status indicator at the beginning
+	statusIndicator := renderStatusIndicator(toolCall.State.Status)
 	if toolCall.State.Status == opencode.ToolPartStateStatusPending {
 		title := renderToolAction(toolCall.Tool)
 		t := theme.CurrentTheme()
 		shiny := util.Shimmer(title, t.BackgroundPanel(), t.TextMuted(), t.Accent())
-		return styles.NewStyle().Background(t.BackgroundPanel()).Width(width - 6).Render(shiny)
+		titleWithIndicator := statusIndicator + " " + shiny
+		return styles.NewStyle().Background(t.BackgroundPanel()).Width(width - 6).Render(titleWithIndicator)
 	}
 
 	toolArgs := ""
@@ -865,7 +897,7 @@ func renderToolTitle(
 	case "todowrite":
 		title = getTodoTitle(toolCall)
 	case "todoread":
-		return "Plan"
+		return statusIndicator + " Plan"
 	case "invalid":
 		if actualTool, ok := toolArgsMap["tool"].(string); ok {
 			title = renderToolName(actualTool)
@@ -875,12 +907,15 @@ func renderToolTitle(
 		title = fmt.Sprintf("%s %s", toolName, toolArgs)
 	}
 
-	title = truncate.StringWithTail(title, uint(width-6), "...")
+	// Adjust width to account for status indicator (● + space = ~3 chars)
+	title = truncate.StringWithTail(title, uint(width-10), "...")
 	if toolCall.State.Error != "" {
 		t := theme.CurrentTheme()
 		title = styles.NewStyle().Foreground(t.Error()).Render(title)
 	}
-	return title
+
+	// Add status indicator at the beginning
+	return statusIndicator + " " + title
 }
 
 func renderToolAction(name string) string {

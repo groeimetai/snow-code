@@ -18,6 +18,7 @@ import (
 	"github.com/sst/opencode/internal/commands"
 	"github.com/sst/opencode/internal/components/dialog"
 	"github.com/sst/opencode/internal/components/diff"
+	"github.com/sst/opencode/internal/components/modal"
 	"github.com/sst/opencode/internal/components/toast"
 	"github.com/sst/opencode/internal/layout"
 	"github.com/sst/opencode/internal/styles"
@@ -61,6 +62,12 @@ type messagesComponent struct {
 	selection          *selection
 	messagePositions   map[string]int // map message ID to line position
 	animating          bool
+	fullOutputCache    map[string]string // map tool call ID to full (untruncated) output
+	showFullOutputModal bool
+	fullOutputContent   string
+	fullOutputTitle     string
+	lastToolCallID      string // ID of the most recent tool call with output
+	lastToolCallTitle   string // Title of the most recent tool call
 }
 
 type selection struct {
@@ -101,6 +108,11 @@ func (s selection) coords(offset int) *selection {
 
 type ToggleToolDetailsMsg struct{}
 type ToggleThinkingBlocksMsg struct{}
+type ShowFullOutputMsg struct {
+	ToolCallID string
+	Title      string
+	Content    string
+}
 type shimmerTickMsg struct{}
 
 func (m *messagesComponent) Init() tea.Cmd {
@@ -190,6 +202,23 @@ func (m *messagesComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.showThinkingBlocks = !m.showThinkingBlocks
 		m.app.State.ShowThinkingBlocks = &m.showThinkingBlocks
 		return m, tea.Batch(m.renderView(), m.app.SaveState())
+	case ShowFullOutputMsg:
+		// Show the full output for the last tool call
+		if m.lastToolCallID != "" {
+			if fullOutput, exists := m.fullOutputCache[m.lastToolCallID]; exists {
+				m.showFullOutputModal = true
+				m.fullOutputTitle = m.lastToolCallTitle
+				m.fullOutputContent = fullOutput
+			}
+		}
+		return m, nil
+	case tea.KeyPressMsg:
+		keyString := msg.String()
+		// Close full output modal with Esc
+		if m.showFullOutputModal && keyString == "esc" {
+			m.showFullOutputModal = false
+			return m, nil
+		}
 	case app.SessionLoadedMsg:
 		m.tail = true
 		m.loading = true
@@ -589,6 +618,14 @@ func (m *messagesComponent) renderView() tea.Cmd {
 						}
 
 						if part.State.Status == opencode.ToolPartStateStatusCompleted || part.State.Status == opencode.ToolPartStateStatusError {
+							// Store full output for Ctrl+O viewing
+							fullOutput := GetFullToolOutput(part)
+							if fullOutput != "" {
+								m.fullOutputCache[part.ID] = fullOutput
+								m.lastToolCallID = part.ID
+								m.lastToolCallTitle = renderToolTitle(part, width)
+							}
+
 							key := m.cache.GenerateKey(casted.ID,
 								part.ID,
 								m.showToolDetails,
@@ -1055,9 +1092,46 @@ func (m *messagesComponent) View() string {
 	}
 
 	viewport := m.viewport.View()
-	return styles.NewStyle().
+	baseView := styles.NewStyle().
 		Background(bgColor).
 		Render(m.header + "\n" + viewport)
+
+	// Show full output modal if requested
+	if m.showFullOutputModal {
+		return m.renderFullOutputModal(baseView)
+	}
+
+	return baseView
+}
+
+func (m *messagesComponent) renderFullOutputModal(background string) string {
+	t := theme.CurrentTheme()
+
+	// Create scrollable viewport for the content
+	content := m.fullOutputContent
+	if content == "" {
+		content = "(no output)"
+	}
+
+	// Apply markdown rendering if it looks like code or markdown
+	content = util.ToMarkdown(content, m.width-20, t.BackgroundPanel())
+
+	// Create modal with title
+	modalContent := styles.NewStyle().
+		Foreground(t.Text()).
+		Background(t.BackgroundPanel()).
+		Width(m.width - 20).
+		MaxHeight(m.height - 10).
+		Render(content)
+
+	// Use modal package to render
+	modalView := modal.New(
+		modal.WithTitle(m.fullOutputTitle),
+		modal.WithMaxWidth(m.width-10),
+		modal.WithMaxHeight(m.height-5),
+	)
+
+	return modalView.Render(modalContent, background)
 }
 
 func (m *messagesComponent) PageUp() (tea.Model, tea.Cmd) {
