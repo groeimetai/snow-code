@@ -1353,7 +1353,7 @@ export const AuthLoginCommand = cmd({
             // Save selected model to global config if chosen
             if (selectedModel) {
               try {
-                const globalConfigPath = path.join(os.homedir(), ".config", "snowcode", "config.json")
+                const globalConfigPath = path.join(os.homedir(), ".config", "snow-code", "config.json")
                 let globalConfig = {}
                 try {
                   const file = Bun.file(globalConfigPath)
@@ -2204,7 +2204,7 @@ export const AuthLoginCommand = cmd({
         // Save selected model to global config if chosen
         if (selectedModel) {
           try {
-            const globalConfigPath = path.join(os.homedir(), ".config", "snowcode", "config.json")
+            const globalConfigPath = path.join(os.homedir(), ".config", "snow-code", "config.json")
             let globalConfig = {}
             try {
               const file = Bun.file(globalConfigPath)
