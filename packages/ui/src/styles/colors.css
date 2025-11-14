@@ -1,4 +1,57 @@
 :root {
+  /* Snow-Flow Brand Colors */
+  --snow-cyan-light-1: #e6fbff;
+  --snow-cyan-light-2: #ccf7ff;
+  --snow-cyan-light-3: #99efff;
+  --snow-cyan-light-4: #66e7ff;
+  --snow-cyan-light-5: #33dfff;
+  --snow-cyan-light-6: #00d9ff;
+  --snow-cyan-light-7: #00c4e6;
+  --snow-cyan-light-8: #00afcc;
+  --snow-cyan-light-9: #009ab3;
+  --snow-cyan-light-10: #008599;
+  --snow-cyan-light-11: #007080;
+  --snow-cyan-light-12: #005b66;
+
+  --snow-cyan-dark-1: #0a1419;
+  --snow-cyan-dark-2: #0c1a23;
+  --snow-cyan-dark-3: #0e2531;
+  --snow-cyan-dark-4: #11303f;
+  --snow-cyan-dark-5: #143b4d;
+  --snow-cyan-dark-6: #17465b;
+  --snow-cyan-dark-7: #1a5169;
+  --snow-cyan-dark-8: #1d5c77;
+  --snow-cyan-dark-9: #00d9ff;
+  --snow-cyan-dark-10: #00c4e6;
+  --snow-cyan-dark-11: #33dfff;
+  --snow-cyan-dark-12: #e6fbff;
+
+  --snow-blue-light-1: #eff6ff;
+  --snow-blue-light-2: #dbeafe;
+  --snow-blue-light-3: #bfdbfe;
+  --snow-blue-light-4: #93c5fd;
+  --snow-blue-light-5: #60a5fa;
+  --snow-blue-light-6: #3b82f6;
+  --snow-blue-light-7: #2563eb;
+  --snow-blue-light-8: #1d4ed8;
+  --snow-blue-light-9: #1e40af;
+  --snow-blue-light-10: #1e3a8a;
+  --snow-blue-light-11: #172554;
+  --snow-blue-light-12: #0f1729;
+
+  --snow-blue-dark-1: #0f1729;
+  --snow-blue-dark-2: #172554;
+  --snow-blue-dark-3: #1e3a8a;
+  --snow-blue-dark-4: #1e40af;
+  --snow-blue-dark-5: #1d4ed8;
+  --snow-blue-dark-6: #2563eb;
+  --snow-blue-dark-7: #3b82f6;
+  --snow-blue-dark-8: #60a5fa;
+  --snow-blue-dark-9: #93c5fd;
+  --snow-blue-dark-10: #bfdbfe;
+  --snow-blue-dark-11: #dbeafe;
+  --snow-blue-dark-12: #eff6ff;
+
   --grey-dark-1: #ffffff;
   --grey-dark-2: #ffffff;
   --grey-dark-3: #ffffff;
