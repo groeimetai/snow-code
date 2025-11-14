@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.0.40",
+  "version": "1.0.41",
   "name": "@groeimetai/snow-code",
   "description": "SnowCode - AI-powered ServiceNow development CLI (OpenCode fork enhanced for Snow-Flow)",
   "type": "module",
@@ -88,6 +88,7 @@
     "minimatch": "10.0.3",
     "open": "10.1.2",
     "remeda": "2.26.0",
+    "tree-sitter-bash": "0.25.0",
     "turndown": "7.2.0",
     "ulid": "3.0.1",
     "vscode-jsonrpc": "8.2.1",
@@ -103,7 +104,6 @@
     "@groeimetai/snow-code-darwin-x64": "*",
     "@groeimetai/snow-code-linux-arm64": "*",
     "@groeimetai/snow-code-linux-x64": "*",
-    "@groeimetai/snow-code-windows-x64": "*",
-    "tree-sitter-bash": "0.25.0"
+    "@groeimetai/snow-code-windows-x64": "*"
   }
 }
