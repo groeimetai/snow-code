@@ -8,7 +8,7 @@ import { $ } from "bun"
 
 export const AttachCommand = cmd({
   command: "attach <server>",
-  describe: "attach to a running opencode server",
+  describe: "attach to a running snow-code server",
   builder: (yargs) =>
     yargs
       .positional("server", {

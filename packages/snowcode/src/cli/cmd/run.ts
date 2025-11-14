@@ -69,7 +69,7 @@ function shouldShowToolOutput(toolName: string): boolean {
 
 export const RunCommand = cmd({
   command: "run [message..]",
-  describe: "run opencode with a message",
+  describe: "run snow-code with a message",
   builder: (yargs: Argv) => {
     return yargs
       .positional("message", {
@@ -191,7 +191,7 @@ export const RunCommand = cmd({
       }
 
       const cfg = await Config.get()
-      if (cfg.share === "auto" || Flag.OPENCODE_AUTO_SHARE || args.share) {
+      if (cfg.share === "auto" || Flag.SNOWCODE_AUTO_SHARE || args.share) {
         try {
           await Session.share(session.id)
           UI.println(UI.Style.TEXT_INFO_BOLD + "~  https://snowcode.dev/s/" + session.id.slice(-8))
