@@ -19,23 +19,40 @@ const SIGKILL_TIMEOUT_MS = 200
 const log = Log.create({ service: "bash-tool" })
 
 const parser = lazy(async () => {
-  // Use only web-tree-sitter (WASM) to avoid native module issues during cross-compilation
-  const { default: Parser } = await import("web-tree-sitter")
-  const { default: treeWasm } = await import("web-tree-sitter/tree-sitter.wasm" as string, {
-    with: { type: "wasm" },
-  })
-  await Parser.init({
-    locateFile() {
-      return treeWasm
-    },
-  })
-  const { default: bashWasm } = await import("tree-sitter-bash/tree-sitter-bash.wasm" as string, {
-    with: { type: "wasm" },
-  })
-  const bashLanguage = await Parser.Language.load(bashWasm)
-  const p = new Parser()
-  p.setLanguage(bashLanguage)
-  return p
+  try {
+    // Use only web-tree-sitter (WASM) to avoid native module issues during cross-compilation
+    const { default: Parser } = await import("web-tree-sitter")
+    if (!Parser) {
+      log.warn("web-tree-sitter module loaded but Parser is undefined")
+      return null
+    }
+    const { default: treeWasm } = await import("web-tree-sitter/tree-sitter.wasm" as string, {
+      with: { type: "wasm" },
+    })
+    if (!treeWasm) {
+      log.warn("web-tree-sitter WASM file not found")
+      return null
+    }
+    await Parser.init({
+      locateFile() {
+        return treeWasm
+      },
+    })
+    const { default: bashWasm } = await import("tree-sitter-bash/tree-sitter-bash.wasm" as string, {
+      with: { type: "wasm" },
+    })
+    if (!bashWasm) {
+      log.warn("tree-sitter-bash WASM file not found")
+      return null
+    }
+    const bashLanguage = await Parser.Language.load(bashWasm)
+    const p = new Parser()
+    p.setLanguage(bashLanguage)
+    return p
+  } catch (error) {
+    log.warn("Failed to initialize bash parser (tree-sitter), falling back to simpler parsing", { error })
+    return null
+  }
 })
 
 export const BashTool = Tool.define("bash", {
@@ -56,11 +73,13 @@ export const BashTool = Tool.define("bash", {
       )
     }
     const timeout = Math.min(params.timeout ?? DEFAULT_TIMEOUT, MAX_TIMEOUT)
-    const tree = await parser().then((p) => p.parse(params.command))
+    const p = await parser()
+    const tree = p ? p.parse(params.command) : null
     const permissions = await Agent.get(ctx.agent).then((x) => x.permission.bash)
 
     const askPatterns = new Set<string>()
-    for (const node of tree.rootNode.descendantsOfType("command")) {
+    if (tree) {
+      for (const node of tree.rootNode.descendantsOfType("command")) {
       const command = []
       for (let i = 0; i < node.childCount; i++) {
         const child = node.child(i)
@@ -131,6 +150,7 @@ export const BashTool = Tool.define("bash", {
           }
         }
       }
+    }
     }
 
     if (askPatterns.size > 0) {

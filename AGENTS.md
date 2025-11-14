@@ -13,7 +13,7 @@
 
 ## Debugging
 
-- To test opencode in the `packages/opencode` directory you can run `bun dev`
+- To test snowcode in the `packages/snowcode` directory you can run `bun dev`
 
 ## Tool Calling
 
