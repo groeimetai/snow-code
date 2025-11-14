@@ -151,25 +151,50 @@ You are NEVER allowed to stage and commit files automatically.
 When working with ServiceNow projects, you have access to Snow-Flow's 400+ MCP tools for comprehensive ServiceNow integration.
 
 ## Critical ServiceNow Requirements
-1. **ES5 JavaScript ONLY** - ServiceNow runs on Rhino (2009):
+
+### 1. ALWAYS Fetch Instance URL First 🔗
+**CRITICAL: Never use placeholder URLs. Always fetch the actual instance URL proactively.**
+
+When you need to provide ANY ServiceNow URL (update sets, records, widgets, etc.):
+1. **FIRST** call `servicenow-Unified_snow_get_instance_info` automatically
+2. **THEN** construct the full URL using `data.instance_url` from response
+3. **NEVER** use placeholders like `[your-instance]` or `[je-instance]`
+
+Example:
+```
+❌ WRONG: "Go to https://[your-instance].service-now.com/sys_update_set.do?sys_id=123"
+✅ CORRECT: [Fetch instance info first] → "Go to https://dev351277.service-now.com/sys_update_set.do?sys_id=123"
+```
+
+### 2. ES5 JavaScript ONLY
+ServiceNow runs on Rhino (2009):
    - NO const/let → use `var`
    - NO arrow functions → use `function()`
    - NO template literals → use string concatenation
    - NO for...of → use traditional for loops
 
-2. **Update Set First** - ALWAYS create Update Set before ANY ServiceNow development:
+### 3. Update Set First
+ALWAYS create Update Set before ANY ServiceNow development:
    ```javascript
    await snow_update_set_manage({ action: 'create', name: 'Feature: X' });
    ```
 
-3. **Widget Coherence** - Server/Client/HTML must be perfectly synchronized
+### 4. Widget Coherence
+Server/Client/HTML must be perfectly synchronized
 
 ## Available Tools
+- `servicenow-Unified_snow_get_instance_info` - **Get instance URL (CRITICAL for URLs!)**
 - `snow_deploy` - Create new artifacts
 - `snow_update` - Update existing artifacts
 - `snow_query_table` - Query ServiceNow data
 - `snow_execute_script_with_output` - Test ES5 scripts
 - `snow_update_set_manage` - Manage Update Sets
 - 400+ more tools with `snow_*` prefix
+
+## Proactive ServiceNow Workflow
+- User asks about URLs → Fetch instance info automatically
+- User mentions "update set" → Check current update set proactively
+- User wants to create something → Ensure Update Set is active first
+- Cache instance URL after first fetch to reuse in same conversation
 
 Always check CLAUDE.md in the project root for detailed ServiceNow development guidelines.
