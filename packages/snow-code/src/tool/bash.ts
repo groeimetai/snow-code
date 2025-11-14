@@ -53,11 +53,20 @@ export const BashTool = Tool.define("bash", {
       )
     }
     const timeout = Math.min(params.timeout ?? DEFAULT_TIMEOUT, MAX_TIMEOUT)
-    const tree = await parser().then((p) => p.parse(params.command))
+
+    // Try to parse with tree-sitter, but fall back to basic parsing if WASM is not available
+    let tree = null
+    try {
+      tree = await parser().then((p) => p.parse(params.command))
+    } catch (error) {
+      log.warn("tree-sitter parsing failed (WASM not available), using fallback", { error })
+    }
+
     const permissions = await Agent.get(ctx.agent).then((x) => x.permission.bash)
 
     const askPatterns = new Set<string>()
-    for (const node of tree.rootNode.descendantsOfType("command")) {
+    if (tree) {
+      for (const node of tree.rootNode.descendantsOfType("command")) {
       const command = []
       for (let i = 0; i < node.childCount; i++) {
         const child = node.child(i)
@@ -128,6 +137,7 @@ export const BashTool = Tool.define("bash", {
           }
         }
       }
+    }
     }
 
     if (askPatterns.size > 0) {
