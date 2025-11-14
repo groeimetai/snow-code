@@ -1390,5 +1390,6 @@ func NewMessagesComponent(app *app.App) MessagesComponent {
 		cache:              NewPartCache(),
 		tail:               true,
 		messagePositions:   make(map[string]int),
+		fullOutputCache:    make(map[string]string),
 	}
 }
