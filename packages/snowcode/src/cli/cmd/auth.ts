@@ -213,8 +213,12 @@ async function addEnterpriseMcpServer(config: EnterpriseMcpConfig): Promise<void
   const globalConfigDir = path.join(os.homedir(), ".config", "snow-code")
 
   const configPaths = [
+    // Project root .mcp.json (used by snow-flow)
+    path.join(process.cwd(), ".mcp.json"),
+    // Project .snow-code configs
     path.join(projectSnowCodeDir, "opencode.json"),
     path.join(projectSnowCodeDir, "config.json"),
+    // Global configs
     path.join(globalConfigDir, "opencode.json"),
     path.join(globalConfigDir, "snowcode.json"),
     path.join(globalConfigDir, "config.json"),
@@ -230,12 +234,16 @@ async function addEnterpriseMcpServer(config: EnterpriseMcpConfig): Promise<void
       const configText = await file.text()
       var snowCodeConfig = JSON.parse(configText)
 
-      if (!snowCodeConfig.mcp) {
-        snowCodeConfig.mcp = {}
+      // Determine if this is .mcp.json (uses "mcpServers") or other configs (uses "mcp")
+      const isMcpJson = configPath.endsWith(".mcp.json")
+      const mcpKey = isMcpJson ? "mcpServers" : "mcp"
+
+      if (!snowCodeConfig[mcpKey]) {
+        snowCodeConfig[mcpKey] = {}
       }
 
-      // Add enterprise MCP server
-      snowCodeConfig.mcp["snow-flow-enterprise"] = {
+      // Add enterprise MCP server configuration
+      const enterpriseConfig = {
         type: "local",
         command: ["node", path.join(process.cwd(), "dist/mcp/enterprise-proxy/index.js")],
         description: "Enterprise integrations - Jira, Azure DevOps, Confluence",
@@ -261,6 +269,14 @@ async function addEnterpriseMcpServer(config: EnterpriseMcpConfig): Promise<void
         enabled: true,
       }
 
+      // Add to config
+      snowCodeConfig[mcpKey]["snow-flow-enterprise"] = enterpriseConfig
+
+      // Add schema if .mcp.json and not present
+      if (isMcpJson && !snowCodeConfig.$schema) {
+        snowCodeConfig.$schema = "https://opencode.ai/mcp.json"
+      }
+
       await Bun.write(configPath, JSON.stringify(snowCodeConfig, null, 2))
     } catch (error: any) {
       // Skip failed config updates
@@ -276,6 +292,9 @@ async function isEnterpriseMcpConfigured(): Promise<boolean> {
   const globalConfigDir = path.join(os.homedir(), ".config", "snow-code")
 
   const configPaths = [
+    // Check .mcp.json first (primary for snow-flow)
+    path.join(process.cwd(), ".mcp.json"),
+    // Then check other configs
     path.join(projectSnowCodeDir, "opencode.json"),
     path.join(projectSnowCodeDir, "config.json"),
     path.join(globalConfigDir, "opencode.json"),
@@ -293,7 +312,11 @@ async function isEnterpriseMcpConfigured(): Promise<boolean> {
       const configText = await file.text()
       var snowCodeConfig = JSON.parse(configText)
 
-      if (snowCodeConfig.mcp?.["snow-flow-enterprise"]?.enabled === true) {
+      // Check both mcpServers (.mcp.json) and mcp (other configs)
+      const isMcpJson = configPath.endsWith(".mcp.json")
+      const mcpKey = isMcpJson ? "mcpServers" : "mcp"
+
+      if (snowCodeConfig[mcpKey]?.["snow-flow-enterprise"]?.enabled === true) {
         return true
       }
     } catch {
