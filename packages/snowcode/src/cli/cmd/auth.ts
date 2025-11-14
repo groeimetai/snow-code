@@ -140,6 +140,343 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
   // Config updates are transparent to the user
 }
 
+/**
+ * Validate enterprise license key with enterprise server
+ */
+async function validateLicenseKey(licenseKey: string): Promise<{
+  valid: boolean
+  error?: string
+  features?: string[]
+  serverUrl?: string
+}> {
+  try {
+    const serverUrl = process.env.SNOW_ENTERPRISE_URL || "https://enterprise.snow-flow.dev"
+
+    const response = await fetch(`${serverUrl}/api/license/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ licenseKey }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok || !data.valid) {
+      return {
+        valid: false,
+        error: data.error || "Invalid license key",
+      }
+    }
+
+    return {
+      valid: true,
+      features: data.features || [],
+      serverUrl: data.serverUrl || serverUrl,
+    }
+  } catch (error: any) {
+    return {
+      valid: false,
+      error: error.message,
+    }
+  }
+}
+
+/**
+ * Enterprise MCP configuration interface
+ */
+interface EnterpriseMcpConfig {
+  licenseKey: string
+  serverUrl?: string
+  credentials?: {
+    jira?: {
+      host: string
+      email: string
+      apiToken: string
+    }
+    azure?: {
+      organization: string
+      project?: string
+      pat: string
+    }
+    confluence?: {
+      host: string
+      email: string
+      apiToken: string
+    }
+  }
+}
+
+/**
+ * Add enterprise MCP server to snow-code configuration
+ */
+async function addEnterpriseMcpServer(config: EnterpriseMcpConfig): Promise<void> {
+  const projectSnowCodeDir = path.join(process.cwd(), ".snow-code")
+  const globalConfigDir = path.join(os.homedir(), ".config", "snow-code")
+
+  const configPaths = [
+    path.join(projectSnowCodeDir, "opencode.json"),
+    path.join(projectSnowCodeDir, "config.json"),
+    path.join(globalConfigDir, "opencode.json"),
+    path.join(globalConfigDir, "snowcode.json"),
+    path.join(globalConfigDir, "config.json"),
+  ]
+
+  for (const configPath of configPaths) {
+    try {
+      const file = Bun.file(configPath)
+      if (!(await file.exists())) {
+        continue
+      }
+
+      const configText = await file.text()
+      var snowCodeConfig = JSON.parse(configText)
+
+      if (!snowCodeConfig.mcp) {
+        snowCodeConfig.mcp = {}
+      }
+
+      // Add enterprise MCP server
+      snowCodeConfig.mcp["snow-flow-enterprise"] = {
+        type: "local",
+        command: ["node", path.join(process.cwd(), "dist/mcp/enterprise-proxy/index.js")],
+        description: "Enterprise integrations - Jira, Azure DevOps, Confluence",
+        environment: {
+          SNOW_LICENSE_KEY: config.licenseKey,
+          SNOW_ENTERPRISE_URL: config.serverUrl || "https://enterprise.snow-flow.dev",
+          ...(config.credentials?.jira && {
+            JIRA_HOST: config.credentials.jira.host,
+            JIRA_EMAIL: config.credentials.jira.email,
+            JIRA_API_TOKEN: config.credentials.jira.apiToken,
+          }),
+          ...(config.credentials?.azure && {
+            AZURE_ORG: config.credentials.azure.organization,
+            AZURE_PROJECT: config.credentials.azure.project || "",
+            AZURE_PAT: config.credentials.azure.pat,
+          }),
+          ...(config.credentials?.confluence && {
+            CONFLUENCE_HOST: config.credentials.confluence.host,
+            CONFLUENCE_EMAIL: config.credentials.confluence.email,
+            CONFLUENCE_API_TOKEN: config.credentials.confluence.apiToken,
+          }),
+        },
+        enabled: true,
+      }
+
+      await Bun.write(configPath, JSON.stringify(snowCodeConfig, null, 2))
+    } catch (error: any) {
+      // Skip failed config updates
+    }
+  }
+}
+
+/**
+ * Check if enterprise MCP server is already configured
+ */
+async function isEnterpriseMcpConfigured(): Promise<boolean> {
+  const projectSnowCodeDir = path.join(process.cwd(), ".snow-code")
+  const globalConfigDir = path.join(os.homedir(), ".config", "snow-code")
+
+  const configPaths = [
+    path.join(projectSnowCodeDir, "opencode.json"),
+    path.join(projectSnowCodeDir, "config.json"),
+    path.join(globalConfigDir, "opencode.json"),
+    path.join(globalConfigDir, "snowcode.json"),
+    path.join(globalConfigDir, "config.json"),
+  ]
+
+  for (const configPath of configPaths) {
+    try {
+      const file = Bun.file(configPath)
+      if (!(await file.exists())) {
+        continue
+      }
+
+      const configText = await file.text()
+      var snowCodeConfig = JSON.parse(configText)
+
+      if (snowCodeConfig.mcp?.["snow-flow-enterprise"]?.enabled === true) {
+        return true
+      }
+    } catch {
+      // Skip
+    }
+  }
+
+  return false
+}
+
+/**
+ * Update project documentation (CLAUDE.md and AGENTS.md) with enterprise server information
+ * Only adds the enterprise section if it doesn't already exist
+ */
+async function updateDocumentationWithEnterprise(): Promise<void> {
+  try {
+    const projectRoot = process.cwd()
+    const claudeMdPath = path.join(projectRoot, "CLAUDE.md")
+    const agentsMdPath = path.join(projectRoot, "AGENTS.md")
+
+    const enterpriseDocSection = `
+## 🚀 Enterprise Features (Snow-Flow Enterprise License)
+
+### Enterprise MCP Server
+
+The \`snow-flow-enterprise\` MCP server provides integrations with external enterprise tools:
+
+**Available Integrations:**
+- **Jira**: Search issues, create/update issues, link to ServiceNow incidents, manage workflows
+- **Azure DevOps**: Work items, repositories, pipeline integration, build management
+- **Confluence**: Search pages, create/update documentation, manage spaces
+
+**Configuration:**
+The enterprise server is automatically configured when you complete \`snow-code auth login\` with a valid enterprise license.
+
+**Enterprise Tools:**
+
+#### Jira Integration
+\`\`\`javascript
+// Search Jira issues
+const issues = await jira_search_issues({
+  jql: "project = PROJ AND status = 'In Progress'",
+  maxResults: 50
+});
+
+// Create Jira issue
+const newIssue = await jira_create_issue({
+  project: "PROJ",
+  summary: "Integration with ServiceNow incident INC001234",
+  description: "Auto-created from ServiceNow",
+  issueType: "Task"
+});
+
+// Link to ServiceNow incident
+await jira_link_servicenow({
+  jiraKey: "PROJ-123",
+  incidentNumber: "INC001234",
+  linkType: "relates to"
+});
+\`\`\`
+
+#### Azure DevOps Integration
+\`\`\`javascript
+// Search work items
+const workItems = await azure_search_work_items({
+  project: "MyProject",
+  wiql: "SELECT [System.Id] FROM WorkItems WHERE [System.State] = 'Active'"
+});
+
+// Create work item
+const newWorkItem = await azure_create_work_item({
+  project: "MyProject",
+  type: "Bug",
+  title: "Issue from ServiceNow INC001234",
+  description: "Auto-created from ServiceNow incident"
+});
+
+// Trigger pipeline
+await azure_trigger_pipeline({
+  project: "MyProject",
+  pipelineId: 123,
+  branch: "main"
+});
+\`\`\`
+
+#### Confluence Integration
+\`\`\`javascript
+// Search Confluence pages
+const pages = await confluence_search({
+  cql: "space = DOCS AND type = page AND title ~ 'ServiceNow'",
+  limit: 20
+});
+
+// Create documentation page
+const newPage = await confluence_create_page({
+  space: "DOCS",
+  title: "ServiceNow Integration Guide",
+  content: "<h1>Integration Documentation</h1><p>...</p>",
+  parentId: "123456"
+});
+
+// Update existing page
+await confluence_update_page({
+  pageId: "789012",
+  title: "Updated Integration Guide",
+  content: "<h1>Updated Content</h1>",
+  version: 2
+});
+\`\`\`
+
+**Usage Pattern:**
+1. Complete \`snow-code auth login\` with enterprise license
+2. Configure Jira/Azure DevOps/Confluence credentials (local or server-side)
+3. Enterprise tools are automatically available in your AI agent
+4. Use tools directly - no additional setup required
+
+**Benefits:**
+- ✅ Seamless integration between ServiceNow and enterprise tools
+- ✅ Automatic bi-directional sync (incidents ↔ Jira issues, changes ↔ Azure work items)
+- ✅ Documentation auto-generation (ServiceNow → Confluence)
+- ✅ Single source of truth across all enterprise systems
+`
+
+    // Update CLAUDE.md if it exists and doesn't already have enterprise section
+    try {
+      const claudeFile = Bun.file(claudeMdPath)
+      if (await claudeFile.exists()) {
+        const claudeContent = await claudeFile.text()
+
+        if (!claudeContent.includes("## 🚀 Enterprise Features")) {
+          // Find the best insertion point (before "## Conclusion" or at the end)
+          var insertionPoint = claudeContent.lastIndexOf("## Conclusion")
+          if (insertionPoint === -1) {
+            insertionPoint = claudeContent.length
+          }
+
+          const updatedContent =
+            claudeContent.slice(0, insertionPoint) + enterpriseDocSection + "\n\n" + claudeContent.slice(insertionPoint)
+
+          await Bun.write(claudeMdPath, updatedContent)
+          prompts.log.success("Updated CLAUDE.md with enterprise features documentation")
+        }
+      }
+    } catch (err: any) {
+      if (err.code !== "ENOENT") {
+        prompts.log.info(`Could not update CLAUDE.md: ${err.message}`)
+      }
+    }
+
+    // Update AGENTS.md if it exists and doesn't already have enterprise section
+    try {
+      const agentsFile = Bun.file(agentsMdPath)
+      if (await agentsFile.exists()) {
+        const agentsContent = await agentsFile.text()
+
+        if (!agentsContent.includes("## 🚀 Enterprise Features")) {
+          // Find the best insertion point (before "## Conclusion" or at the end)
+          var insertionPoint = agentsContent.lastIndexOf("## Conclusion")
+          if (insertionPoint === -1) {
+            insertionPoint = agentsContent.lastIndexOf("---")
+            if (insertionPoint === -1) {
+              insertionPoint = agentsContent.length
+            }
+          }
+
+          const updatedContent =
+            agentsContent.slice(0, insertionPoint) + enterpriseDocSection + "\n\n" + agentsContent.slice(insertionPoint)
+
+          await Bun.write(agentsMdPath, updatedContent)
+          prompts.log.success("Updated AGENTS.md with enterprise features documentation")
+        }
+      }
+    } catch (err: any) {
+      if (err.code !== "ENOENT") {
+        prompts.log.info(`Could not update AGENTS.md: ${err.message}`)
+      }
+    }
+  } catch (error: any) {
+    prompts.log.info(`Failed to update documentation: ${error.message}`)
+    // Don't throw - this is not critical
+  }
+}
+
 export const AuthCommand = cmd({
   command: "auth",
   describe: "manage credentials",
@@ -1112,7 +1449,7 @@ export const AuthLoginCommand = cmd({
           })
 
           // Sync credentials to enterprise backend
-          if (existingAuth && existingAuth.token && (jiraBaseUrl || azureOrg || confluenceUrl)) {
+          if (existingAuth && existingAuth.type === "enterprise" && existingAuth.token && (jiraBaseUrl || azureOrg || confluenceUrl)) {
             try {
               const syncSpinner = prompts.spinner()
               syncSpinner.start("Syncing credentials to enterprise dashboard...")
@@ -1151,8 +1488,9 @@ export const AuthLoginCommand = cmd({
                     body: JSON.stringify({
                       service: "azdo",
                       instanceUrl: `https://dev.azure.com/${azureOrg}`,
-                      username: azureOrg,
-                      password: azurePat
+                      username: "",
+                      password: azurePat,
+                      project: azureProject
                     }),
                     signal: AbortSignal.timeout(10000)
                   })
@@ -1279,6 +1617,47 @@ export const AuthLoginCommand = cmd({
           } catch (error: any) {
             prompts.log.warn(`Failed to add enterprise MCP server: ${error.message}`)
             prompts.log.info("You can configure it later with: snow-flow enterprise setup")
+          }
+
+          // Validate license key with enterprise server
+          try {
+            const validationSpinner = prompts.spinner()
+            validationSpinner.start("Validating enterprise license...")
+
+            const validation = await validateLicenseKey(licenseKey)
+
+            if (!validation.valid) {
+              validationSpinner.stop("⚠️  License validation failed", 1)
+              prompts.log.warn(`License validation failed: ${validation.error}`)
+              prompts.log.info("Continuing with local configuration only")
+            } else {
+              validationSpinner.stop("✅ License validated successfully")
+
+              // Configure enterprise MCP server with validated credentials
+              await addEnterpriseMcpServer({
+                licenseKey,
+                serverUrl: validation.serverUrl,
+                credentials: {
+                  jira: jiraBaseUrl && jiraEmail && jiraApiToken
+                    ? { host: jiraBaseUrl, email: jiraEmail, apiToken: jiraApiToken }
+                    : undefined,
+                  azure: azureOrg && azurePat
+                    ? { organization: azureOrg, project: azureProject, pat: azurePat }
+                    : undefined,
+                  confluence: confluenceUrl && confluenceEmail && confluenceApiToken
+                    ? { host: confluenceUrl, email: confluenceEmail, apiToken: confluenceApiToken }
+                    : undefined,
+                },
+              })
+
+              prompts.log.success("✅ Enterprise MCP server configured")
+
+              // Update documentation with enterprise features
+              await updateDocumentationWithEnterprise()
+            }
+          } catch (error: any) {
+            prompts.log.warn(`Enterprise setup warning: ${error.message}`)
+            prompts.log.info("Local configuration saved, but enterprise validation skipped")
           }
 
           prompts.log.message("")
@@ -1794,10 +2173,10 @@ export const AuthLoginCommand = cmd({
               return
             }
 
-            let enterpriseUsername: string
+            let enterpriseUsername: string = ""
             let enterpriseEmail: string | undefined
-            let enterprisePassword: string
-            let enterpriseRole: "developer" | "stakeholder" | "admin"
+            let enterprisePassword: string = ""
+            let enterpriseRole: "developer" | "stakeholder" | "admin" = "developer"
             let enterpriseAuthData: any
 
             // Generate machine ID for device binding
@@ -2255,6 +2634,41 @@ export const AuthLoginCommand = cmd({
               envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: enterpriseJiraApiToken })
             await updateEnvFile(envUpdates)
 
+            // Validate license key with enterprise server
+            try {
+              const validationSpinner = prompts.spinner()
+              validationSpinner.start("Validating enterprise license...")
+
+              const validation = await validateLicenseKey(enterpriseLicenseKey)
+
+              if (!validation.valid) {
+                validationSpinner.stop("⚠️  License validation failed", 1)
+                prompts.log.warn(`License validation failed: ${validation.error}`)
+                prompts.log.info("Continuing with local configuration only")
+              } else {
+                validationSpinner.stop("✅ License validated successfully")
+
+                // Configure enterprise MCP server with validated credentials
+                await addEnterpriseMcpServer({
+                  licenseKey: enterpriseLicenseKey,
+                  serverUrl: validation.serverUrl,
+                  credentials: {
+                    jira: enterpriseJiraBaseUrl && enterpriseJiraEmail && enterpriseJiraApiToken
+                      ? { host: enterpriseJiraBaseUrl, email: enterpriseJiraEmail, apiToken: enterpriseJiraApiToken }
+                      : undefined,
+                  },
+                })
+
+                prompts.log.success("✅ Enterprise MCP server configured")
+
+                // Update documentation with enterprise features
+                await updateDocumentationWithEnterprise()
+              }
+            } catch (error: any) {
+              prompts.log.warn(`Enterprise setup warning: ${error.message}`)
+              prompts.log.info("Local configuration saved, but enterprise validation skipped")
+            }
+
             prompts.log.message("")
             prompts.log.success("Enterprise configuration saved")
             prompts.log.info("Credentials saved to .env file")
@@ -2659,7 +3073,7 @@ export const AuthLoginCommand = cmd({
             await updateEnvFile(envUpdates)
 
             // Sync credentials to enterprise backend dashboard
-            if (existingRegAuth && existingRegAuth.token) {
+            if (existingRegAuth && existingRegAuth.type === "enterprise" && existingRegAuth.token) {
               try {
                 const syncSpinner = prompts.spinner()
                 syncSpinner.start("Syncing credentials to enterprise dashboard...")
@@ -2698,8 +3112,9 @@ export const AuthLoginCommand = cmd({
                       body: JSON.stringify({
                         service: "azdo",
                         instanceUrl: `https://dev.azure.com/${azureOrg}`,
-                        username: azureOrg,
-                        password: azurePat
+                        username: "",
+                        password: azurePat,
+                        project: azureProject
                       }),
                       signal: AbortSignal.timeout(10000)
                     })
@@ -2742,6 +3157,47 @@ export const AuthLoginCommand = cmd({
                 prompts.log.warn(`Failed to sync credentials: ${error.message}`)
                 prompts.log.info("Credentials saved locally, but not synced to dashboard")
               }
+            }
+
+            // Validate license key with enterprise server
+            try {
+              const validationSpinner = prompts.spinner()
+              validationSpinner.start("Validating enterprise license...")
+
+              const validation = await validateLicenseKey(licenseKey)
+
+              if (!validation.valid) {
+                validationSpinner.stop("⚠️  License validation failed", 1)
+                prompts.log.warn(`License validation failed: ${validation.error}`)
+                prompts.log.info("Continuing with local configuration only")
+              } else {
+                validationSpinner.stop("✅ License validated successfully")
+
+                // Configure enterprise MCP server with validated credentials
+                await addEnterpriseMcpServer({
+                  licenseKey,
+                  serverUrl: validation.serverUrl,
+                  credentials: {
+                    jira: jiraBaseUrl && jiraEmail && jiraApiToken
+                      ? { host: jiraBaseUrl, email: jiraEmail, apiToken: jiraApiToken }
+                      : undefined,
+                    azure: azureOrg && azurePat
+                      ? { organization: azureOrg, project: azureProject, pat: azurePat }
+                      : undefined,
+                    confluence: confluenceUrl && confluenceEmail && confluenceApiToken
+                      ? { host: confluenceUrl, email: confluenceEmail, apiToken: confluenceApiToken }
+                      : undefined,
+                  },
+                })
+
+                prompts.log.success("✅ Enterprise MCP server configured")
+
+                // Update documentation with enterprise features
+                await updateDocumentationWithEnterprise()
+              }
+            } catch (error: any) {
+              prompts.log.warn(`Enterprise setup warning: ${error.message}`)
+              prompts.log.info("Local configuration saved, but enterprise validation skipped")
             }
 
             prompts.log.success("Enterprise configuration saved")
