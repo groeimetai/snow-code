@@ -230,6 +230,7 @@ export namespace SessionPrompt {
     )
 
     let step = 0
+    let compactionAttempted = false
     while (true) {
       const msgs: MessageV2.WithParts[] = pipe(
         await getMessages({
@@ -240,6 +241,39 @@ export namespace SessionPrompt {
         }),
         (messages) => insertReminders({ messages, agent }),
       )
+
+      // Check if we would exceed the context limit before sending to API
+      // This prevents "prompt too long" errors by auto-compacting proactively
+      if (!compactionAttempted) {
+        const lastAssistant = msgs.findLast((msg) => msg.info.role === "assistant")
+        if (
+          lastAssistant?.info.role === "assistant" &&
+          SessionCompaction.isOverflow({
+            tokens: lastAssistant.info.tokens,
+            model: model.info,
+          })
+        ) {
+          const count = lastAssistant.info.tokens.input + lastAssistant.info.tokens.cache.read + lastAssistant.info.tokens.output
+          const usable = model.info.limit.context - (Math.min(model.info.limit.output, SessionPrompt.OUTPUT_TOKEN_MAX) || SessionPrompt.OUTPUT_TOKEN_MAX)
+          log.info("context limit exceeded, auto-compacting before API call", {
+            tokens: count,
+            limit: usable,
+            percentage: Math.round((count / usable) * 100) + "%",
+          })
+
+          // Run compaction synchronously and retry
+          await SessionCompaction.run({
+            sessionID: input.sessionID,
+            providerID: model.providerID,
+            modelID: model.info.id,
+            signal: abort.signal,
+          })
+
+          compactionAttempted = true
+          continue // Retry with compacted messages
+        }
+      }
+
       step++
       await processor.next(msgs.findLast((m) => m.info.role === "user")?.info.id!)
       if (step === 1) {
@@ -416,33 +450,6 @@ export namespace SessionPrompt {
       }
       state().queued.delete(input.sessionID)
       SessionCompaction.prune(input)
-
-      // Check if we need to auto-compact after this turn (when context is 85% full)
-      if (
-        result.info.role === "assistant" &&
-        !result.info.error &&
-        SessionCompaction.shouldAutoCompact({
-          tokens: result.info.tokens,
-          model: model.info,
-        })
-      ) {
-        const count = result.info.tokens.input + result.info.tokens.cache.read + result.info.tokens.output
-        const usable = model.info.limit.context - (Math.min(model.info.limit.output, SessionPrompt.OUTPUT_TOKEN_MAX) || SessionPrompt.OUTPUT_TOKEN_MAX)
-        const percentage = Math.round((count / usable) * 100)
-        log.info("auto-compact triggered after turn completion", {
-          percentage: percentage + "%",
-          tokens: count,
-          usable,
-        })
-        // Run compaction asynchronously without blocking the return
-        SessionCompaction.run({
-          sessionID: input.sessionID,
-          providerID: model.providerID,
-          modelID: model.info.id,
-        }).catch((err) => {
-          log.error("auto-compact failed", { error: err })
-        })
-      }
 
       return result
     }
