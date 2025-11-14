@@ -244,6 +244,14 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 
+		// Handle Ctrl+O to show full tool output
+		if keyString == "ctrl+o" {
+			return a, func() tea.Msg {
+				// Send message to messages component to show full output modal
+				return chat.ShowFullOutputMsg{}
+			}
+		}
+
 		if a.showCompletionDialog {
 			switch keyString {
 			case "tab", "enter", "esc", "ctrl+c", "up", "down", "ctrl+p", "ctrl+n":
