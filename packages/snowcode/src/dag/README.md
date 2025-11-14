@@ -383,7 +383,7 @@ runAllExamples()
 
 ```bash
 cd /Users/nielsvanderwerf/snow-code
-bun test packages/opencode/src/dag/executor.test.ts
+bun test packages/snowcode/src/dag/executor.test.ts
 
 # Expected: 12 tests pass
 ✓ buildPlan: linear dependencies
@@ -455,7 +455,7 @@ bun test packages/opencode/src/dag/executor.test.ts
 - `examples.ts` - 6 practical examples
 - `../tool/task.ts` - Task tool with DAG support
 - `../tool/task.txt` - Task tool documentation
-- `../.opencode/agent/dag-orchestrator.md` - DAG orchestrator agent prompt
+- `../.snow-code/agent/dag-orchestrator.md` - DAG orchestrator agent prompt
 
 ---
 

@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/package.json",
   "version": "1.0.41",
   "name": "@groeimetai/snow-code",
-  "description": "SnowCode - AI-powered ServiceNow development CLI (OpenCode fork enhanced for Snow-Flow)",
+  "description": "Snow-Code - AI-powered ServiceNow development CLI enhanced for Snow-Flow",
   "type": "module",
   "author": "Snow-Flow Team",
   "license": "Apache-2.0",

@@ -2,7 +2,7 @@
 
 **Status:** ✅ Implemented
 **Date:** November 8, 2025
-**Location:** `packages/opencode/src/tool/cache.ts`
+**Location:** `packages/snowcode/src/tool/cache.ts`
 
 ---
 
@@ -211,7 +211,7 @@ This ensures:
 ### Option 1: Wrap Tools in Registry (Recommended)
 
 ```typescript
-// packages/opencode/src/tool/registry.ts
+// packages/snowcode/src/tool/registry.ts
 
 import { ToolCache } from "./cache"
 
@@ -237,7 +237,7 @@ export namespace ToolRegistry {
 ### Option 2: Wrap in Session Prompt (Selective)
 
 ```typescript
-// packages/opencode/src/session/prompt.ts
+// packages/snowcode/src/session/prompt.ts
 
 // Wrap MCP tools before passing to AI SDK
 const mcpTools = await MCP.tools(providerID, modelID)
@@ -302,7 +302,7 @@ Cache hits: 22/51 (43.1% hit rate)
 ```bash
 # Run tests
 cd /Users/nielsvanderwerf/snow-code
-bun test packages/opencode/src/tool/cache.test.ts
+bun test packages/snowcode/src/tool/cache.test.ts
 
 # Expected output:
 ✓ should cache read operations

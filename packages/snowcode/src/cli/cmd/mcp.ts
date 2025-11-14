@@ -43,7 +43,7 @@ export const McpAddCommand = cmd({
     if (type === "local") {
       const command = await prompts.text({
         message: "Enter command to run",
-        placeholder: "e.g., opencode x @modelcontextprotocol/server-filesystem",
+        placeholder: "e.g., snow-code x @modelcontextprotocol/server-filesystem",
         validate: (x) => (x && x.length > 0 ? undefined : "Required"),
       })
       if (prompts.isCancel(command)) throw new UI.CancelledError()

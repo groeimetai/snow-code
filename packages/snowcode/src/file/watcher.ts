@@ -68,7 +68,7 @@ export namespace FileWatcher {
   )
 
   export function init() {
-    if (!Flag.OPENCODE_EXPERIMENTAL_WATCHER) return
+    if (!Flag.SNOWCODE_EXPERIMENTAL_WATCHER) return
     state()
   }
 }

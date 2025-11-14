@@ -1,8 +1,8 @@
-# SnowCode Platform Binary Build Guide
+# Snow-Code Platform Binary Build Guide
 
 ## Overview
 
-SnowCode uses **platform-specific standalone binaries** compiled by Bun. This eliminates runtime dependencies (Node.js, Bun, tsx) and resolves dependency issues that occurred with the tsx approach.
+Snow-Code uses **platform-specific standalone binaries** compiled by Bun. This eliminates runtime dependencies (Node.js, Bun, tsx) and resolves dependency issues that occurred with the tsx approach.
 
 ## Architecture
 
@@ -10,18 +10,18 @@ SnowCode uses **platform-specific standalone binaries** compiled by Bun. This el
 
 Each platform gets a separate npm package containing a standalone ~70MB executable:
 
-- `@groeimetai/snowcode-darwin-arm64` - macOS Apple Silicon
-- `@groeimetai/snowcode-darwin-x64` - macOS Intel
-- `@groeimetai/snowcode-linux-arm64` - Linux ARM64
-- `@groeimetai/snowcode-linux-x64` - Linux x64
-- `@groeimetai/snowcode-windows-x64` - Windows x64
+- `@groeimetai/snow-code-darwin-arm64` - macOS Apple Silicon
+- `@groeimetai/snow-code-darwin-x64` - macOS Intel
+- `@groeimetai/snow-code-linux-arm64` - Linux ARM64
+- `@groeimetai/snow-code-linux-x64` - Linux x64
+- `@groeimetai/snow-code-windows-x64` - Windows x64
 
-The main `@groeimetai/snowcode` package includes these as `optionalDependencies`, so npm automatically installs the correct one for the user's platform.
+The main `@groeimetai/snow-code` package includes these as `optionalDependencies`, so npm automatically installs the correct one for the user's platform.
 
 ### How It Works
 
-1. **User installs**: `npm install -g @groeimetai/snowcode`
-2. **npm resolves**: Automatically installs correct platform binary (e.g., `@groeimetai/snowcode-darwin-arm64`)
+1. **User installs**: `npm install -g @groeimetai/snow-code`
+2. **npm resolves**: Automatically installs correct platform binary (e.g., `@groeimetai/snow-code-darwin-arm64`)
 3. **Wrapper script**: `bin/snowcode` detects platform and executes the correct binary
 4. **Standalone execution**: Binary runs without requiring Node.js, Bun, or any other runtime
 
@@ -39,7 +39,7 @@ The main `@groeimetai/snowcode` package includes these as `optionalDependencies`
 tree-sitter requires a native `.node` binary. Before building, ensure it's in the correct location:
 
 ```bash
-cd packages/opencode
+cd packages/snowcode
 bun install  # Builds tree-sitter native module
 
 # Create prebuilds directory for Bun compilation
@@ -53,18 +53,18 @@ cp build/Release/tree_sitter_runtime_binding.node prebuilds/darwin-arm64/tree-si
 #### 2. Run Build Script
 
 ```bash
-cd packages/opencode
+cd packages/snowcode
 bun run build
 ```
 
-This creates `dist/@groeimetai/snowcode-{platform}-{arch}/` with:
+This creates `dist/@groeimetai/snow-code-{platform}-{arch}/` with:
 - `bin/snowcode` (or `snowcode.exe` for Windows) - Standalone executable (~70MB)
 - `package.json` - Package metadata for npm
 
 #### 3. Test Binary
 
 ```bash
-./dist/@groeimetai/snowcode-darwin-arm64/bin/snowcode --version
+./dist/@groeimetai/snow-code-darwin-arm64/bin/snowcode --version
 # Should output: 0.15.28
 ```
 
@@ -90,24 +90,24 @@ Each runner builds for its native platform, then all binaries are collected and 
 Each platform binary is a separate package:
 
 ```bash
-cd dist/@groeimetai/snowcode-darwin-arm64
+cd dist/@groeimetai/snow-code-darwin-arm64
 npm publish --access public
 ```
 
 Repeat for all platforms:
-- `@groeimetai/snowcode-darwin-arm64`
-- `@groeimetai/snowcode-darwin-x64`
-- `@groeimetai/snowcode-linux-arm64`
-- `@groeimetai/snowcode-linux-x64`
-- `@groeimetai/snowcode-linux-x64-baseline`
-- `@groeimetai/snowcode-windows-x64`
+- `@groeimetai/snow-code-darwin-arm64`
+- `@groeimetai/snow-code-darwin-x64`
+- `@groeimetai/snow-code-linux-arm64`
+- `@groeimetai/snow-code-linux-x64`
+- `@groeimetai/snow-code-linux-x64-baseline`
+- `@groeimetai/snow-code-windows-x64`
 
 ### 2. Publish Main Package
 
 After all platform binaries are published:
 
 ```bash
-cd packages/opencode
+cd packages/snowcode
 npm publish --access public
 ```
 
@@ -118,7 +118,7 @@ The main package's `optionalDependencies` will automatically pull in the correct
 **CRITICAL**: All platform packages and the main package **MUST** have the same version number!
 
 When bumping version:
-1. Update `packages/opencode/package.json` version
+1. Update `packages/snowcode/package.json` version
 2. Update `optionalDependencies` versions to match
 3. Rebuild all platform binaries (they read version from package.json)
 4. Publish all packages with the same version
@@ -140,7 +140,7 @@ When bumping version:
 **Problem**: Permission denied or not found errors.
 **Solution**:
 ```bash
-chmod +x dist/@groeimetai/snowcode-*/bin/snowcode
+chmod +x dist/@groeimetai/snow-code-*/bin/snowcode
 ```
 
 ### Wrong Platform Binary Installed
@@ -148,29 +148,29 @@ chmod +x dist/@groeimetai/snowcode-*/bin/snowcode
 **Problem**: npm installed binary for wrong platform.
 **Solution**: Check `os` and `cpu` fields in platform package.json match npm's platform detection.
 
-## Key Changes from OpenCode
+## Key Branding & Architecture
 
 ### Branding
 
-All references updated from `opencode` → `snowcode`:
-- Package names: `@opencode-ai/*` → `@groeimetai/snowcode-*`
-- Binary names: `opencode` → `snowcode`
-- Install directories: `.opencode` → `.snowcode`
-- Constants: `OPENCODE_VERSION` → `SNOWCODE_VERSION`
-- User agent: `opencode/` → `snowcode/`
+All references updated to use `snow-code` branding:
+- Package names: `@groeimetai/snow-code-*`
+- Binary names: `snow-code` (with `snowcode` alias for compatibility)
+- Install directories: `.snowcode`
+- Constants: `SNOWCODE_VERSION`, `SNOWCODE_*` environment variables
+- User agent: `snowcode/`
 
 ### Dependency Fixes
 
 - **Removed**: `import { $ } from "bun"` in `src/installation/index.ts`
 - **Added**: Node.js `execSync` for shell commands (runtime compatible)
-- **Fixed**: Workspace dependencies (`@opencode-ai/sdk` → `@groeimetai/snowcode-sdk`)
+- **Fixed**: Workspace dependencies to use `@groeimetai/snow-code-*` namespace
 
 ## Development Workflow
 
 ### Local Development
 
 ```bash
-cd packages/opencode
+cd packages/snowcode
 bun run dev  # Runs source directly with Bun
 ```
 
@@ -184,7 +184,7 @@ bun run build  # Creates standalone binaries
 
 ```bash
 bun run build
-./dist/@groeimetai/snowcode-darwin-arm64/bin/snowcode auth login
+./dist/@groeimetai/snow-code-darwin-arm64/bin/snowcode auth login
 # Test your changes...
 ```
 

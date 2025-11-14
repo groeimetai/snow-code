@@ -374,7 +374,7 @@ export namespace Provider {
           // Filter out experimental models
           .filter(
             ([, model]) =>
-              (!model.experimental && model.status !== "alpha") || Flag.OPENCODE_ENABLE_EXPERIMENTAL_MODELS,
+              (!model.experimental && model.status !== "alpha") || Flag.SNOWCODE_ENABLE_EXPERIMENTAL_MODELS,
           ),
       )
       provider.info.models = filteredModels

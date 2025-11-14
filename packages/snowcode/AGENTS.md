@@ -1,4 +1,4 @@
-# opencode agent guidelines
+# snow-code agent guidelines
 
 ## Build/Test Commands
 
@@ -24,4 +24,4 @@
 - **Validation**: All inputs validated with Zod schemas
 - **Logging**: Use `Log.create({ service: "name" })` pattern
 - **Storage**: Use `Storage` namespace for persistence
-- **API Client**: Go TUI communicates with TypeScript server via stainless SDK. When adding/modifying server endpoints in `packages/opencode/src/server/server.ts`, ask the user to generate a new client SDK to proceed with client-side changes.
+- **API Client**: Go TUI communicates with TypeScript server via stainless SDK. When adding/modifying server endpoints in `packages/snowcode/src/server/server.ts`, ask the user to generate a new client SDK to proceed with client-side changes.

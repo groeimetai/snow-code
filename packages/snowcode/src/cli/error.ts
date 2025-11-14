@@ -5,7 +5,7 @@ import { UI } from "./ui"
 
 export function FormatError(input: unknown) {
   if (MCP.Failed.isInstance(input))
-    return `MCP server "${input.data.name}" failed. Note, opencode does not support MCP authentication yet.`
+    return `MCP server "${input.data.name}" failed. Note, snow-code does not support MCP authentication yet.`
   if (Config.JsonError.isInstance(input)) {
     return (
       `Config file at ${input.data.path} is not valid JSON(C)` +

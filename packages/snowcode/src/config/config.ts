@@ -36,13 +36,13 @@ export namespace Config {
     }
 
     // Override with custom config if provided
-    if (Flag.OPENCODE_CONFIG) {
-      result = mergeDeep(result, await loadFile(Flag.OPENCODE_CONFIG))
-      log.debug("loaded custom config", { path: Flag.OPENCODE_CONFIG })
+    if (Flag.SNOWCODE_CONFIG) {
+      result = mergeDeep(result, await loadFile(Flag.SNOWCODE_CONFIG))
+      log.debug("loaded custom config", { path: Flag.SNOWCODE_CONFIG })
     }
 
-    if (Flag.OPENCODE_CONFIG_CONTENT) {
-      result = mergeDeep(result, JSON.parse(Flag.OPENCODE_CONFIG_CONTENT))
+    if (Flag.SNOWCODE_CONFIG_CONTENT) {
+      result = mergeDeep(result, JSON.parse(Flag.SNOWCODE_CONFIG_CONTENT))
       log.debug("loaded custom config from OPENCODE_CONFIG_CONTENT")
     }
 
@@ -72,9 +72,9 @@ export namespace Config {
       )),
     ]
 
-    if (Flag.OPENCODE_CONFIG_DIR) {
-      directories.push(Flag.OPENCODE_CONFIG_DIR)
-      log.debug("loading config from SNOWCODE_CONFIG_DIR", { path: Flag.OPENCODE_CONFIG_DIR })
+    if (Flag.SNOWCODE_CONFIG_DIR) {
+      directories.push(Flag.SNOWCODE_CONFIG_DIR)
+      log.debug("loading config from SNOWCODE_CONFIG_DIR", { path: Flag.SNOWCODE_CONFIG_DIR })
     }
 
     for (const dir of directories) {
@@ -96,8 +96,8 @@ export namespace Config {
       })
     }
 
-    if (Flag.OPENCODE_PERMISSION) {
-      result.permission = mergeDeep(result.permission ?? {}, JSON.parse(Flag.OPENCODE_PERMISSION))
+    if (Flag.SNOWCODE_PERMISSION) {
+      result.permission = mergeDeep(result.permission ?? {}, JSON.parse(Flag.SNOWCODE_PERMISSION))
     }
 
     if (!result.username) result.username = os.userInfo().username
