@@ -2249,28 +2249,6 @@ export const AuthLoginCommand = cmd({
               envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: enterpriseJiraApiToken })
             await updateEnvFile(envUpdates)
 
-            // Add snow-flow-enterprise MCP server to SnowCode config
-            const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
-            const configPath = path.join(globalSnowCodeDir, "snowcode.json")
-            try {
-              const file = Bun.file(configPath)
-              if (await file.exists()) {
-                const configText = await file.text()
-                const config = JSON.parse(configText)
-                if (!config.mcp) config.mcp = {}
-                config.mcp["snow-flow-enterprise"] = {
-                  type: "remote",
-                  url: "https://enterprise.snow-flow.dev/mcp/sse",
-                  headers: { Authorization: `Bearer ${enterpriseLicenseKey}` },
-                  enabled: true,
-                }
-                await Bun.write(configPath, JSON.stringify(config, null, 2))
-                prompts.log.info("Added snow-flow-enterprise MCP server to config")
-              }
-            } catch (error: any) {
-              // Silently skip enterprise MCP configuration errors
-            }
-
             prompts.log.message("")
             prompts.log.success("Enterprise configuration saved")
             prompts.log.info("Credentials saved to .env file")
@@ -2662,28 +2640,6 @@ export const AuthLoginCommand = cmd({
             if (confluenceEmail) envUpdates.push({ key: "SNOW_CONFLUENCE_EMAIL", value: confluenceEmail })
             if (confluenceApiToken) envUpdates.push({ key: "SNOW_CONFLUENCE_API_TOKEN", value: confluenceApiToken })
             await updateEnvFile(envUpdates)
-
-            // Add snow-flow-enterprise MCP server to SnowCode config
-            const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
-            const configPath = path.join(globalSnowCodeDir, "snowcode.json")
-            try {
-              const file = Bun.file(configPath)
-              if (await file.exists()) {
-                const configText = await file.text()
-                const config = JSON.parse(configText)
-                if (!config.mcp) config.mcp = {}
-                config.mcp["snow-flow-enterprise"] = {
-                  type: "remote",
-                  url: "https://enterprise.snow-flow.dev/mcp/sse",
-                  headers: { Authorization: `Bearer ${licenseKey}` },
-                  enabled: true,
-                }
-                await Bun.write(configPath, JSON.stringify(config, null, 2))
-                prompts.log.info("Added snow-flow-enterprise MCP server to config")
-              }
-            } catch (error: any) {
-              // Silently skip enterprise MCP configuration errors
-            }
 
             // Sync credentials to enterprise backend dashboard
             if (existingRegAuth && existingRegAuth.token) {
