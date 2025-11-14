@@ -1000,43 +1000,199 @@ export const AuthLoginCommand = cmd({
 
           // Optional integrations
           const configureIntegrations = await prompts.confirm({
-            message: "Configure optional integrations (Jira, Azure DevOps)?",
+            message: "Configure optional integrations (Jira, Azure DevOps, Confluence)?",
             initialValue: false,
           })
 
           let jiraBaseUrl: string | undefined
           let jiraEmail: string | undefined
           let jiraApiToken: string | undefined
+          let azureOrg: string | undefined
+          let azureProject: string | undefined
+          let azurePat: string | undefined
+          let confluenceUrl: string | undefined
+          let confluenceEmail: string | undefined
+          let confluenceApiToken: string | undefined
 
           if (!prompts.isCancel(configureIntegrations) && configureIntegrations) {
-            jiraBaseUrl = (await prompts.text({
-              message: "Jira Base URL (optional)",
-              placeholder: "https://company.atlassian.net",
-            })) as string
+            const integrations = await prompts.multiselect({
+              message: "Select integrations to configure",
+              options: [
+                { value: "jira", label: "Jira" },
+                { value: "azure", label: "Azure DevOps" },
+                { value: "confluence", label: "Confluence" },
+              ],
+            }) as string[]
 
-            if (!prompts.isCancel(jiraBaseUrl) && jiraBaseUrl) {
-              jiraEmail = (await prompts.text({
-                message: "Jira Email",
-                placeholder: "admin@company.com",
-              })) as string
-
-              if (!prompts.isCancel(jiraEmail)) {
-                jiraApiToken = (await prompts.password({
-                  message: "Jira API Token",
+            if (!prompts.isCancel(integrations)) {
+              // Jira configuration
+              if (integrations.includes("jira")) {
+                jiraBaseUrl = (await prompts.text({
+                  message: "Jira Base URL",
+                  placeholder: "https://company.atlassian.net",
                 })) as string
+
+                if (!prompts.isCancel(jiraBaseUrl) && jiraBaseUrl) {
+                  jiraEmail = (await prompts.text({
+                    message: "Jira Email",
+                    placeholder: "admin@company.com",
+                  })) as string
+
+                  if (!prompts.isCancel(jiraEmail)) {
+                    jiraApiToken = (await prompts.password({
+                      message: "Jira API Token",
+                    })) as string
+                  }
+                }
+              }
+
+              // Azure DevOps configuration
+              if (integrations.includes("azure")) {
+                azureOrg = (await prompts.text({
+                  message: "Azure DevOps Organization",
+                  placeholder: "mycompany",
+                })) as string
+
+                if (!prompts.isCancel(azureOrg) && azureOrg) {
+                  azureProject = (await prompts.text({
+                    message: "Azure DevOps Project",
+                    placeholder: "MyProject",
+                  })) as string
+
+                  if (!prompts.isCancel(azureProject)) {
+                    azurePat = (await prompts.password({
+                      message: "Azure Personal Access Token (PAT)",
+                    })) as string
+                  }
+                }
+              }
+
+              // Confluence configuration
+              if (integrations.includes("confluence")) {
+                confluenceUrl = (await prompts.text({
+                  message: "Confluence Base URL",
+                  placeholder: "https://company.atlassian.net/wiki",
+                })) as string
+
+                if (!prompts.isCancel(confluenceUrl) && confluenceUrl) {
+                  confluenceEmail = (await prompts.text({
+                    message: "Confluence Email",
+                    placeholder: "admin@company.com",
+                  })) as string
+
+                  if (!prompts.isCancel(confluenceEmail)) {
+                    confluenceApiToken = (await prompts.password({
+                      message: "Confluence API Token",
+                    })) as string
+                  }
+                }
               }
             }
           }
 
-          // Save to Auth store
+          // Merge integration credentials with existing auth data
+          const existingAuth = await Auth.get("enterprise")
           await Auth.set("enterprise", {
+            ...existingAuth, // Preserve token, sessionToken, username, email, role, machineId
             type: "enterprise",
             licenseKey,
             enterpriseUrl: enterpriseUrl || undefined,
             jiraBaseUrl: jiraBaseUrl || undefined,
             jiraEmail: jiraEmail || undefined,
             jiraApiToken: jiraApiToken || undefined,
+            azureOrg: azureOrg || undefined,
+            azureProject: azureProject || undefined,
+            azurePat: azurePat || undefined,
+            confluenceUrl: confluenceUrl || undefined,
+            confluenceEmail: confluenceEmail || undefined,
+            confluenceApiToken: confluenceApiToken || undefined,
           })
+
+          // Sync credentials to enterprise backend
+          if (existingAuth && existingAuth.token && (jiraBaseUrl || azureOrg || confluenceUrl)) {
+            try {
+              const syncSpinner = prompts.spinner()
+              syncSpinner.start("Syncing credentials to enterprise dashboard...")
+
+              const credentialPromises = []
+
+              // Sync Jira credentials
+              if (jiraBaseUrl && jiraEmail && jiraApiToken) {
+                credentialPromises.push(
+                  fetch(`${enterpriseUrl}/api/credentials/store`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${existingAuth.token}`
+                    },
+                    body: JSON.stringify({
+                      service: "jira",
+                      instanceUrl: jiraBaseUrl,
+                      email: jiraEmail,
+                      apiToken: jiraApiToken
+                    }),
+                    signal: AbortSignal.timeout(10000)
+                  })
+                )
+              }
+
+              // Sync Azure DevOps credentials
+              if (azureOrg && azurePat) {
+                credentialPromises.push(
+                  fetch(`${enterpriseUrl}/api/credentials/store`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${existingAuth.token}`
+                    },
+                    body: JSON.stringify({
+                      service: "azdo",
+                      instanceUrl: `https://dev.azure.com/${azureOrg}`,
+                      username: azureOrg,
+                      password: azurePat
+                    }),
+                    signal: AbortSignal.timeout(10000)
+                  })
+                )
+              }
+
+              // Sync Confluence credentials
+              if (confluenceUrl && confluenceEmail && confluenceApiToken) {
+                credentialPromises.push(
+                  fetch(`${enterpriseUrl}/api/credentials/store`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${existingAuth.token}`
+                    },
+                    body: JSON.stringify({
+                      service: "confluence",
+                      instanceUrl: confluenceUrl,
+                      email: confluenceEmail,
+                      apiToken: confluenceApiToken
+                    }),
+                    signal: AbortSignal.timeout(10000)
+                  })
+                )
+              }
+
+              // Wait for all syncs to complete
+              const results = await Promise.allSettled(credentialPromises)
+              const failed = results.filter(r => r.status === "rejected").length
+
+              if (failed === 0 && results.length > 0) {
+                syncSpinner.stop("✅ Credentials synced to dashboard")
+              } else if (failed > 0) {
+                syncSpinner.stop("⚠️  Some credentials failed to sync", 1)
+                prompts.log.info("Credentials saved locally, but not all synced to dashboard")
+              } else {
+                syncSpinner.stop()
+              }
+            } catch (error: any) {
+              prompts.log.warn(`Failed to sync credentials: ${error.message}`)
+              prompts.log.info("Credentials saved locally, but not synced to dashboard")
+            }
+          }
 
           // Write to .env file
           const envUpdates: Array<{ key: string; value: string }> = [
@@ -1046,6 +1202,12 @@ export const AuthLoginCommand = cmd({
           if (jiraBaseUrl) envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: jiraBaseUrl })
           if (jiraEmail) envUpdates.push({ key: "SNOW_JIRA_EMAIL", value: jiraEmail })
           if (jiraApiToken) envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: jiraApiToken })
+          if (azureOrg) envUpdates.push({ key: "SNOW_AZURE_ORG", value: azureOrg })
+          if (azureProject) envUpdates.push({ key: "SNOW_AZURE_PROJECT", value: azureProject })
+          if (azurePat) envUpdates.push({ key: "SNOW_AZURE_PAT", value: azurePat })
+          if (confluenceUrl) envUpdates.push({ key: "SNOW_CONFLUENCE_URL", value: confluenceUrl })
+          if (confluenceEmail) envUpdates.push({ key: "SNOW_CONFLUENCE_EMAIL", value: confluenceEmail })
+          if (confluenceApiToken) envUpdates.push({ key: "SNOW_CONFLUENCE_API_TOKEN", value: confluenceApiToken })
           await updateEnvFile(envUpdates)
 
           // Add snow-flow-enterprise MCP server to SnowCode config
@@ -2467,8 +2629,10 @@ export const AuthLoginCommand = cmd({
               }
             }
 
-            // Save to Auth store
+            // Merge integration credentials with existing auth data
+            const existingRegAuth = await Auth.get("enterprise")
             await Auth.set("enterprise", {
+              ...existingRegAuth, // Preserve token, sessionToken, username, email, role, machineId
               type: "enterprise",
               licenseKey,
               enterpriseUrl: enterpriseUrl || undefined,
@@ -2521,41 +2685,90 @@ export const AuthLoginCommand = cmd({
               // Silently skip enterprise MCP configuration errors
             }
 
-            // Sync integration settings to enterprise backend
-            try {
-              const enterpriseApiUrl = enterpriseUrl || "https://portal.snow-flow.dev"
-              await fetch(`${enterpriseApiUrl}/api/integrations`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${licenseKey}`,
-                },
-                body: JSON.stringify({
-                  jira: jiraBaseUrl
-                    ? {
-                        baseUrl: jiraBaseUrl,
+            // Sync credentials to enterprise backend dashboard
+            if (existingRegAuth && existingRegAuth.token) {
+              try {
+                const syncSpinner = prompts.spinner()
+                syncSpinner.start("Syncing credentials to enterprise dashboard...")
+
+                const credentialPromises = []
+
+                // Sync Jira credentials
+                if (jiraBaseUrl && jiraEmail && jiraApiToken) {
+                  credentialPromises.push(
+                    fetch(`${enterpriseUrl}/api/credentials/store`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${existingRegAuth.token}`
+                      },
+                      body: JSON.stringify({
+                        service: "jira",
+                        instanceUrl: jiraBaseUrl,
                         email: jiraEmail,
-                        // API token is NOT sent - kept local for security
-                      }
-                    : undefined,
-                  azure: azureOrg
-                    ? {
-                        organization: azureOrg,
-                        project: azureProject,
-                        // PAT is NOT sent - kept local for security
-                      }
-                    : undefined,
-                  confluence: confluenceUrl
-                    ? {
-                        baseUrl: confluenceUrl,
+                        apiToken: jiraApiToken
+                      }),
+                      signal: AbortSignal.timeout(10000)
+                    })
+                  )
+                }
+
+                // Sync Azure DevOps credentials
+                if (azureOrg && azurePat) {
+                  credentialPromises.push(
+                    fetch(`${enterpriseUrl}/api/credentials/store`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${existingRegAuth.token}`
+                      },
+                      body: JSON.stringify({
+                        service: "azdo",
+                        instanceUrl: `https://dev.azure.com/${azureOrg}`,
+                        username: azureOrg,
+                        password: azurePat
+                      }),
+                      signal: AbortSignal.timeout(10000)
+                    })
+                  )
+                }
+
+                // Sync Confluence credentials
+                if (confluenceUrl && confluenceEmail && confluenceApiToken) {
+                  credentialPromises.push(
+                    fetch(`${enterpriseUrl}/api/credentials/store`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${existingRegAuth.token}`
+                      },
+                      body: JSON.stringify({
+                        service: "confluence",
+                        instanceUrl: confluenceUrl,
                         email: confluenceEmail,
-                        // API token is NOT sent - kept local for security
-                      }
-                    : undefined,
-                }),
-              })
-            } catch (error) {
-              // Silently fail - integrations are still saved locally
+                        apiToken: confluenceApiToken
+                      }),
+                      signal: AbortSignal.timeout(10000)
+                    })
+                  )
+                }
+
+                // Wait for all syncs to complete
+                const results = await Promise.allSettled(credentialPromises)
+                const failed = results.filter(r => r.status === "rejected").length
+
+                if (failed === 0 && results.length > 0) {
+                  syncSpinner.stop("✅ Credentials synced to dashboard")
+                } else if (failed > 0) {
+                  syncSpinner.stop("⚠️  Some credentials failed to sync", 1)
+                  prompts.log.info("Credentials saved locally, but not all synced to dashboard")
+                } else {
+                  syncSpinner.stop()
+                }
+              } catch (error: any) {
+                prompts.log.warn(`Failed to sync credentials: ${error.message}`)
+                prompts.log.info("Credentials saved locally, but not synced to dashboard")
+              }
             }
 
             prompts.log.success("Enterprise configuration saved")
