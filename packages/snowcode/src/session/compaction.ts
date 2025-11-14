@@ -29,6 +29,9 @@ export namespace SessionCompaction {
     ),
   }
 
+  // Compact when we hit 85% of usable context (similar to Claude Code behavior)
+  const COMPACTION_THRESHOLD = 0.85
+
   export function isOverflow(input: { tokens: MessageV2.Assistant["tokens"]; model: ModelsDev.Model }) {
     if (Flag.SNOWCODE_DISABLE_AUTOCOMPACT) return false
     const context = input.model.limit.context
@@ -37,6 +40,17 @@ export namespace SessionCompaction {
     const output = Math.min(input.model.limit.output, SessionPrompt.OUTPUT_TOKEN_MAX) || SessionPrompt.OUTPUT_TOKEN_MAX
     const usable = context - output
     return count > usable
+  }
+
+  export function shouldAutoCompact(input: { tokens: MessageV2.Assistant["tokens"]; model: ModelsDev.Model }) {
+    if (Flag.SNOWCODE_DISABLE_AUTOCOMPACT) return false
+    const context = input.model.limit.context
+    if (context === 0) return false
+    const count = input.tokens.input + input.tokens.cache.read + input.tokens.output
+    const output = Math.min(input.model.limit.output, SessionPrompt.OUTPUT_TOKEN_MAX) || SessionPrompt.OUTPUT_TOKEN_MAX
+    const usable = context - output
+    const threshold = usable * COMPACTION_THRESHOLD
+    return count > threshold
   }
 
   export const PRUNE_MINIMUM = 20_000

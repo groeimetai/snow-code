@@ -416,6 +416,34 @@ export namespace SessionPrompt {
       }
       state().queued.delete(input.sessionID)
       SessionCompaction.prune(input)
+
+      // Check if we need to auto-compact after this turn (when context is 85% full)
+      if (
+        result.info.role === "assistant" &&
+        !result.info.error &&
+        SessionCompaction.shouldAutoCompact({
+          tokens: result.info.tokens,
+          model: model.info,
+        })
+      ) {
+        const count = result.info.tokens.input + result.info.tokens.cache.read + result.info.tokens.output
+        const usable = model.info.limit.context - (Math.min(model.info.limit.output, SessionPrompt.OUTPUT_TOKEN_MAX) || SessionPrompt.OUTPUT_TOKEN_MAX)
+        const percentage = Math.round((count / usable) * 100)
+        log.info("auto-compact triggered after turn completion", {
+          percentage: percentage + "%",
+          tokens: count,
+          usable,
+        })
+        // Run compaction asynchronously without blocking the return
+        SessionCompaction.run({
+          sessionID: input.sessionID,
+          providerID: model.providerID,
+          modelID: model.info.id,
+        }).catch((err) => {
+          log.error("auto-compact failed", { error: err })
+        })
+      }
+
       return result
     }
   }
