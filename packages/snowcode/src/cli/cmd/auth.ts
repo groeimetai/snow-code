@@ -56,34 +56,21 @@ async function updateEnvFile(updates: Array<{ key: string; value: string }>) {
  */
 async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clientSecret: string) {
   const projectSnowCodeDir = path.join(process.cwd(), ".snow-code")
-  const projectSnowCodeDirLegacy = path.join(process.cwd(), ".snowcode")
-  const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
   const globalConfigDir = path.join(os.homedir(), ".config", "snow-code")
-  const globalConfigDirLegacy = path.join(os.homedir(), ".config", "snowcode")
 
   // Ensure instance is a full URL
   const instanceUrl = instance.startsWith("http") ? instance : `https://${instance}`
 
-  // Update both project-level and global configs (all possible locations)
+  // ONLY update PRIMARY locations (with hyphen)
+  // Legacy locations are read-only for backward compatibility
   const configPaths = [
-    // Project-level (created by snow-flow init) - with hyphen
+    // Project-level (created by snow-flow init) - with hyphen ONLY
     path.join(projectSnowCodeDir, "opencode.json"),
     path.join(projectSnowCodeDir, "config.json"),
-    // Project-level legacy (without hyphen)
-    path.join(projectSnowCodeDirLegacy, "opencode.json"),
-    path.join(projectSnowCodeDirLegacy, "config.json"),
-    // Global SnowCode dirs
-    path.join(globalSnowCodeDir, "opencode.json"),
-    path.join(globalSnowCodeDir, "snowcode.json"),
-    path.join(globalSnowCodeDir, "config.json"),
-    // Global config directory (primary - with hyphen)
+    // Global config directory (with hyphen ONLY)
     path.join(globalConfigDir, "opencode.json"),
     path.join(globalConfigDir, "snowcode.json"),
     path.join(globalConfigDir, "config.json"),
-    // Global config directory legacy (without hyphen)
-    path.join(globalConfigDirLegacy, "opencode.json"),
-    path.join(globalConfigDirLegacy, "snowcode.json"),
-    path.join(globalConfigDirLegacy, "config.json"),
   ]
 
   var updatedCount = 0
