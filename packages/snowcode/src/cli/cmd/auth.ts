@@ -58,7 +58,8 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
   const projectSnowCodeDir = path.join(process.cwd(), ".snow-code")
   const projectSnowCodeDirLegacy = path.join(process.cwd(), ".snowcode")
   const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
-  const globalConfigDir = path.join(os.homedir(), ".config", "snowcode")
+  const globalConfigDir = path.join(os.homedir(), ".config", "snow-code")
+  const globalConfigDirLegacy = path.join(os.homedir(), ".config", "snowcode")
 
   // Ensure instance is a full URL
   const instanceUrl = instance.startsWith("http") ? instance : `https://${instance}`
@@ -75,10 +76,14 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
     path.join(globalSnowCodeDir, "opencode.json"),
     path.join(globalSnowCodeDir, "snowcode.json"),
     path.join(globalSnowCodeDir, "config.json"),
-    // Global OpenCode standard location (~/.config/snowcode/)
+    // Global config directory (primary - with hyphen)
     path.join(globalConfigDir, "opencode.json"),
     path.join(globalConfigDir, "snowcode.json"),
     path.join(globalConfigDir, "config.json"),
+    // Global config directory legacy (without hyphen)
+    path.join(globalConfigDirLegacy, "opencode.json"),
+    path.join(globalConfigDirLegacy, "snowcode.json"),
+    path.join(globalConfigDirLegacy, "config.json"),
   ]
 
   var updatedCount = 0
