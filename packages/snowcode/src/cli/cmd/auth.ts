@@ -55,7 +55,8 @@ async function updateEnvFile(updates: Array<{ key: string; value: string }>) {
  * Helper function to update SnowCode MCP config files with ServiceNow credentials
  */
 async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clientSecret: string) {
-  const projectSnowCodeDir = path.join(process.cwd(), ".snowcode")
+  const projectSnowCodeDir = path.join(process.cwd(), ".snow-code")
+  const projectSnowCodeDirLegacy = path.join(process.cwd(), ".snowcode")
   const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
   const globalConfigDir = path.join(os.homedir(), ".config", "snowcode")
 
@@ -64,9 +65,12 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
 
   // Update both project-level and global configs (all possible locations)
   const configPaths = [
-    // Project-level (created by snow-flow init)
+    // Project-level (created by snow-flow init) - with hyphen
     path.join(projectSnowCodeDir, "opencode.json"),
     path.join(projectSnowCodeDir, "config.json"),
+    // Project-level legacy (without hyphen)
+    path.join(projectSnowCodeDirLegacy, "opencode.json"),
+    path.join(projectSnowCodeDirLegacy, "config.json"),
     // Global SnowCode dirs
     path.join(globalSnowCodeDir, "opencode.json"),
     path.join(globalSnowCodeDir, "snowcode.json"),
