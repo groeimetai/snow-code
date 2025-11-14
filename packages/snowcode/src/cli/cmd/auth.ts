@@ -441,7 +441,10 @@ export const AuthLoginCommand = cmd({
             validate: (value) => {
               if (!value || value.trim() === "") return "URL is required"
               try {
-                new URL(value)
+                const url = new URL(value)
+                if (url.protocol !== "https:") {
+                  return "URL must use HTTPS for secure credential transmission"
+                }
               } catch {
                 return "Invalid URL format (must include https://)"
               }
@@ -1711,7 +1714,10 @@ export const AuthLoginCommand = cmd({
               validate: (value) => {
                 if (!value || value.trim() === "") return "URL is required"
                 try {
-                  new URL(value)
+                  const url = new URL(value)
+                  if (url.protocol !== "https:") {
+                    return "URL must use HTTPS for secure credential transmission"
+                  }
                 } catch {
                   return "Invalid URL format (must include https://)"
                 }
@@ -2519,6 +2525,17 @@ export const AuthLoginCommand = cmd({
               message: "Enterprise License Server URL (optional)",
               placeholder: "https://portal.snow-flow.dev",
               initialValue: "https://portal.snow-flow.dev",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "URL is required"
+                try {
+                  const url = new URL(value)
+                  if (url.protocol !== "https:") {
+                    return "URL must use HTTPS for secure credential transmission"
+                  }
+                } catch {
+                  return "Invalid URL format (must include https://)"
+                }
+              },
             })) as string
 
             // External integrations configuration
