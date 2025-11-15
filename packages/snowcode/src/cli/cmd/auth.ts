@@ -142,8 +142,9 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
 
 /**
  * Validate enterprise license key with enterprise server
+ * Note: Does NOT require user authentication token - the license key validates itself
  */
-async function validateLicenseKey(licenseKey: string, token?: string): Promise<{
+async function validateLicenseKey(licenseKey: string): Promise<{
   valid: boolean
   error?: string
   features?: string[]
@@ -156,10 +157,9 @@ async function validateLicenseKey(licenseKey: string, token?: string): Promise<{
       "Content-Type": "application/json",
     }
 
-    // Add Authorization header if token is provided
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`
-    }
+    // NOTE: License validation API does NOT require authentication token
+    // It validates the license key itself, not the user session
+    // User session tokens will cause "invalid signature" JWT errors
 
     const response = await fetch(`${serverUrl}/api/license/validate`, {
       method: "POST",
@@ -1655,10 +1655,8 @@ export const AuthLoginCommand = cmd({
             const validationSpinner = prompts.spinner()
             validationSpinner.start("Validating enterprise license...")
 
-            // Re-fetch auth to get the updated data with token (after Auth.set merge)
-            const updatedAuth = await Auth.get("enterprise")
-            const authToken = updatedAuth && updatedAuth.type === "enterprise" ? updatedAuth.token : undefined
-            const validation = await validateLicenseKey(licenseKey, authToken)
+            // Validate license key (no auth token needed - license key validates itself)
+            const validation = await validateLicenseKey(licenseKey)
 
             if (!validation.valid) {
               validationSpinner.stop("⚠️  License validation failed", 1)
@@ -2675,8 +2673,8 @@ export const AuthLoginCommand = cmd({
               const validationSpinner = prompts.spinner()
               validationSpinner.start("Validating enterprise license...")
 
-              // Use the auth token from the successful registration
-              const validation = await validateLicenseKey(enterpriseLicenseKey, enterpriseAuthData.token)
+              // Validate license key (no auth token needed - license key validates itself)
+              const validation = await validateLicenseKey(enterpriseLicenseKey)
 
               if (!validation.valid) {
                 validationSpinner.stop("⚠️  License validation failed", 1)
@@ -3200,10 +3198,8 @@ export const AuthLoginCommand = cmd({
               const validationSpinner = prompts.spinner()
               validationSpinner.start("Validating enterprise license...")
 
-              // Re-fetch auth to get the updated data with token (after Auth.set merge)
-              const updatedRegAuth = await Auth.get("enterprise")
-              const authToken = updatedRegAuth && updatedRegAuth.type === "enterprise" ? updatedRegAuth.token : undefined
-              const validation = await validateLicenseKey(licenseKey, authToken)
+              // Validate license key (no auth token needed - license key validates itself)
+              const validation = await validateLicenseKey(licenseKey)
 
               if (!validation.valid) {
                 validationSpinner.stop("⚠️  License validation failed", 1)
