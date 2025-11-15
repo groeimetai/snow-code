@@ -171,10 +171,10 @@ async function validateLicenseKey(licenseKey: string, serverUrl?: string): Promi
 
     const data = await response.json()
 
-    if (!response.ok || !data.valid) {
+    if (!response.ok || !data.success) {
       return {
         valid: false,
-        error: data.error || "Invalid license key",
+        error: data.error || data.message || "Invalid license key",
       }
     }
 
