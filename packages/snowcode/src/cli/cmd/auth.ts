@@ -1491,15 +1491,15 @@ export const AuthLoginCommand = cmd({
               // Sync Jira credentials
               if (jiraBaseUrl && jiraEmail && jiraApiToken) {
                 credentialPromises.push(
-                  fetch(`${enterpriseUrl}/api/credentials/store`, {
+                  fetch(`${enterpriseUrl}/mcp/auth/credentials`, {
                     method: "POST",
                     headers: {
-                      "Content-Type": "application/json",
-                      "Authorization": `Bearer ${existingAuth.token}`
+                      "Content-Type": "application/json"
                     },
                     body: JSON.stringify({
+                      licenseKey,
                       service: "jira",
-                      instanceUrl: jiraBaseUrl,
+                      baseUrl: jiraBaseUrl,
                       email: jiraEmail,
                       apiToken: jiraApiToken
                     }),
@@ -1511,18 +1511,17 @@ export const AuthLoginCommand = cmd({
               // Sync Azure DevOps credentials
               if (azureOrg && azurePat) {
                 credentialPromises.push(
-                  fetch(`${enterpriseUrl}/api/credentials/store`, {
+                  fetch(`${enterpriseUrl}/mcp/auth/credentials`, {
                     method: "POST",
                     headers: {
-                      "Content-Type": "application/json",
-                      "Authorization": `Bearer ${existingAuth.token}`
+                      "Content-Type": "application/json"
                     },
                     body: JSON.stringify({
-                      service: "azdo",
-                      instanceUrl: `https://dev.azure.com/${azureOrg}`,
-                      username: "",
-                      password: azurePat,
-                      project: azureProject
+                      licenseKey,
+                      service: "azure-devops",
+                      baseUrl: `https://dev.azure.com/${azureOrg}`,
+                      email: azureOrg,
+                      apiToken: azurePat
                     }),
                     signal: AbortSignal.timeout(10000)
                   })
@@ -1532,15 +1531,15 @@ export const AuthLoginCommand = cmd({
               // Sync Confluence credentials
               if (confluenceUrl && confluenceEmail && confluenceApiToken) {
                 credentialPromises.push(
-                  fetch(`${enterpriseUrl}/api/credentials/store`, {
+                  fetch(`${enterpriseUrl}/mcp/auth/credentials`, {
                     method: "POST",
                     headers: {
-                      "Content-Type": "application/json",
-                      "Authorization": `Bearer ${existingAuth.token}`
+                      "Content-Type": "application/json"
                     },
                     body: JSON.stringify({
+                      licenseKey,
                       service: "confluence",
-                      instanceUrl: confluenceUrl,
+                      baseUrl: confluenceUrl,
                       email: confluenceEmail,
                       apiToken: confluenceApiToken
                     }),
@@ -3118,15 +3117,15 @@ export const AuthLoginCommand = cmd({
                 // Sync Jira credentials
                 if (jiraBaseUrl && jiraEmail && jiraApiToken) {
                   credentialPromises.push(
-                    fetch(`${enterpriseUrl}/api/credentials/store`, {
+                    fetch(`${enterpriseUrl}/mcp/auth/credentials`, {
                       method: "POST",
                       headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${existingRegAuth.token}`
+                        "Content-Type": "application/json"
                       },
                       body: JSON.stringify({
+                        licenseKey,
                         service: "jira",
-                        instanceUrl: jiraBaseUrl,
+                        baseUrl: jiraBaseUrl,
                         email: jiraEmail,
                         apiToken: jiraApiToken
                       }),
@@ -3138,18 +3137,17 @@ export const AuthLoginCommand = cmd({
                 // Sync Azure DevOps credentials
                 if (azureOrg && azurePat) {
                   credentialPromises.push(
-                    fetch(`${enterpriseUrl}/api/credentials/store`, {
+                    fetch(`${enterpriseUrl}/mcp/auth/credentials`, {
                       method: "POST",
                       headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${existingRegAuth.token}`
+                        "Content-Type": "application/json"
                       },
                       body: JSON.stringify({
-                        service: "azdo",
-                        instanceUrl: `https://dev.azure.com/${azureOrg}`,
-                        username: "",
-                        password: azurePat,
-                        project: azureProject
+                        licenseKey,
+                        service: "azure-devops",
+                        baseUrl: `https://dev.azure.com/${azureOrg}`,
+                        email: azureOrg,
+                        apiToken: azurePat
                       }),
                       signal: AbortSignal.timeout(10000)
                     })
@@ -3159,15 +3157,15 @@ export const AuthLoginCommand = cmd({
                 // Sync Confluence credentials
                 if (confluenceUrl && confluenceEmail && confluenceApiToken) {
                   credentialPromises.push(
-                    fetch(`${enterpriseUrl}/api/credentials/store`, {
+                    fetch(`${enterpriseUrl}/mcp/auth/credentials`, {
                       method: "POST",
                       headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${existingRegAuth.token}`
+                        "Content-Type": "application/json"
                       },
                       body: JSON.stringify({
+                        licenseKey,
                         service: "confluence",
-                        instanceUrl: confluenceUrl,
+                        baseUrl: confluenceUrl,
                         email: confluenceEmail,
                         apiToken: confluenceApiToken
                       }),
