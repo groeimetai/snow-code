@@ -192,6 +192,43 @@ async function validateLicenseKey(licenseKey: string, serverUrl?: string): Promi
 }
 
 /**
+ * Find the enterprise proxy path dynamically
+ */
+async function findEnterpriseProxyPath(): Promise<string> {
+  var enterpriseProxyPath = ""
+
+  // Try to get global npm root dynamically
+  try {
+    const npmRootResult = Bun.spawnSync(["npm", "root", "-g"])
+    if (npmRootResult.exitCode === 0) {
+      const globalNodeModules = npmRootResult.stdout.toString().trim()
+      const dynamicPath = path.join(globalNodeModules, "snow-flow", "dist", "mcp", "enterprise-proxy", "index.js")
+      if (await Bun.file(dynamicPath).exists()) {
+        return dynamicPath
+      }
+    }
+  } catch (e) {
+    // Ignore errors, fall through to static paths
+  }
+
+  // Fallback to static paths if dynamic detection failed
+  const possiblePaths = [
+    path.join(process.cwd(), "node_modules", "snow-flow", "dist", "mcp", "enterprise-proxy", "index.js"),
+    path.join(os.homedir(), ".npm", "lib", "node_modules", "snow-flow", "dist", "mcp", "enterprise-proxy", "index.js"),
+    "/usr/local/lib/node_modules/snow-flow/dist/mcp/enterprise-proxy/index.js",
+  ]
+
+  for (const testPath of possiblePaths) {
+    if (await Bun.file(testPath).exists()) {
+      return testPath
+    }
+  }
+
+  // Return npx as fallback
+  return "npx"
+}
+
+/**
  * Enterprise MCP configuration interface
  */
 interface EnterpriseMcpConfig {
@@ -253,10 +290,13 @@ async function addEnterpriseMcpServer(config: EnterpriseMcpConfig): Promise<void
         snowCodeConfig[mcpKey] = {}
       }
 
+      // Find enterprise proxy path dynamically
+      const enterpriseProxyPath = await findEnterpriseProxyPath()
+
       // Add enterprise MCP server configuration
       const enterpriseConfig = {
         type: "local",
-        command: ["node", path.join(process.cwd(), "dist/mcp/enterprise-proxy/index.js")],
+        command: enterpriseProxyPath === "npx" ? ["npx", "snow-flow-enterprise-proxy"] : ["node", enterpriseProxyPath],
         environment: {
           SNOW_LICENSE_KEY: config.licenseKey,
           SNOW_ENTERPRISE_URL: config.serverUrl || "https://enterprise.snow-flow.dev",
@@ -1577,7 +1617,7 @@ export const AuthLoginCommand = cmd({
           const envUpdates: Array<{ key: string; value: string }> = [
             { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: licenseKey },
           ]
-          if (enterpriseUrl) envUpdates.push({ key: "SNOW_ENTERPRISE_URL", value: enterpriseUrl })
+          if (portalUrl) envUpdates.push({ key: "SNOW_ENTERPRISE_URL", value: portalUrl })
           if (jiraBaseUrl) envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: jiraBaseUrl })
           if (jiraEmail) envUpdates.push({ key: "SNOW_JIRA_EMAIL", value: jiraEmail })
           if (jiraApiToken) envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: jiraApiToken })
@@ -1610,29 +1650,12 @@ export const AuthLoginCommand = cmd({
             if (!config.mcp) config.mcp = {}
 
             // Find the enterprise proxy path (installed via snow-flow package)
-            var enterpriseProxyPath = ""
-            const possiblePaths = [
-              path.join(process.cwd(), "node_modules", "snow-flow", "dist", "mcp", "enterprise-proxy", "index.js"),
-              path.join(os.homedir(), ".npm", "lib", "node_modules", "snow-flow", "dist", "mcp", "enterprise-proxy", "index.js"),
-              "/usr/local/lib/node_modules/snow-flow/dist/mcp/enterprise-proxy/index.js",
-            ]
-
-            for (const testPath of possiblePaths) {
-              if (await Bun.file(testPath).exists()) {
-                enterpriseProxyPath = testPath
-                break
-              }
-            }
-
-            // Fallback to npx if path not found
-            if (!enterpriseProxyPath) {
-              enterpriseProxyPath = "npx"
-            }
+            const enterpriseProxyPath = await findEnterpriseProxyPath()
 
             // Build environment variables for the proxy
             const env: Record<string, string> = {
               SNOW_LICENSE_KEY: licenseKey,
-              SNOW_ENTERPRISE_URL: enterpriseUrl || "https://enterprise.snow-flow.dev",
+              SNOW_ENTERPRISE_URL: mcpServerUrl,
             }
 
             // Add Jira credentials if provided
