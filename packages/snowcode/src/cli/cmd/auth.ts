@@ -1655,8 +1655,9 @@ export const AuthLoginCommand = cmd({
             const validationSpinner = prompts.spinner()
             validationSpinner.start("Validating enterprise license...")
 
-            // Get token from existingAuth if available
-            const authToken = existingAuth && existingAuth.type === "enterprise" ? existingAuth.token : undefined
+            // Re-fetch auth to get the updated data with token (after Auth.set merge)
+            const updatedAuth = await Auth.get("enterprise")
+            const authToken = updatedAuth && updatedAuth.type === "enterprise" ? updatedAuth.token : undefined
             const validation = await validateLicenseKey(licenseKey, authToken)
 
             if (!validation.valid) {
@@ -3197,8 +3198,9 @@ export const AuthLoginCommand = cmd({
               const validationSpinner = prompts.spinner()
               validationSpinner.start("Validating enterprise license...")
 
-              // Get token from existingRegAuth if available
-              const authToken = existingRegAuth && existingRegAuth.type === "enterprise" ? existingRegAuth.token : undefined
+              // Re-fetch auth to get the updated data with token (after Auth.set merge)
+              const updatedRegAuth = await Auth.get("enterprise")
+              const authToken = updatedRegAuth && updatedRegAuth.type === "enterprise" ? updatedRegAuth.token : undefined
               const validation = await validateLicenseKey(licenseKey, authToken)
 
               if (!validation.valid) {
