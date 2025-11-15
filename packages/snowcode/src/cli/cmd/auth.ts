@@ -143,7 +143,7 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
 /**
  * Validate enterprise license key with enterprise server
  */
-async function validateLicenseKey(licenseKey: string): Promise<{
+async function validateLicenseKey(licenseKey: string, token?: string): Promise<{
   valid: boolean
   error?: string
   features?: string[]
@@ -152,9 +152,18 @@ async function validateLicenseKey(licenseKey: string): Promise<{
   try {
     const serverUrl = process.env.SNOW_ENTERPRISE_URL || "https://enterprise.snow-flow.dev"
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    }
+
+    // Add Authorization header if token is provided
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`
+    }
+
     const response = await fetch(`${serverUrl}/api/license/validate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ licenseKey }),
     })
 
@@ -1647,7 +1656,9 @@ export const AuthLoginCommand = cmd({
             const validationSpinner = prompts.spinner()
             validationSpinner.start("Validating enterprise license...")
 
-            const validation = await validateLicenseKey(licenseKey)
+            // Get token from existingAuth if available
+            const authToken = existingAuth && existingAuth.type === "enterprise" ? existingAuth.token : undefined
+            const validation = await validateLicenseKey(licenseKey, authToken)
 
             if (!validation.valid) {
               validationSpinner.stop("⚠️  License validation failed", 1)
@@ -2662,7 +2673,8 @@ export const AuthLoginCommand = cmd({
               const validationSpinner = prompts.spinner()
               validationSpinner.start("Validating enterprise license...")
 
-              const validation = await validateLicenseKey(enterpriseLicenseKey)
+              // Use the auth token from the successful registration
+              const validation = await validateLicenseKey(enterpriseLicenseKey, enterpriseAuthData.token)
 
               if (!validation.valid) {
                 validationSpinner.stop("⚠️  License validation failed", 1)
@@ -3187,7 +3199,9 @@ export const AuthLoginCommand = cmd({
               const validationSpinner = prompts.spinner()
               validationSpinner.start("Validating enterprise license...")
 
-              const validation = await validateLicenseKey(licenseKey)
+              // Get token from existingRegAuth if available
+              const authToken = existingRegAuth && existingRegAuth.type === "enterprise" ? existingRegAuth.token : undefined
+              const validation = await validateLicenseKey(licenseKey, authToken)
 
               if (!validation.valid) {
                 validationSpinner.stop("⚠️  License validation failed", 1)
