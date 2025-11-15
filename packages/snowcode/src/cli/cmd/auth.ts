@@ -144,14 +144,15 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
  * Validate enterprise license key with enterprise server
  * Note: Does NOT require user authentication token - the license key validates itself
  */
-async function validateLicenseKey(licenseKey: string): Promise<{
+async function validateLicenseKey(licenseKey: string, serverUrl?: string): Promise<{
   valid: boolean
   error?: string
   features?: string[]
   serverUrl?: string
 }> {
   try {
-    const serverUrl = process.env.SNOW_ENTERPRISE_URL || "https://enterprise.snow-flow.dev"
+    // Use provided serverUrl, fallback to env var, then default
+    const effectiveServerUrl = serverUrl || process.env.SNOW_ENTERPRISE_URL || "https://enterprise.snow-flow.dev"
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -161,7 +162,7 @@ async function validateLicenseKey(licenseKey: string): Promise<{
     // It validates the license key itself, not the user session
     // User session tokens will cause "invalid signature" JWT errors
 
-    const response = await fetch(`${serverUrl}/api/license/validate`, {
+    const response = await fetch(`${effectiveServerUrl}/api/license/validate`, {
       method: "POST",
       headers,
       body: JSON.stringify({ licenseKey }),
@@ -179,7 +180,7 @@ async function validateLicenseKey(licenseKey: string): Promise<{
     return {
       valid: true,
       features: data.features || [],
-      serverUrl: data.serverUrl || serverUrl,
+      serverUrl: data.serverUrl || effectiveServerUrl,
     }
   } catch (error: any) {
     return {
@@ -1656,7 +1657,7 @@ export const AuthLoginCommand = cmd({
             validationSpinner.start("Validating enterprise license...")
 
             // Validate license key (no auth token needed - license key validates itself)
-            const validation = await validateLicenseKey(licenseKey)
+            const validation = await validateLicenseKey(licenseKey, enterpriseUrl)
 
             if (!validation.valid) {
               validationSpinner.stop("⚠️  License validation failed", 1)
@@ -2674,7 +2675,7 @@ export const AuthLoginCommand = cmd({
               validationSpinner.start("Validating enterprise license...")
 
               // Validate license key (no auth token needed - license key validates itself)
-              const validation = await validateLicenseKey(enterpriseLicenseKey)
+              const validation = await validateLicenseKey(enterpriseLicenseKey, enterpriseServerUrl)
 
               if (!validation.valid) {
                 validationSpinner.stop("⚠️  License validation failed", 1)
@@ -3199,7 +3200,7 @@ export const AuthLoginCommand = cmd({
               validationSpinner.start("Validating enterprise license...")
 
               // Validate license key (no auth token needed - license key validates itself)
-              const validation = await validateLicenseKey(licenseKey)
+              const validation = await validateLicenseKey(licenseKey, enterpriseUrl)
 
               if (!validation.valid) {
                 validationSpinner.stop("⚠️  License validation failed", 1)
