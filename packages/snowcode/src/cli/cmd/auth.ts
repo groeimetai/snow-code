@@ -151,9 +151,9 @@ async function validateLicenseKey(licenseKey: string, serverUrl?: string): Promi
   serverUrl?: string
 }> {
   try {
-    // License validation ALWAYS goes to enterprise.snow-flow.dev (MCP server)
-    // The portal server has this endpoint but can't validate licenses
-    const effectiveServerUrl = serverUrl || "https://enterprise.snow-flow.dev"
+    // License validation goes to portal server (public endpoint, no auth)
+    // Enterprise server has this endpoint but requires authorization header
+    const effectiveServerUrl = serverUrl || "https://portal.snow-flow.dev"
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -824,9 +824,11 @@ export const AuthLoginCommand = cmd({
 
           if (prompts.isCancel(portalUrl)) throw new UI.CancelledError()
 
-          // License validation always goes to enterprise.snow-flow.dev (MCP server)
-          // NOT the portal server - portal doesn't have license data
-          const licenseServerUrl = "https://enterprise.snow-flow.dev"
+          // License validation goes to portal.snow-flow.dev (public endpoint, no auth)
+          const licenseServerUrl = portalUrl
+
+          // MCP server for credential sync (enterprise.snow-flow.dev)
+          const mcpServerUrl = "https://enterprise.snow-flow.dev"
 
           // ✅ VALIDATE LICENSE KEY IMMEDIATELY (before user account setup)
           prompts.log.message("")
@@ -1497,7 +1499,7 @@ export const AuthLoginCommand = cmd({
               // Sync Jira credentials
               if (jiraBaseUrl && jiraEmail && jiraApiToken) {
                 credentialPromises.push(
-                  fetch(`${licenseServerUrl}/mcp/auth/credentials`, {
+                  fetch(`${mcpServerUrl}/mcp/auth/credentials`, {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json"
@@ -1517,7 +1519,7 @@ export const AuthLoginCommand = cmd({
               // Sync Azure DevOps credentials
               if (azureOrg && azurePat) {
                 credentialPromises.push(
-                  fetch(`${licenseServerUrl}/mcp/auth/credentials`, {
+                  fetch(`${mcpServerUrl}/mcp/auth/credentials`, {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json"
@@ -1537,7 +1539,7 @@ export const AuthLoginCommand = cmd({
               // Sync Confluence credentials
               if (confluenceUrl && confluenceEmail && confluenceApiToken) {
                 credentialPromises.push(
-                  fetch(`${licenseServerUrl}/mcp/auth/credentials`, {
+                  fetch(`${mcpServerUrl}/mcp/auth/credentials`, {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json"
@@ -1662,8 +1664,8 @@ export const AuthLoginCommand = cmd({
             validationSpinner.start("Validating enterprise license...")
 
             // Validate license key (no auth token needed - license key validates itself)
-            // Uses enterprise.snow-flow.dev by default
-            const validation = await validateLicenseKey(licenseKey)
+            // Uses portal server (licenseServerUrl = portalUrl)
+            const validation = await validateLicenseKey(licenseKey, licenseServerUrl)
 
             if (!validation.valid) {
               validationSpinner.stop("⚠️  License validation failed", 1)
@@ -1673,9 +1675,10 @@ export const AuthLoginCommand = cmd({
               validationSpinner.stop("✅ License validated successfully")
 
               // Configure enterprise MCP server with validated credentials
+              // Always use enterprise MCP server, not portal
               await addEnterpriseMcpServer({
                 licenseKey,
-                serverUrl: validation.serverUrl,
+                serverUrl: mcpServerUrl,
                 credentials: {
                   jira: jiraBaseUrl && jiraEmail && jiraApiToken
                     ? { host: jiraBaseUrl, email: jiraEmail, apiToken: jiraApiToken }
@@ -2681,8 +2684,8 @@ export const AuthLoginCommand = cmd({
               validationSpinner.start("Validating enterprise license...")
 
               // Validate license key (no auth token needed - license key validates itself)
-              // Uses enterprise.snow-flow.dev by default
-              const validation = await validateLicenseKey(enterpriseLicenseKey)
+              // Uses portal server (enterpriseServerUrl)
+              const validation = await validateLicenseKey(enterpriseLicenseKey, enterpriseServerUrl)
 
               if (!validation.valid) {
                 validationSpinner.stop("⚠️  License validation failed", 1)
@@ -2692,9 +2695,10 @@ export const AuthLoginCommand = cmd({
                 validationSpinner.stop("✅ License validated successfully")
 
                 // Configure enterprise MCP server with validated credentials
+                // Always use enterprise MCP server
                 await addEnterpriseMcpServer({
                   licenseKey: enterpriseLicenseKey,
-                  serverUrl: validation.serverUrl,
+                  serverUrl: "https://enterprise.snow-flow.dev",
                   credentials: {
                     jira: enterpriseJiraBaseUrl && enterpriseJiraEmail && enterpriseJiraApiToken
                       ? { host: enterpriseJiraBaseUrl, email: enterpriseJiraEmail, apiToken: enterpriseJiraApiToken }
@@ -3126,7 +3130,7 @@ export const AuthLoginCommand = cmd({
                 // Sync Jira credentials
                 if (jiraBaseUrl && jiraEmail && jiraApiToken) {
                   credentialPromises.push(
-                    fetch(`${enterpriseUrl}/mcp/auth/credentials`, {
+                    fetch(`https://enterprise.snow-flow.dev/mcp/auth/credentials`, {
                       method: "POST",
                       headers: {
                         "Content-Type": "application/json"
@@ -3146,7 +3150,7 @@ export const AuthLoginCommand = cmd({
                 // Sync Azure DevOps credentials
                 if (azureOrg && azurePat) {
                   credentialPromises.push(
-                    fetch(`${enterpriseUrl}/mcp/auth/credentials`, {
+                    fetch(`https://enterprise.snow-flow.dev/mcp/auth/credentials`, {
                       method: "POST",
                       headers: {
                         "Content-Type": "application/json"
@@ -3166,7 +3170,7 @@ export const AuthLoginCommand = cmd({
                 // Sync Confluence credentials
                 if (confluenceUrl && confluenceEmail && confluenceApiToken) {
                   credentialPromises.push(
-                    fetch(`${enterpriseUrl}/mcp/auth/credentials`, {
+                    fetch(`https://enterprise.snow-flow.dev/mcp/auth/credentials`, {
                       method: "POST",
                       headers: {
                         "Content-Type": "application/json"
@@ -3207,8 +3211,8 @@ export const AuthLoginCommand = cmd({
               validationSpinner.start("Validating enterprise license...")
 
               // Validate license key (no auth token needed - license key validates itself)
-              // Uses enterprise.snow-flow.dev by default
-              const validation = await validateLicenseKey(licenseKey)
+              // Uses portal server (enterpriseUrl)
+              const validation = await validateLicenseKey(licenseKey, enterpriseUrl)
 
               if (!validation.valid) {
                 validationSpinner.stop("⚠️  License validation failed", 1)
@@ -3218,9 +3222,10 @@ export const AuthLoginCommand = cmd({
                 validationSpinner.stop("✅ License validated successfully")
 
                 // Configure enterprise MCP server with validated credentials
+                // Always use enterprise MCP server
                 await addEnterpriseMcpServer({
                   licenseKey,
-                  serverUrl: validation.serverUrl,
+                  serverUrl: "https://enterprise.snow-flow.dev",
                   credentials: {
                     jira: jiraBaseUrl && jiraEmail && jiraApiToken
                       ? { host: jiraBaseUrl, email: jiraEmail, apiToken: jiraApiToken }
