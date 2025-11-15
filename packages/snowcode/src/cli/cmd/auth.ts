@@ -2645,8 +2645,10 @@ export const AuthLoginCommand = cmd({
               }
             }
 
-            // Save Enterprise config to Auth store
+            // Save Enterprise config to Auth store (preserve existing fields like token, username, etc.)
+            const currentEnterpriseAuth = await Auth.get("enterprise")
             await Auth.set("enterprise", {
+              ...currentEnterpriseAuth, // Preserve token, username, email, role, machineId, sessionToken
               type: "enterprise",
               licenseKey: enterpriseLicenseKey,
               enterpriseUrl: enterpriseServerUrl || undefined,
