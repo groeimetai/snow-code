@@ -804,8 +804,8 @@ export const AuthLoginCommand = cmd({
 
           if (prompts.isCancel(licenseKey)) throw new UI.CancelledError()
 
-          const enterpriseUrl = (await prompts.text({
-            message: "Enterprise License Server URL (optional)",
+          const portalUrl = (await prompts.text({
+            message: "Enterprise Portal URL (for authentication)",
             placeholder: "https://portal.snow-flow.dev",
             initialValue: "https://portal.snow-flow.dev",
             validate: (value) => {
@@ -821,7 +821,10 @@ export const AuthLoginCommand = cmd({
             },
           })) as string
 
-          if (prompts.isCancel(enterpriseUrl)) throw new UI.CancelledError()
+          if (prompts.isCancel(portalUrl)) throw new UI.CancelledError()
+
+          // License validation always goes to enterprise.snow-flow.dev (MCP server)
+          const licenseServerUrl = process.env.SNOW_ENTERPRISE_URL || "https://enterprise.snow-flow.dev"
 
           // ✅ VALIDATE LICENSE KEY IMMEDIATELY (before user account setup)
           prompts.log.message("")
@@ -829,7 +832,7 @@ export const AuthLoginCommand = cmd({
           licenseSpinner.start("Validating license key...")
 
           try {
-            const licenseResponse = await fetch(`${enterpriseUrl}/api/license/validate`, {
+            const licenseResponse = await fetch(`${licenseServerUrl}/api/license/validate`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -872,7 +875,7 @@ export const AuthLoginCommand = cmd({
             prompts.log.error(`Connection error: ${licenseError.message}`)
             prompts.log.message("")
             prompts.log.warn("Unable to validate license key with enterprise server")
-            prompts.log.info(`URL: ${enterpriseUrl}/api/license/validate`)
+            prompts.log.info(`URL: ${licenseServerUrl}/api/license/validate`)
 
             const continueAnyway = await prompts.confirm({
               message: "Continue anyway? (License will be validated during registration)",
@@ -894,14 +897,14 @@ export const AuthLoginCommand = cmd({
           testSpinner.start("Testing connection to enterprise server...")
 
           try {
-            const testResponse = await fetch(`${enterpriseUrl}/api/health`, {
+            const testResponse = await fetch(`${portalUrl}/api/health`, {
               method: "GET",
               signal: AbortSignal.timeout(5000), // 5 second timeout
             })
             testSpinner.stop("Connection successful!")
           } catch (testError: any) {
             testSpinner.stop("Connection failed", 1)
-            prompts.log.warn(`Unable to reach ${enterpriseUrl}`)
+            prompts.log.warn(`Unable to reach ${portalUrl}`)
             prompts.log.message("")
 
             const skipEnterprise = await prompts.confirm({
@@ -981,7 +984,7 @@ export const AuthLoginCommand = cmd({
                 // Check if username is available
                 try {
                   const checkResponse = await fetch(
-                    `${enterpriseUrl}/api/user-auth/check-availability?username=${encodeURIComponent(username)}&licenseKey=${encodeURIComponent(licenseKey)}`,
+                    `${portalUrl}/api/user-auth/check-availability?username=${encodeURIComponent(username)}&licenseKey=${encodeURIComponent(licenseKey)}`,
                     { method: "GET", signal: AbortSignal.timeout(10000) }
                   )
 
@@ -1020,7 +1023,7 @@ export const AuthLoginCommand = cmd({
                 // Check if email is available
                 try {
                   const checkResponse = await fetch(
-                    `${enterpriseUrl}/api/user-auth/check-availability?email=${encodeURIComponent(email)}&licenseKey=${encodeURIComponent(licenseKey)}`,
+                    `${portalUrl}/api/user-auth/check-availability?email=${encodeURIComponent(email)}&licenseKey=${encodeURIComponent(licenseKey)}`,
                     { method: "GET", signal: AbortSignal.timeout(10000) }
                   )
 
@@ -1088,7 +1091,7 @@ export const AuthLoginCommand = cmd({
               spinner.start("Registering user account...")
 
               try {
-                const response = await fetch(`${enterpriseUrl}/api/user-auth/register`, {
+                const response = await fetch(`${portalUrl}/api/user-auth/register`, {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
@@ -1132,7 +1135,7 @@ export const AuthLoginCommand = cmd({
                 prompts.log.error(`Connection error: ${error.message}`)
                 prompts.log.message("")
                 prompts.log.warn("Unable to connect to enterprise server")
-                prompts.log.info(`URL: ${enterpriseUrl}/api/user-auth/register`)
+                prompts.log.info(`URL: ${portalUrl}/api/user-auth/register`)
                 prompts.log.message("")
 
                 // Ask if user wants to try again
@@ -1185,7 +1188,7 @@ export const AuthLoginCommand = cmd({
               spinner.start("Authenticating...")
 
               try {
-                const response = await fetch(`${enterpriseUrl}/api/user-auth/login`, {
+                const response = await fetch(`${portalUrl}/api/user-auth/login`, {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
@@ -1230,7 +1233,7 @@ export const AuthLoginCommand = cmd({
                 // 🔐 CHECK IF PASSWORD RESET IS REQUIRED
                 try {
                 const userId = authData.user?.userId || crypto.createHash('sha256').update(email || username).digest('hex')
-                const resetCheckResponse = await fetch(`${enterpriseUrl}/api/user-auth/password-reset-required?userId=${userId}`, {
+                const resetCheckResponse = await fetch(`${portalUrl}/api/user-auth/password-reset-required?userId=${userId}`, {
                   signal: AbortSignal.timeout(5000),
                 })
 
@@ -1279,7 +1282,7 @@ export const AuthLoginCommand = cmd({
                     resetSpinner.start("Resetting password...")
 
                     try {
-                      const resetResponse = await fetch(`${enterpriseUrl}/api/user-auth/reset-password`, {
+                      const resetResponse = await fetch(`${portalUrl}/api/user-auth/reset-password`, {
                         method: "POST",
                         headers: {
                           "Content-Type": "application/json",
@@ -1328,7 +1331,7 @@ export const AuthLoginCommand = cmd({
                 prompts.log.error(`Connection error: ${error.message}`)
                 prompts.log.message("")
                 prompts.log.warn("Unable to connect to enterprise server")
-                prompts.log.info(`URL: ${enterpriseUrl}/api/user-auth/login`)
+                prompts.log.info(`URL: ${portalUrl}/api/user-auth/login`)
                 prompts.log.message("")
 
                 // Ask if user wants to try again
@@ -1353,7 +1356,7 @@ export const AuthLoginCommand = cmd({
           await Auth.set("enterprise", {
             type: "enterprise",
             licenseKey,
-            enterpriseUrl: enterpriseUrl || undefined,
+            enterpriseUrl: portalUrl || undefined,
             token: authData.token,
             sessionToken: authData.sessionToken,
             username,
@@ -1469,7 +1472,7 @@ export const AuthLoginCommand = cmd({
             ...existingAuth, // Preserve token, sessionToken, username, email, role, machineId
             type: "enterprise",
             licenseKey,
-            enterpriseUrl: enterpriseUrl || undefined,
+            enterpriseUrl: portalUrl || undefined,
             jiraBaseUrl: jiraBaseUrl || undefined,
             jiraEmail: jiraEmail || undefined,
             jiraApiToken: jiraApiToken || undefined,
@@ -1492,7 +1495,7 @@ export const AuthLoginCommand = cmd({
               // Sync Jira credentials
               if (jiraBaseUrl && jiraEmail && jiraApiToken) {
                 credentialPromises.push(
-                  fetch(`${enterpriseUrl}/mcp/auth/credentials`, {
+                  fetch(`${licenseServerUrl}/mcp/auth/credentials`, {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json"
@@ -1512,7 +1515,7 @@ export const AuthLoginCommand = cmd({
               // Sync Azure DevOps credentials
               if (azureOrg && azurePat) {
                 credentialPromises.push(
-                  fetch(`${enterpriseUrl}/mcp/auth/credentials`, {
+                  fetch(`${licenseServerUrl}/mcp/auth/credentials`, {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json"
@@ -1532,7 +1535,7 @@ export const AuthLoginCommand = cmd({
               // Sync Confluence credentials
               if (confluenceUrl && confluenceEmail && confluenceApiToken) {
                 credentialPromises.push(
-                  fetch(`${enterpriseUrl}/mcp/auth/credentials`, {
+                  fetch(`${licenseServerUrl}/mcp/auth/credentials`, {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json"
@@ -1657,7 +1660,7 @@ export const AuthLoginCommand = cmd({
             validationSpinner.start("Validating enterprise license...")
 
             // Validate license key (no auth token needed - license key validates itself)
-            const validation = await validateLicenseKey(licenseKey, enterpriseUrl)
+            const validation = await validateLicenseKey(licenseKey, licenseServerUrl)
 
             if (!validation.valid) {
               validationSpinner.stop("⚠️  License validation failed", 1)
