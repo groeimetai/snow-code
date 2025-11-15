@@ -257,7 +257,6 @@ async function addEnterpriseMcpServer(config: EnterpriseMcpConfig): Promise<void
       const enterpriseConfig = {
         type: "local",
         command: ["node", path.join(process.cwd(), "dist/mcp/enterprise-proxy/index.js")],
-        description: "Enterprise integrations - Jira, Azure DevOps, Confluence",
         environment: {
           SNOW_LICENSE_KEY: config.licenseKey,
           SNOW_ENTERPRISE_URL: config.serverUrl || "https://enterprise.snow-flow.dev",
