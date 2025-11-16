@@ -1527,89 +1527,78 @@ export const AuthLoginCommand = cmd({
             confluenceApiToken: confluenceApiToken || undefined,
           })
 
-          // Sync credentials to enterprise backend
-          if (existingAuth && existingAuth.type === "enterprise" && existingAuth.token && (jiraBaseUrl || azureOrg || confluenceUrl)) {
+          // Sync credentials to enterprise portal (works with license key, no token needed!)
+          if (licenseKey && (jiraBaseUrl || azureOrg || confluenceUrl)) {
             try {
               const syncSpinner = prompts.spinner()
-              syncSpinner.start("Syncing credentials to enterprise dashboard...")
+              syncSpinner.start("Syncing credentials to enterprise portal...")
 
-              const credentialPromises = []
+              // Build credentials array
+              const credentials = []
 
-              // Sync Jira credentials
-              if (jiraBaseUrl && jiraEmail && jiraApiToken) {
-                credentialPromises.push(
-                  fetch(`${mcpServerUrl}/mcp/auth/credentials`, {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                      licenseKey,
-                      service: "jira",
-                      baseUrl: jiraBaseUrl,
-                      email: jiraEmail,
-                      apiToken: jiraApiToken
-                    }),
-                    signal: AbortSignal.timeout(10000)
-                  })
-                )
+              // Jira credentials
+              if (jiraBaseUrl && jiraApiToken) {
+                credentials.push({
+                  service: "jira",
+                  credentialType: "api_token",
+                  baseUrl: jiraBaseUrl,
+                  email: jiraEmail,
+                  apiToken: jiraApiToken
+                })
               }
 
-              // Sync Azure DevOps credentials
+              // Azure DevOps credentials
               if (azureOrg && azurePat) {
-                credentialPromises.push(
-                  fetch(`${mcpServerUrl}/mcp/auth/credentials`, {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                      licenseKey,
-                      service: "azure-devops",
-                      baseUrl: `https://dev.azure.com/${azureOrg}`,
-                      email: azureOrg,
-                      apiToken: azurePat
-                    }),
-                    signal: AbortSignal.timeout(10000)
-                  })
-                )
+                credentials.push({
+                  service: "azure-devops",
+                  credentialType: "api_token",
+                  baseUrl: `https://dev.azure.com/${azureOrg}`,
+                  apiToken: azurePat
+                })
               }
 
-              // Sync Confluence credentials
-              if (confluenceUrl && confluenceEmail && confluenceApiToken) {
-                credentialPromises.push(
-                  fetch(`${mcpServerUrl}/mcp/auth/credentials`, {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                      licenseKey,
-                      service: "confluence",
-                      baseUrl: confluenceUrl,
-                      email: confluenceEmail,
-                      apiToken: confluenceApiToken
-                    }),
-                    signal: AbortSignal.timeout(10000)
-                  })
-                )
+              // Confluence credentials
+              if (confluenceUrl && confluenceApiToken) {
+                credentials.push({
+                  service: "confluence",
+                  credentialType: "api_token",
+                  baseUrl: confluenceUrl,
+                  email: confluenceEmail,
+                  apiToken: confluenceApiToken
+                })
               }
 
-              // Wait for all syncs to complete
-              const results = await Promise.allSettled(credentialPromises)
-              const failed = results.filter(r => r.status === "rejected").length
+              // Sync all credentials to portal in one call (uses license key, no token needed!)
+              if (credentials.length > 0) {
+                const syncResponse = await fetch(`${portalUrl}/api/credentials/sync-from-cli`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json"
+                  },
+                  body: JSON.stringify({
+                    licenseKey,
+                    credentials
+                  }),
+                  signal: AbortSignal.timeout(15000)
+                })
 
-              if (failed === 0 && results.length > 0) {
-                syncSpinner.stop("✅ Credentials synced to dashboard")
-              } else if (failed > 0) {
-                syncSpinner.stop("⚠️  Some credentials failed to sync", 1)
-                prompts.log.info("Credentials saved locally, but not all synced to dashboard")
+                const syncData = await syncResponse.json()
+
+                if (syncResponse.ok && syncData.success) {
+                  const successCount = syncData.results?.filter((r: any) => r.success).length || 0
+                  const totalCount = syncData.results?.length || 0
+                  syncSpinner.stop(`✅ Synced ${successCount}/${totalCount} credentials to portal`)
+                } else {
+                  syncSpinner.stop("⚠️  Failed to sync credentials to portal", 1)
+                  prompts.log.info(`Error: ${syncData.error || 'Unknown error'}`)
+                  prompts.log.info("Credentials saved locally, but not synced to portal")
+                }
               } else {
                 syncSpinner.stop()
               }
             } catch (error: any) {
               prompts.log.warn(`Failed to sync credentials: ${error.message}`)
-              prompts.log.info("Credentials saved locally, but not synced to dashboard")
+              prompts.log.info("Credentials saved locally, but not synced to portal")
             }
           }
 
