@@ -1126,6 +1126,49 @@ export const AuthLoginCommand = cmd({
               if (prompts.isCancel(roleChoice)) throw new UI.CancelledError()
               role = roleChoice as "developer" | "stakeholder" | "admin"
 
+              // Check seat availability BEFORE collecting user info
+              prompts.log.message("")
+              const seatCheckSpinner = prompts.spinner()
+              seatCheckSpinner.start(`Checking ${role} seat availability...`)
+
+              try {
+                const seatCheckResponse = await fetch(
+                  `${portalUrl}/api/user-auth/check-seats?licenseKey=${encodeURIComponent(licenseKey)}&role=${role}`
+                )
+
+                const seatCheck = await seatCheckResponse.json()
+
+                if (!seatCheckResponse.ok || !seatCheck.success) {
+                  seatCheckSpinner.stop("Seat check failed", 1)
+                  prompts.log.error(seatCheck.error || "Failed to check seat availability")
+                  prompts.outro("Registration cancelled")
+                  await Instance.dispose()
+                  process.exit(1)
+                }
+
+                if (!seatCheck.seatsAvailable) {
+                  seatCheckSpinner.stop("No seats available", 1)
+                  prompts.log.error(seatCheck.message || `No ${role} seats available`)
+                  if (!seatCheck.unlimited && seatCheck.totalSeats) {
+                    prompts.log.info(`Current usage: ${seatCheck.usedSeats}/${seatCheck.totalSeats} seats used`)
+                  }
+                  prompts.log.message("")
+                  prompts.log.warn("Please contact your administrator to increase seat allocation")
+                  prompts.outro("Registration cancelled")
+                  await Instance.dispose()
+                  process.exit(1)
+                }
+
+                seatCheckSpinner.stop(seatCheck.message || "Seats available")
+                if (!seatCheck.unlimited && seatCheck.totalSeats) {
+                  prompts.log.info(`Available seats: ${seatCheck.availableSeats}/${seatCheck.totalSeats}`)
+                }
+              } catch (error: any) {
+                seatCheckSpinner.stop("Connection error", 1)
+                prompts.log.error(`Failed to check seat availability: ${error.message}`)
+                prompts.log.warn("Continuing with registration (seat check unavailable)")
+              }
+
               prompts.log.info(`Machine ID: ${machineId.substring(0, 16)}...`)
 
               // Register with enterprise backend
@@ -2377,6 +2420,49 @@ export const AuthLoginCommand = cmd({
                 return
               }
               enterpriseRole = enterpriseRoleChoice as "developer" | "stakeholder" | "admin"
+
+              // Check seat availability BEFORE registration
+              prompts.log.message("")
+              const entSeatCheckSpinner = prompts.spinner()
+              entSeatCheckSpinner.start(`Checking ${enterpriseRole} seat availability...`)
+
+              try {
+                const entSeatCheckResponse = await fetch(
+                  `${enterpriseServerUrl}/api/user-auth/check-seats?licenseKey=${encodeURIComponent(enterpriseLicenseKey)}&role=${enterpriseRole}`
+                )
+
+                const entSeatCheck = await entSeatCheckResponse.json()
+
+                if (!entSeatCheckResponse.ok || !entSeatCheck.success) {
+                  entSeatCheckSpinner.stop("Seat check failed", 1)
+                  prompts.log.error(entSeatCheck.error || "Failed to check seat availability")
+                  prompts.outro("Registration cancelled")
+                  await Instance.dispose()
+                  process.exit(1)
+                }
+
+                if (!entSeatCheck.seatsAvailable) {
+                  entSeatCheckSpinner.stop("No seats available", 1)
+                  prompts.log.error(entSeatCheck.message || `No ${enterpriseRole} seats available`)
+                  if (!entSeatCheck.unlimited && entSeatCheck.totalSeats) {
+                    prompts.log.info(`Current usage: ${entSeatCheck.usedSeats}/${entSeatCheck.totalSeats} seats used`)
+                  }
+                  prompts.log.message("")
+                  prompts.log.warn("Please contact your administrator to increase seat allocation")
+                  prompts.outro("Registration cancelled")
+                  await Instance.dispose()
+                  process.exit(1)
+                }
+
+                entSeatCheckSpinner.stop(entSeatCheck.message || "Seats available")
+                if (!entSeatCheck.unlimited && entSeatCheck.totalSeats) {
+                  prompts.log.info(`Available seats: ${entSeatCheck.availableSeats}/${entSeatCheck.totalSeats}`)
+                }
+              } catch (error: any) {
+                entSeatCheckSpinner.stop("Connection error", 1)
+                prompts.log.error(`Failed to check seat availability: ${error.message}`)
+                prompts.log.warn("Continuing with registration (seat check unavailable)")
+              }
 
               prompts.log.info(`Machine ID: ${enterpriseMachineId.substring(0, 16)}...`)
 
