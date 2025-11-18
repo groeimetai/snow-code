@@ -28,10 +28,29 @@ export namespace Config {
   export const state = Instance.state(async () => {
     const auth = await Auth.all()
     let result = await global()
+    // Load from opencode config files
     for (const file of ["opencode.jsonc", "opencode.json"]) {
       const found = await Filesystem.findUp(file, Instance.directory, Instance.worktree)
       for (const resolved of found.toReversed()) {
         result = mergeDeep(result, await loadFile(resolved))
+      }
+    }
+    // Load from .mcp.json (OpenCode/Claude Code format - uses "mcpServers" instead of "mcp")
+    const mcpJsonFiles = await Filesystem.findUp(".mcp.json", Instance.directory, Instance.worktree)
+    for (const mcpJsonPath of mcpJsonFiles.toReversed()) {
+      const mcpConfig = await loadFile(mcpJsonPath)
+      // Transform .mcp.json format: convert "mcpServers" to "mcp" for snow-code compatibility
+      if (mcpConfig.mcpServers) {
+        // Convert OpenCode format to SnowCode format
+        const transformedConfig = {
+          ...mcpConfig,
+          mcp: mcpConfig.mcpServers,
+        }
+        delete transformedConfig.mcpServers
+        result = mergeDeep(result, transformedConfig)
+        log.debug("loaded .mcp.json config", { path: mcpJsonPath })
+      } else {
+        result = mergeDeep(result, mcpConfig)
       }
     }
 
