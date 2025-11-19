@@ -1728,10 +1728,42 @@ export const AuthLoginCommand = cmd({
             } else {
               validationSpinner.stop("✅ License validated successfully")
 
-              // Configure enterprise MCP server with validated credentials
+              // 🔥 CRITICAL FIX: Generate JWT token before configuring MCP server
+              // The enterprise MCP server expects a JWT, NOT a plain text license key!
+              prompts.log.step("Generating enterprise JWT token...")
+
+              // Generate machine ID for seat tracking (same as snow-flow)
+              const crypto = await import("crypto")
+              const machineId = crypto.createHash("sha256").update(os.hostname()).digest("hex")
+
+              // Call portal server to generate JWT
+              const jwtResponse = await fetch(`${licenseServerUrl}/api/auth/mcp/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  licenseKey,
+                  machineId,
+                  role: "developer", // Default role for CLI users
+                }),
+              })
+
+              if (!jwtResponse.ok) {
+                const errorData: any = await jwtResponse.json().catch(() => ({ error: "Unknown error" }))
+                throw new Error(`Failed to generate JWT: ${errorData.error || jwtResponse.statusText}`)
+              }
+
+              const jwtData: any = await jwtResponse.json()
+              if (!jwtData.success || !jwtData.token) {
+                throw new Error(`Failed to generate JWT: ${jwtData.error || "No token received"}`)
+              }
+
+              const jwtToken = jwtData.token
+              prompts.log.success(`✅ JWT token generated (role: developer)`)
+
+              // Configure enterprise MCP server with JWT token (NOT plain text license key!)
               // Always use enterprise MCP server, not portal
               await addEnterpriseMcpServer({
-                licenseKey,
+                licenseKey: jwtToken, // ← CRITICAL: Use JWT token, not plain text!
                 serverUrl: mcpServerUrl,
                 credentials: {
                   jira: jiraBaseUrl && jiraEmail && jiraApiToken
@@ -2791,10 +2823,34 @@ export const AuthLoginCommand = cmd({
               } else {
                 validationSpinner.stop("✅ License validated successfully")
 
+                // 🔥 Generate JWT token for MCP authentication
+                prompts.log.step("Generating enterprise JWT token...")
+
+                const crypto = await import("crypto")
+                const machineId = crypto.createHash("sha256").update(os.hostname()).digest("hex")
+
+                const jwtResponse = await fetch(`${enterpriseServerUrl}/api/auth/mcp/login`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    licenseKey: enterpriseLicenseKey,
+                    machineId,
+                    role: "developer",
+                  }),
+                })
+
+                if (!jwtResponse.ok) {
+                  throw new Error(`Failed to generate JWT: ${jwtResponse.statusText}`)
+                }
+
+                const jwtData: any = await jwtResponse.json()
+                const jwtToken = jwtData.token
+                prompts.log.success(`✅ JWT token generated`)
+
                 // Configure enterprise MCP server with validated credentials
                 // Always use enterprise MCP server
                 await addEnterpriseMcpServer({
-                  licenseKey: enterpriseLicenseKey,
+                  licenseKey: jwtToken, // ← Use JWT!
                   serverUrl: "https://enterprise.snow-flow.dev",
                   credentials: {
                     jira: enterpriseJiraBaseUrl && enterpriseJiraEmail && enterpriseJiraApiToken
@@ -3318,10 +3374,34 @@ export const AuthLoginCommand = cmd({
               } else {
                 validationSpinner.stop("✅ License validated successfully")
 
+                // 🔥 Generate JWT token for MCP authentication
+                prompts.log.step("Generating enterprise JWT token...")
+
+                const crypto = await import("crypto")
+                const machineId = crypto.createHash("sha256").update(os.hostname()).digest("hex")
+
+                const jwtResponse = await fetch(`${enterpriseUrl}/api/auth/mcp/login`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    licenseKey,
+                    machineId,
+                    role: "developer",
+                  }),
+                })
+
+                if (!jwtResponse.ok) {
+                  throw new Error(`Failed to generate JWT: ${jwtResponse.statusText}`)
+                }
+
+                const jwtData: any = await jwtResponse.json()
+                const jwtToken = jwtData.token
+                prompts.log.success(`✅ JWT token generated`)
+
                 // Configure enterprise MCP server with validated credentials
                 // Always use enterprise MCP server
                 await addEnterpriseMcpServer({
-                  licenseKey,
+                  licenseKey: jwtToken, // ← Use JWT!
                   serverUrl: "https://enterprise.snow-flow.dev",
                   credentials: {
                     jira: jiraBaseUrl && jiraEmail && jiraApiToken
