@@ -12,6 +12,13 @@ import { Plugin } from "../../plugin"
 import { Instance } from "../../project/instance"
 import { ServiceNowOAuth } from "../../auth/servicenow-oauth"
 
+// Import enterprise auth commands
+import {
+  AuthEnterpriseLoginCommand,
+  AuthEnterpriseSyncCommand,
+  AuthEnterpriseStatusCommand
+} from "./auth-enterprise.js"
+
 /**
  * Generate a unique machine ID for device binding
  * Uses hostname + platform + homedir for consistent ID across sessions
@@ -554,7 +561,14 @@ export const AuthCommand = cmd({
   command: "auth",
   describe: "manage credentials",
   builder: (yargs) =>
-    yargs.command(AuthLoginCommand).command(AuthLogoutCommand).command(AuthListCommand).demandCommand(),
+    yargs
+      .command(AuthLoginCommand)
+      .command(AuthLogoutCommand)
+      .command(AuthListCommand)
+      .command(AuthEnterpriseLoginCommand)
+      .command(AuthEnterpriseSyncCommand)
+      .command(AuthEnterpriseStatusCommand)
+      .demandCommand(),
   async handler() {},
 })
 
