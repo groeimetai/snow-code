@@ -61,14 +61,12 @@ export namespace Auth {
       role: z.string().optional(),
       machineId: z.string().optional(),
       jiraBaseUrl: z.string().optional(),
-      jiraEmail: z.string().optional(),
-      jiraApiToken: z.string().optional(),
+      confluenceUrl: z.string().optional(),
+      atlassianEmail: z.string().optional(),
+      atlassianApiToken: z.string().optional(),
       azureOrg: z.string().optional(),
       azureProject: z.string().optional(),
       azurePat: z.string().optional(),
-      confluenceUrl: z.string().optional(),
-      confluenceEmail: z.string().optional(),
-      confluenceApiToken: z.string().optional(),
     })
     .meta({ ref: "Enterprise" })
 

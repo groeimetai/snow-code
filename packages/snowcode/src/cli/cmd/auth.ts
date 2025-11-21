@@ -235,10 +235,12 @@ interface EnterpriseMcpConfig {
   licenseKey: string
   serverUrl?: string
   credentials?: {
-    jira?: {
-      host: string
+    atlassian?: {
       email: string
       apiToken: string
+    }
+    jira?: {
+      host: string
     }
     azure?: {
       organization: string
@@ -247,8 +249,6 @@ interface EnterpriseMcpConfig {
     }
     confluence?: {
       host: string
-      email: string
-      apiToken: string
     }
   }
 }
@@ -300,10 +300,12 @@ async function addEnterpriseMcpServer(config: EnterpriseMcpConfig): Promise<void
         environment: {
           SNOW_LICENSE_KEY: config.licenseKey,
           SNOW_ENTERPRISE_URL: config.serverUrl || "https://enterprise.snow-flow.dev",
+          ...(config.credentials?.atlassian && {
+            ATLASSIAN_EMAIL: config.credentials.atlassian.email,
+            ATLASSIAN_API_TOKEN: config.credentials.atlassian.apiToken,
+          }),
           ...(config.credentials?.jira && {
             JIRA_HOST: config.credentials.jira.host,
-            JIRA_EMAIL: config.credentials.jira.email,
-            JIRA_API_TOKEN: config.credentials.jira.apiToken,
           }),
           ...(config.credentials?.azure && {
             AZURE_ORG: config.credentials.azure.organization,
@@ -312,8 +314,6 @@ async function addEnterpriseMcpServer(config: EnterpriseMcpConfig): Promise<void
           }),
           ...(config.credentials?.confluence && {
             CONFLUENCE_HOST: config.credentials.confluence.host,
-            CONFLUENCE_EMAIL: config.credentials.confluence.email,
-            CONFLUENCE_API_TOKEN: config.credentials.confluence.apiToken,
           }),
         },
         enabled: true,
@@ -1467,14 +1467,12 @@ export const AuthLoginCommand = cmd({
           })
 
           let jiraBaseUrl: string | undefined
-          let jiraEmail: string | undefined
-          let jiraApiToken: string | undefined
+          let confluenceUrl: string | undefined
+          let atlassianEmail: string | undefined
+          let atlassianApiToken: string | undefined
           let azureOrg: string | undefined
           let azureProject: string | undefined
           let azurePat: string | undefined
-          let confluenceUrl: string | undefined
-          let confluenceEmail: string | undefined
-          let confluenceApiToken: string | undefined
 
           if (!prompts.isCancel(configureIntegrations) && configureIntegrations) {
             const integrations = await prompts.multiselect({
@@ -1487,25 +1485,35 @@ export const AuthLoginCommand = cmd({
             }) as string[]
 
             if (!prompts.isCancel(integrations)) {
-              // Jira configuration
-              if (integrations.includes("jira")) {
+              // Atlassian credentials (shared by Jira and Confluence)
+              const needsAtlassian = integrations.includes("jira") || integrations.includes("confluence")
+              if (needsAtlassian) {
+                atlassianEmail = (await prompts.text({
+                  message: "Atlassian Email (used for both Jira and Confluence)",
+                  placeholder: "admin@company.com",
+                })) as string
+
+                if (!prompts.isCancel(atlassianEmail)) {
+                  atlassianApiToken = (await prompts.password({
+                    message: "Atlassian API Token (get from https://id.atlassian.com/manage-profile/security/api-tokens)",
+                  })) as string
+                }
+              }
+
+              // Jira configuration (only base URL)
+              if (integrations.includes("jira") && atlassianApiToken) {
                 jiraBaseUrl = (await prompts.text({
                   message: "Jira Base URL",
                   placeholder: "https://company.atlassian.net",
                 })) as string
+              }
 
-                if (!prompts.isCancel(jiraBaseUrl) && jiraBaseUrl) {
-                  jiraEmail = (await prompts.text({
-                    message: "Jira Email",
-                    placeholder: "admin@company.com",
-                  })) as string
-
-                  if (!prompts.isCancel(jiraEmail)) {
-                    jiraApiToken = (await prompts.password({
-                      message: "Jira API Token",
-                    })) as string
-                  }
-                }
+              // Confluence configuration (only base URL)
+              if (integrations.includes("confluence") && atlassianApiToken) {
+                confluenceUrl = (await prompts.text({
+                  message: "Confluence Base URL",
+                  placeholder: "https://company.atlassian.net/wiki",
+                })) as string
               }
 
               // Azure DevOps configuration
@@ -1528,27 +1536,6 @@ export const AuthLoginCommand = cmd({
                   }
                 }
               }
-
-              // Confluence configuration
-              if (integrations.includes("confluence")) {
-                confluenceUrl = (await prompts.text({
-                  message: "Confluence Base URL",
-                  placeholder: "https://company.atlassian.net/wiki",
-                })) as string
-
-                if (!prompts.isCancel(confluenceUrl) && confluenceUrl) {
-                  confluenceEmail = (await prompts.text({
-                    message: "Confluence Email",
-                    placeholder: "admin@company.com",
-                  })) as string
-
-                  if (!prompts.isCancel(confluenceEmail)) {
-                    confluenceApiToken = (await prompts.password({
-                      message: "Confluence API Token",
-                    })) as string
-                  }
-                }
-              }
             }
           }
 
@@ -1560,14 +1547,12 @@ export const AuthLoginCommand = cmd({
             licenseKey,
             enterpriseUrl: portalUrl || undefined,
             jiraBaseUrl: jiraBaseUrl || undefined,
-            jiraEmail: jiraEmail || undefined,
-            jiraApiToken: jiraApiToken || undefined,
+            confluenceUrl: confluenceUrl || undefined,
+            atlassianEmail: atlassianEmail || undefined,
+            atlassianApiToken: atlassianApiToken || undefined,
             azureOrg: azureOrg || undefined,
             azureProject: azureProject || undefined,
             azurePat: azurePat || undefined,
-            confluenceUrl: confluenceUrl || undefined,
-            confluenceEmail: confluenceEmail || undefined,
-            confluenceApiToken: confluenceApiToken || undefined,
           })
 
           // Sync credentials to enterprise portal (works with license key, no token needed!)
@@ -1580,13 +1565,13 @@ export const AuthLoginCommand = cmd({
               const credentials = []
 
               // Jira credentials
-              if (jiraBaseUrl && jiraApiToken) {
+              if (jiraBaseUrl && atlassianApiToken) {
                 credentials.push({
                   service: "jira",
                   credentialType: "api_token",
                   baseUrl: jiraBaseUrl,
-                  email: jiraEmail,
-                  apiToken: jiraApiToken
+                  email: atlassianEmail,
+                  apiToken: atlassianApiToken
                 })
               }
 
@@ -1601,13 +1586,13 @@ export const AuthLoginCommand = cmd({
               }
 
               // Confluence credentials
-              if (confluenceUrl && confluenceApiToken) {
+              if (confluenceUrl && atlassianApiToken) {
                 credentials.push({
                   service: "confluence",
                   credentialType: "api_token",
                   baseUrl: confluenceUrl,
-                  email: confluenceEmail,
-                  apiToken: confluenceApiToken
+                  email: atlassianEmail,
+                  apiToken: atlassianApiToken
                 })
               }
 
@@ -1651,14 +1636,12 @@ export const AuthLoginCommand = cmd({
           ]
           if (portalUrl) envUpdates.push({ key: "SNOW_ENTERPRISE_URL", value: portalUrl })
           if (jiraBaseUrl) envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: jiraBaseUrl })
-          if (jiraEmail) envUpdates.push({ key: "SNOW_JIRA_EMAIL", value: jiraEmail })
-          if (jiraApiToken) envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: jiraApiToken })
+          if (confluenceUrl) envUpdates.push({ key: "SNOW_CONFLUENCE_URL", value: confluenceUrl })
+          if (atlassianEmail) envUpdates.push({ key: "SNOW_ATLASSIAN_EMAIL", value: atlassianEmail })
+          if (atlassianApiToken) envUpdates.push({ key: "SNOW_ATLASSIAN_API_TOKEN", value: atlassianApiToken })
           if (azureOrg) envUpdates.push({ key: "SNOW_AZURE_ORG", value: azureOrg })
           if (azureProject) envUpdates.push({ key: "SNOW_AZURE_PROJECT", value: azureProject })
           if (azurePat) envUpdates.push({ key: "SNOW_AZURE_PAT", value: azurePat })
-          if (confluenceUrl) envUpdates.push({ key: "SNOW_CONFLUENCE_URL", value: confluenceUrl })
-          if (confluenceEmail) envUpdates.push({ key: "SNOW_CONFLUENCE_EMAIL", value: confluenceEmail })
-          if (confluenceApiToken) envUpdates.push({ key: "SNOW_CONFLUENCE_API_TOKEN", value: confluenceApiToken })
           await updateEnvFile(envUpdates)
 
           // Add snow-flow-enterprise MCP server to SnowCode config
@@ -1690,11 +1673,18 @@ export const AuthLoginCommand = cmd({
               SNOW_ENTERPRISE_URL: mcpServerUrl,
             }
 
-            // Add Jira credentials if provided
-            if (jiraBaseUrl && jiraEmail && jiraApiToken) {
+            // Add Atlassian credentials if provided
+            if (atlassianEmail && atlassianApiToken) {
+              env.ATLASSIAN_EMAIL = atlassianEmail
+              env.ATLASSIAN_API_TOKEN = atlassianApiToken
+            }
+
+            // Add Jira/Confluence hosts if provided
+            if (jiraBaseUrl) {
               env.JIRA_HOST = jiraBaseUrl
-              env.JIRA_EMAIL = jiraEmail
-              env.JIRA_API_TOKEN = jiraApiToken
+            }
+            if (confluenceUrl) {
+              env.CONFLUENCE_HOST = confluenceUrl
             }
 
             // Configure stdio proxy (correct architecture!)
@@ -1766,14 +1756,17 @@ export const AuthLoginCommand = cmd({
                 licenseKey: jwtToken, // ← CRITICAL: Use JWT token, not plain text!
                 serverUrl: mcpServerUrl,
                 credentials: {
-                  jira: jiraBaseUrl && jiraEmail && jiraApiToken
-                    ? { host: jiraBaseUrl, email: jiraEmail, apiToken: jiraApiToken }
+                  atlassian: atlassianEmail && atlassianApiToken
+                    ? { email: atlassianEmail, apiToken: atlassianApiToken }
+                    : undefined,
+                  jira: jiraBaseUrl
+                    ? { host: jiraBaseUrl }
                     : undefined,
                   azure: azureOrg && azurePat
                     ? { organization: azureOrg, project: azureProject, pat: azurePat }
                     : undefined,
-                  confluence: confluenceUrl && confluenceEmail && confluenceApiToken
-                    ? { host: confluenceUrl, email: confluenceEmail, apiToken: confluenceApiToken }
+                  confluence: confluenceUrl
+                    ? { host: confluenceUrl }
                     : undefined,
                 },
               })
@@ -2759,24 +2752,24 @@ export const AuthLoginCommand = cmd({
             })
 
             let enterpriseJiraBaseUrl: string | undefined
-            let enterpriseJiraEmail: string | undefined
-            let enterpriseJiraApiToken: string | undefined
+            let enterpriseAtlassianEmail: string | undefined
+            let enterpriseAtlassianApiToken: string | undefined
 
             if (!prompts.isCancel(configureJira) && configureJira) {
-              enterpriseJiraBaseUrl = (await prompts.text({
-                message: "Jira Base URL (optional)",
-                placeholder: "https://company.atlassian.net",
+              enterpriseAtlassianEmail = (await prompts.text({
+                message: "Atlassian Email (for Jira/Confluence)",
+                placeholder: "admin@company.com",
               })) as string
 
-              if (!prompts.isCancel(enterpriseJiraBaseUrl) && enterpriseJiraBaseUrl) {
-                enterpriseJiraEmail = (await prompts.text({
-                  message: "Jira Email",
-                  placeholder: "admin@company.com",
+              if (!prompts.isCancel(enterpriseAtlassianEmail)) {
+                enterpriseAtlassianApiToken = (await prompts.password({
+                  message: "Atlassian API Token",
                 })) as string
 
-                if (!prompts.isCancel(enterpriseJiraEmail)) {
-                  enterpriseJiraApiToken = (await prompts.password({
-                    message: "Jira API Token",
+                if (!prompts.isCancel(enterpriseAtlassianApiToken)) {
+                  enterpriseJiraBaseUrl = (await prompts.text({
+                    message: "Jira Base URL (optional)",
+                    placeholder: "https://company.atlassian.net",
                   })) as string
                 }
               }
@@ -2790,8 +2783,8 @@ export const AuthLoginCommand = cmd({
               licenseKey: enterpriseLicenseKey,
               enterpriseUrl: enterpriseServerUrl || undefined,
               jiraBaseUrl: enterpriseJiraBaseUrl || undefined,
-              jiraEmail: enterpriseJiraEmail || undefined,
-              jiraApiToken: enterpriseJiraApiToken || undefined,
+              atlassianEmail: enterpriseAtlassianEmail || undefined,
+              atlassianApiToken: enterpriseAtlassianApiToken || undefined,
             })
 
             // Write to .env file
@@ -2802,9 +2795,10 @@ export const AuthLoginCommand = cmd({
               envUpdates.push({ key: "SNOW_ENTERPRISE_URL", value: enterpriseServerUrl })
             if (enterpriseJiraBaseUrl)
               envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: enterpriseJiraBaseUrl })
-            if (enterpriseJiraEmail) envUpdates.push({ key: "SNOW_JIRA_EMAIL", value: enterpriseJiraEmail })
-            if (enterpriseJiraApiToken)
-              envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: enterpriseJiraApiToken })
+            if (enterpriseAtlassianEmail)
+              envUpdates.push({ key: "SNOW_ATLASSIAN_EMAIL", value: enterpriseAtlassianEmail })
+            if (enterpriseAtlassianApiToken)
+              envUpdates.push({ key: "SNOW_ATLASSIAN_API_TOKEN", value: enterpriseAtlassianApiToken })
             await updateEnvFile(envUpdates)
 
             // Validate license key with enterprise server
@@ -2853,8 +2847,11 @@ export const AuthLoginCommand = cmd({
                   licenseKey: jwtToken, // ← Use JWT!
                   serverUrl: "https://enterprise.snow-flow.dev",
                   credentials: {
-                    jira: enterpriseJiraBaseUrl && enterpriseJiraEmail && enterpriseJiraApiToken
-                      ? { host: enterpriseJiraBaseUrl, email: enterpriseJiraEmail, apiToken: enterpriseJiraApiToken }
+                    atlassian: enterpriseAtlassianEmail && enterpriseAtlassianApiToken
+                      ? { email: enterpriseAtlassianEmail, apiToken: enterpriseAtlassianApiToken }
+                      : undefined,
+                    jira: enterpriseJiraBaseUrl
+                      ? { host: enterpriseJiraBaseUrl }
                       : undefined,
                   },
                 })
@@ -3158,9 +3155,8 @@ export const AuthLoginCommand = cmd({
               initialValue: false,
             })
 
-            let jiraBaseUrl, jiraEmail, jiraApiToken
+            let jiraBaseUrl, confluenceUrl, atlassianEmail, atlassianApiToken
             let azureOrg, azureProject, azurePat
-            let confluenceUrl, confluenceEmail, confluenceApiToken
 
             if (!prompts.isCancel(configureExternal) && configureExternal) {
               const integrations = await prompts.multiselect({
@@ -3173,25 +3169,35 @@ export const AuthLoginCommand = cmd({
               }) as string[]
 
               if (!prompts.isCancel(integrations)) {
-                // Jira configuration
-                if (integrations.includes("jira")) {
+                // Atlassian credentials (shared by Jira and Confluence)
+                const needsAtlassian = integrations.includes("jira") || integrations.includes("confluence")
+                if (needsAtlassian) {
+                  atlassianEmail = (await prompts.text({
+                    message: "Atlassian Email (used for both Jira and Confluence)",
+                    placeholder: "admin@company.com",
+                  })) as string
+
+                  if (!prompts.isCancel(atlassianEmail)) {
+                    atlassianApiToken = (await prompts.password({
+                      message: "Atlassian API Token (get from https://id.atlassian.com/manage-profile/security/api-tokens)",
+                    })) as string
+                  }
+                }
+
+                // Jira configuration (only base URL)
+                if (integrations.includes("jira") && atlassianApiToken) {
                   jiraBaseUrl = (await prompts.text({
                     message: "Jira Base URL",
                     placeholder: "https://company.atlassian.net",
                   })) as string
+                }
 
-                  if (!prompts.isCancel(jiraBaseUrl) && jiraBaseUrl) {
-                    jiraEmail = (await prompts.text({
-                      message: "Jira Email",
-                      placeholder: "admin@company.com",
-                    })) as string
-
-                    if (!prompts.isCancel(jiraEmail)) {
-                      jiraApiToken = (await prompts.password({
-                        message: "Jira API Token",
-                      })) as string
-                    }
-                  }
+                // Confluence configuration (only base URL)
+                if (integrations.includes("confluence") && atlassianApiToken) {
+                  confluenceUrl = (await prompts.text({
+                    message: "Confluence Base URL",
+                    placeholder: "https://company.atlassian.net/wiki",
+                  })) as string
                 }
 
                 // Azure DevOps configuration
@@ -3214,27 +3220,6 @@ export const AuthLoginCommand = cmd({
                     }
                   }
                 }
-
-                // Confluence configuration
-                if (integrations.includes("confluence")) {
-                  confluenceUrl = (await prompts.text({
-                    message: "Confluence Base URL",
-                    placeholder: "https://company.atlassian.net/wiki",
-                  })) as string
-
-                  if (!prompts.isCancel(confluenceUrl) && confluenceUrl) {
-                    confluenceEmail = (await prompts.text({
-                      message: "Confluence Email",
-                      placeholder: "admin@company.com",
-                    })) as string
-
-                    if (!prompts.isCancel(confluenceEmail)) {
-                      confluenceApiToken = (await prompts.password({
-                        message: "Confluence API Token",
-                      })) as string
-                    }
-                  }
-                }
               }
             }
 
@@ -3246,14 +3231,12 @@ export const AuthLoginCommand = cmd({
               licenseKey,
               enterpriseUrl: enterpriseUrl || undefined,
               jiraBaseUrl: jiraBaseUrl || undefined,
-              jiraEmail: jiraEmail || undefined,
-              jiraApiToken: jiraApiToken || undefined,
+              confluenceUrl: confluenceUrl || undefined,
+              atlassianEmail: atlassianEmail || undefined,
+              atlassianApiToken: atlassianApiToken || undefined,
               azureOrg: azureOrg || undefined,
               azureProject: azureProject || undefined,
               azurePat: azurePat || undefined,
-              confluenceUrl: confluenceUrl || undefined,
-              confluenceEmail: confluenceEmail || undefined,
-              confluenceApiToken: confluenceApiToken || undefined,
             })
 
             // Write to .env file
@@ -3262,14 +3245,12 @@ export const AuthLoginCommand = cmd({
             ]
             if (enterpriseUrl) envUpdates.push({ key: "SNOW_ENTERPRISE_URL", value: enterpriseUrl })
             if (jiraBaseUrl) envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: jiraBaseUrl })
-            if (jiraEmail) envUpdates.push({ key: "SNOW_JIRA_EMAIL", value: jiraEmail })
-            if (jiraApiToken) envUpdates.push({ key: "SNOW_JIRA_API_TOKEN", value: jiraApiToken })
+            if (confluenceUrl) envUpdates.push({ key: "SNOW_CONFLUENCE_URL", value: confluenceUrl })
+            if (atlassianEmail) envUpdates.push({ key: "SNOW_ATLASSIAN_EMAIL", value: atlassianEmail })
+            if (atlassianApiToken) envUpdates.push({ key: "SNOW_ATLASSIAN_API_TOKEN", value: atlassianApiToken })
             if (azureOrg) envUpdates.push({ key: "SNOW_AZURE_ORG", value: azureOrg })
             if (azureProject) envUpdates.push({ key: "SNOW_AZURE_PROJECT", value: azureProject })
             if (azurePat) envUpdates.push({ key: "SNOW_AZURE_PAT", value: azurePat })
-            if (confluenceUrl) envUpdates.push({ key: "SNOW_CONFLUENCE_URL", value: confluenceUrl })
-            if (confluenceEmail) envUpdates.push({ key: "SNOW_CONFLUENCE_EMAIL", value: confluenceEmail })
-            if (confluenceApiToken) envUpdates.push({ key: "SNOW_CONFLUENCE_API_TOKEN", value: confluenceApiToken })
             await updateEnvFile(envUpdates)
 
             // Sync credentials to enterprise backend dashboard
@@ -3281,7 +3262,7 @@ export const AuthLoginCommand = cmd({
                 const credentialPromises = []
 
                 // Sync Jira credentials
-                if (jiraBaseUrl && jiraEmail && jiraApiToken) {
+                if (jiraBaseUrl && atlassianApiToken) {
                   credentialPromises.push(
                     fetch(`https://enterprise.snow-flow.dev/mcp/auth/credentials`, {
                       method: "POST",
@@ -3292,8 +3273,8 @@ export const AuthLoginCommand = cmd({
                         licenseKey,
                         service: "jira",
                         baseUrl: jiraBaseUrl,
-                        email: jiraEmail,
-                        apiToken: jiraApiToken
+                        email: atlassianEmail,
+                        apiToken: atlassianApiToken
                       }),
                       signal: AbortSignal.timeout(10000)
                     })
@@ -3321,7 +3302,7 @@ export const AuthLoginCommand = cmd({
                 }
 
                 // Sync Confluence credentials
-                if (confluenceUrl && confluenceEmail && confluenceApiToken) {
+                if (confluenceUrl && atlassianApiToken) {
                   credentialPromises.push(
                     fetch(`https://enterprise.snow-flow.dev/mcp/auth/credentials`, {
                       method: "POST",
@@ -3332,8 +3313,8 @@ export const AuthLoginCommand = cmd({
                         licenseKey,
                         service: "confluence",
                         baseUrl: confluenceUrl,
-                        email: confluenceEmail,
-                        apiToken: confluenceApiToken
+                        email: atlassianEmail,
+                        apiToken: atlassianApiToken
                       }),
                       signal: AbortSignal.timeout(10000)
                     })
@@ -3404,14 +3385,17 @@ export const AuthLoginCommand = cmd({
                   licenseKey: jwtToken, // ← Use JWT!
                   serverUrl: "https://enterprise.snow-flow.dev",
                   credentials: {
-                    jira: jiraBaseUrl && jiraEmail && jiraApiToken
-                      ? { host: jiraBaseUrl, email: jiraEmail, apiToken: jiraApiToken }
+                    atlassian: atlassianEmail && atlassianApiToken
+                      ? { email: atlassianEmail, apiToken: atlassianApiToken }
+                      : undefined,
+                    jira: jiraBaseUrl
+                      ? { host: jiraBaseUrl }
                       : undefined,
                     azure: azureOrg && azurePat
                       ? { organization: azureOrg, project: azureProject, pat: azurePat }
                       : undefined,
-                    confluence: confluenceUrl && confluenceEmail && confluenceApiToken
-                      ? { host: confluenceUrl, email: confluenceEmail, apiToken: confluenceApiToken }
+                    confluence: confluenceUrl
+                      ? { host: confluenceUrl }
                       : undefined,
                   },
                 })

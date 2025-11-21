@@ -25,14 +25,14 @@ export namespace PortalSync {
   function extractCredentialsFromAuth(auth: z.infer<typeof Auth.Enterprise>): CredentialPayload[] {
     const credentials: CredentialPayload[] = []
 
-    // Jira credentials
-    if (auth.jiraBaseUrl && (auth.jiraApiToken || auth.jiraEmail)) {
+    // Jira credentials (uses unified Atlassian credentials)
+    if (auth.jiraBaseUrl && auth.atlassianApiToken) {
       credentials.push({
         service: 'jira',
         credentialType: 'api_token',
         baseUrl: auth.jiraBaseUrl,
-        email: auth.jiraEmail,
-        apiToken: auth.jiraApiToken
+        email: auth.atlassianEmail,
+        apiToken: auth.atlassianApiToken
       })
     }
 
@@ -47,14 +47,14 @@ export namespace PortalSync {
       })
     }
 
-    // Confluence credentials
-    if (auth.confluenceUrl && (auth.confluenceApiToken || auth.confluenceEmail)) {
+    // Confluence credentials (uses unified Atlassian credentials)
+    if (auth.confluenceUrl && auth.atlassianApiToken) {
       credentials.push({
         service: 'confluence',
         credentialType: 'api_token',
         baseUrl: auth.confluenceUrl,
-        email: auth.confluenceEmail,
-        apiToken: auth.confluenceApiToken
+        email: auth.atlassianEmail,
+        apiToken: auth.atlassianApiToken
       })
     }
 
