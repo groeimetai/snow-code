@@ -5,12 +5,12 @@
  * No password, no license key input - just approve in browser and paste code.
  */
 
-import { cmd } from "@anthropic-ai/sky-util/cmd"
-import { prompts } from "@anthropic-ai/sky-util/prompts"
+import { cmd } from "./cmd"
+import * as prompts from "@clack/prompts"
 import os from "os"
 import path from "path"
 import fs from "fs"
-import { open } from "@anthropic-ai/sky-util/process"
+import open from "open"
 
 // Enterprise portal URL
 const PORTAL_URL = process.env.SNOW_FLOW_PORTAL_URL || "https://portal.snow-flow.dev"
@@ -150,7 +150,7 @@ export const AuthEnterpriseLoginCommand = cmd({
           if (!value || value.trim().length === 0) {
             return "Authorization code is required"
           }
-          return true
+          return undefined
         }
       })
 
