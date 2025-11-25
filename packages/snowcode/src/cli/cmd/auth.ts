@@ -71,6 +71,8 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
   // ONLY update PRIMARY locations (with hyphen)
   // Legacy locations are read-only for backward compatibility
   const configPaths = [
+    // Project-level .mcp.json (primary config for snow-flow)
+    path.join(process.cwd(), ".mcp.json"),
     // Project-level (created by snow-flow init) - with hyphen ONLY
     path.join(projectSnowCodeDir, "opencode.json"),
     path.join(projectSnowCodeDir, "config.json"),
@@ -289,9 +291,9 @@ async function addEnterpriseMcpServer(config: EnterpriseMcpConfig): Promise<void
       const configText = await file.text()
       var snowCodeConfig = JSON.parse(configText)
 
-      // Determine if this is .mcp.json (uses "mcpServers") or other configs (uses "mcp")
-      const isMcpJson = configPath.endsWith(".mcp.json")
-      const mcpKey = isMcpJson ? "mcpServers" : "mcp"
+      // All snow-flow/snow-code configs use "mcp" key consistently
+      // (Claude Desktop uses "mcpServers", but we don't write to that directly)
+      const mcpKey = "mcp"
 
       if (!snowCodeConfig[mcpKey]) {
         snowCodeConfig[mcpKey] = {}
@@ -369,9 +371,8 @@ async function isEnterpriseMcpConfigured(): Promise<boolean> {
       const configText = await file.text()
       var snowCodeConfig = JSON.parse(configText)
 
-      // Check both mcpServers (.mcp.json) and mcp (other configs)
-      const isMcpJson = configPath.endsWith(".mcp.json")
-      const mcpKey = isMcpJson ? "mcpServers" : "mcp"
+      // All snow-flow/snow-code configs use "mcp" key consistently
+      const mcpKey = "mcp"
 
       if (snowCodeConfig[mcpKey]?.["snow-flow-enterprise"]?.enabled === true) {
         return true
