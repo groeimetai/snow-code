@@ -331,11 +331,6 @@ async function addEnterpriseMcpServer(config: EnterpriseMcpConfig): Promise<void
       // Add to config
       snowCodeConfig[mcpKey]["snow-flow-enterprise"] = enterpriseConfig
 
-      // Add schema if .mcp.json and not present
-      if (isMcpJson && !snowCodeConfig.$schema) {
-        snowCodeConfig.$schema = "https://opencode.ai/mcp.json"
-      }
-
       await Bun.write(configPath, JSON.stringify(snowCodeConfig, null, 2))
     } catch (error: any) {
       // Skip failed config updates
@@ -387,171 +382,89 @@ async function isEnterpriseMcpConfigured(): Promise<boolean> {
 
 /**
  * Update project documentation (CLAUDE.md and AGENTS.md) with enterprise server information
- * Only adds the enterprise section if it doesn't already exist
+ * Uses the comprehensive enterprise-docs-generator for detailed workflow instructions
+ *
+ * @param enabledServices - Array of enabled services (e.g., ['jira', 'azdo', 'confluence'])
  */
-async function updateDocumentationWithEnterprise(): Promise<void> {
+async function updateDocumentationWithEnterprise(enabledServices?: string[]): Promise<void> {
   try {
     const projectRoot = process.cwd()
     const claudeMdPath = path.join(projectRoot, "CLAUDE.md")
     const agentsMdPath = path.join(projectRoot, "AGENTS.md")
 
-    const enterpriseDocSection = `
-## 🚀 Enterprise Features (Snow-Flow Enterprise License)
+    // Import the comprehensive documentation generator
+    const { generateEnterpriseInstructions } = await import("./enterprise-docs-generator.js")
 
-### Enterprise MCP Server
+    // Generate comprehensive enterprise documentation based on enabled services
+    // Default to all services if not specified
+    const services = enabledServices && enabledServices.length > 0
+      ? enabledServices
+      : ['jira', 'azdo', 'confluence']
 
-The \`snow-flow-enterprise\` MCP server provides integrations with external enterprise tools:
+    const enterpriseDocSection = generateEnterpriseInstructions(services)
 
-**Available Integrations:**
-- **Jira**: Search issues, create/update issues, link to ServiceNow incidents, manage workflows
-- **Azure DevOps**: Work items, repositories, pipeline integration, build management
-- **Confluence**: Search pages, create/update documentation, manage spaces
+    // Check markers for both old (short) and new (comprehensive) documentation
+    const oldMarker = "## 🚀 Enterprise Features"
+    const newMarker = "ENTERPRISE INTEGRATIONS - AUTONOMOUS DEVELOPMENT WORKFLOW"
 
-**Configuration:**
-The enterprise server is automatically configured when you complete \`snow-code auth login\` with a valid enterprise license.
+    // Helper function to update a documentation file
+    async function updateDocFile(filePath: string, fileName: string): Promise<void> {
+      try {
+        const file = Bun.file(filePath)
+        if (await file.exists()) {
+          let content = await file.text()
 
-**Enterprise Tools:**
-
-#### Jira Integration
-\`\`\`javascript
-// Search Jira issues
-const issues = await jira_search_issues({
-  jql: "project = PROJ AND status = 'In Progress'",
-  maxResults: 50
-});
-
-// Create Jira issue
-const newIssue = await jira_create_issue({
-  project: "PROJ",
-  summary: "Integration with ServiceNow incident INC001234",
-  description: "Auto-created from ServiceNow",
-  issueType: "Task"
-});
-
-// Link to ServiceNow incident
-await jira_link_servicenow({
-  jiraKey: "PROJ-123",
-  incidentNumber: "INC001234",
-  linkType: "relates to"
-});
-\`\`\`
-
-#### Azure DevOps Integration
-\`\`\`javascript
-// Search work items
-const workItems = await azure_search_work_items({
-  project: "MyProject",
-  wiql: "SELECT [System.Id] FROM WorkItems WHERE [System.State] = 'Active'"
-});
-
-// Create work item
-const newWorkItem = await azure_create_work_item({
-  project: "MyProject",
-  type: "Bug",
-  title: "Issue from ServiceNow INC001234",
-  description: "Auto-created from ServiceNow incident"
-});
-
-// Trigger pipeline
-await azure_trigger_pipeline({
-  project: "MyProject",
-  pipelineId: 123,
-  branch: "main"
-});
-\`\`\`
-
-#### Confluence Integration
-\`\`\`javascript
-// Search Confluence pages
-const pages = await confluence_search({
-  cql: "space = DOCS AND type = page AND title ~ 'ServiceNow'",
-  limit: 20
-});
-
-// Create documentation page
-const newPage = await confluence_create_page({
-  space: "DOCS",
-  title: "ServiceNow Integration Guide",
-  content: "<h1>Integration Documentation</h1><p>...</p>",
-  parentId: "123456"
-});
-
-// Update existing page
-await confluence_update_page({
-  pageId: "789012",
-  title: "Updated Integration Guide",
-  content: "<h1>Updated Content</h1>",
-  version: 2
-});
-\`\`\`
-
-**Usage Pattern:**
-1. Complete \`snow-code auth login\` with enterprise license
-2. Configure Jira/Azure DevOps/Confluence credentials (local or server-side)
-3. Enterprise tools are automatically available in your AI agent
-4. Use tools directly - no additional setup required
-
-**Benefits:**
-- ✅ Seamless integration between ServiceNow and enterprise tools
-- ✅ Automatic bi-directional sync (incidents ↔ Jira issues, changes ↔ Azure work items)
-- ✅ Documentation auto-generation (ServiceNow → Confluence)
-- ✅ Single source of truth across all enterprise systems
-`
-
-    // Update CLAUDE.md if it exists and doesn't already have enterprise section
-    try {
-      const claudeFile = Bun.file(claudeMdPath)
-      if (await claudeFile.exists()) {
-        const claudeContent = await claudeFile.text()
-
-        if (!claudeContent.includes("## 🚀 Enterprise Features")) {
-          // Find the best insertion point (before "## Conclusion" or at the end)
-          var insertionPoint = claudeContent.lastIndexOf("## Conclusion")
-          if (insertionPoint === -1) {
-            insertionPoint = claudeContent.length
+          // Check if comprehensive docs already exist
+          if (content.includes(newMarker)) {
+            // Already has comprehensive docs - no update needed
+            return
           }
 
-          const updatedContent =
-            claudeContent.slice(0, insertionPoint) + enterpriseDocSection + "\n\n" + claudeContent.slice(insertionPoint)
+          // Remove old short documentation if it exists (replace with comprehensive)
+          if (content.includes(oldMarker)) {
+            // Find the start of the old enterprise section
+            const oldStart = content.indexOf(oldMarker)
+            // Find the end (next ## heading or end of file)
+            let oldEnd = content.indexOf("\n## ", oldStart + 1)
+            if (oldEnd === -1) {
+              // Check for --- separator
+              oldEnd = content.indexOf("\n---", oldStart + 1)
+            }
+            if (oldEnd === -1) {
+              oldEnd = content.length
+            }
 
-          await Bun.write(claudeMdPath, updatedContent)
-          prompts.log.success("Updated CLAUDE.md with enterprise features documentation")
-        }
-      }
-    } catch (err: any) {
-      if (err.code !== "ENOENT") {
-        prompts.log.info(`Could not update CLAUDE.md: ${err.message}`)
-      }
-    }
+            // Remove the old section
+            content = content.slice(0, oldStart) + content.slice(oldEnd)
+            prompts.log.info(`Replacing old enterprise docs in ${fileName} with comprehensive version`)
+          }
 
-    // Update AGENTS.md if it exists and doesn't already have enterprise section
-    try {
-      const agentsFile = Bun.file(agentsMdPath)
-      if (await agentsFile.exists()) {
-        const agentsContent = await agentsFile.text()
-
-        if (!agentsContent.includes("## 🚀 Enterprise Features")) {
           // Find the best insertion point (before "## Conclusion" or at the end)
-          var insertionPoint = agentsContent.lastIndexOf("## Conclusion")
+          let insertionPoint = content.lastIndexOf("## Conclusion")
           if (insertionPoint === -1) {
-            insertionPoint = agentsContent.lastIndexOf("---")
+            insertionPoint = content.lastIndexOf("---")
             if (insertionPoint === -1) {
-              insertionPoint = agentsContent.length
+              insertionPoint = content.length
             }
           }
 
           const updatedContent =
-            agentsContent.slice(0, insertionPoint) + enterpriseDocSection + "\n\n" + agentsContent.slice(insertionPoint)
+            content.slice(0, insertionPoint) + enterpriseDocSection + "\n\n" + content.slice(insertionPoint)
 
-          await Bun.write(agentsMdPath, updatedContent)
-          prompts.log.success("Updated AGENTS.md with enterprise features documentation")
+          await Bun.write(filePath, updatedContent)
+          prompts.log.success(`Updated ${fileName} with comprehensive enterprise workflow documentation`)
+        }
+      } catch (err: any) {
+        if (err.code !== "ENOENT") {
+          prompts.log.info(`Could not update ${fileName}: ${err.message}`)
         }
       }
-    } catch (err: any) {
-      if (err.code !== "ENOENT") {
-        prompts.log.info(`Could not update AGENTS.md: ${err.message}`)
-      }
     }
+
+    // Update both documentation files
+    await updateDocFile(claudeMdPath, "CLAUDE.md")
+    await updateDocFile(agentsMdPath, "AGENTS.md")
+
   } catch (error: any) {
     prompts.log.info(`Failed to update documentation: ${error.message}`)
     // Don't throw - this is not critical
@@ -1789,7 +1702,13 @@ export const AuthLoginCommand = cmd({
               prompts.log.success("✅ Enterprise MCP server configured")
 
               // Update documentation with enterprise features
-              await updateDocumentationWithEnterprise()
+              // Determine which services are enabled based on provided credentials
+              const enabledServices: string[] = []
+              if (jiraBaseUrl && atlassianEmail && atlassianApiToken) enabledServices.push('jira')
+              if (azureOrg && azurePat) enabledServices.push('azdo')
+              if (confluenceUrl && atlassianEmail && atlassianApiToken) enabledServices.push('confluence')
+
+              await updateDocumentationWithEnterprise(enabledServices)
             }
           } catch (error: any) {
             prompts.log.warn(`Enterprise setup warning: ${error.message}`)
@@ -2874,7 +2793,11 @@ export const AuthLoginCommand = cmd({
                 prompts.log.success("✅ Enterprise MCP server configured")
 
                 // Update documentation with enterprise features
-                await updateDocumentationWithEnterprise()
+                // Determine which services are enabled based on provided credentials
+                const enabledServices2: string[] = []
+                if (enterpriseJiraBaseUrl && enterpriseAtlassianEmail && enterpriseAtlassianApiToken) enabledServices2.push('jira')
+                // Note: Azure DevOps and Confluence not available in this flow
+                await updateDocumentationWithEnterprise(enabledServices2)
               }
             } catch (error: any) {
               prompts.log.warn(`Enterprise setup warning: ${error.message}`)
@@ -3418,7 +3341,13 @@ export const AuthLoginCommand = cmd({
                 prompts.log.success("✅ Enterprise MCP server configured")
 
                 // Update documentation with enterprise features
-                await updateDocumentationWithEnterprise()
+                // Determine which services are enabled based on provided credentials
+                const enabledServices3: string[] = []
+                if (jiraBaseUrl && atlassianEmail && atlassianApiToken) enabledServices3.push('jira')
+                if (azureOrg && azurePat) enabledServices3.push('azdo')
+                if (confluenceUrl && atlassianEmail && atlassianApiToken) enabledServices3.push('confluence')
+
+                await updateDocumentationWithEnterprise(enabledServices3)
               }
             } catch (error: any) {
               prompts.log.warn(`Enterprise setup warning: ${error.message}`)
