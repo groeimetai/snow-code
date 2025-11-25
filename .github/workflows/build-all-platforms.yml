@@ -142,6 +142,16 @@ jobs:
             echo "version=$(cat packages/snowcode/package.json | grep '"version"' | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')" >> $GITHUB_OUTPUT
           fi
 
+      - name: Update package.json version from tag
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Updating package.json to version $VERSION"
+          cd packages/snowcode
+          # Update version in package.json using sed
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
+          # Verify the change
+          grep '"version"' package.json
+
       - name: Publish platform binaries
         run: |
           cd packages/snowcode/dist/@groeimetai
