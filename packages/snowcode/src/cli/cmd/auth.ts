@@ -339,48 +339,6 @@ async function addEnterpriseMcpServer(config: EnterpriseMcpConfig): Promise<void
 }
 
 /**
- * Check if enterprise MCP server is already configured
- */
-async function isEnterpriseMcpConfigured(): Promise<boolean> {
-  const projectSnowCodeDir = path.join(process.cwd(), ".snow-code")
-  const globalConfigDir = path.join(os.homedir(), ".config", "snow-code")
-
-  const configPaths = [
-    // Check .mcp.json first (primary for snow-flow)
-    path.join(process.cwd(), ".mcp.json"),
-    // Then check other configs
-    path.join(projectSnowCodeDir, "opencode.json"),
-    path.join(projectSnowCodeDir, "config.json"),
-    path.join(globalConfigDir, "opencode.json"),
-    path.join(globalConfigDir, "snowcode.json"),
-    path.join(globalConfigDir, "config.json"),
-  ]
-
-  for (const configPath of configPaths) {
-    try {
-      const file = Bun.file(configPath)
-      if (!(await file.exists())) {
-        continue
-      }
-
-      const configText = await file.text()
-      var snowCodeConfig = JSON.parse(configText)
-
-      // All snow-flow/snow-code configs use "mcp" key consistently
-      const mcpKey = "mcp"
-
-      if (snowCodeConfig[mcpKey]?.["snow-flow-enterprise"]?.enabled === true) {
-        return true
-      }
-    } catch {
-      // Skip
-    }
-  }
-
-  return false
-}
-
-/**
  * Update project documentation (CLAUDE.md and AGENTS.md) with enterprise server information
  * Uses the comprehensive enterprise-docs-generator for detailed workflow instructions
  *
@@ -1703,10 +1661,18 @@ export const AuthLoginCommand = cmd({
 
               // Update documentation with enterprise features
               // Determine which services are enabled based on provided credentials
+              // Note: Jira and Confluence share Atlassian credentials, so if one is configured,
+              // include documentation for both (user has the credentials to use either)
               const enabledServices: string[] = []
-              if (jiraBaseUrl && atlassianEmail && atlassianApiToken) enabledServices.push('jira')
+              const hasAtlassianCredentials = atlassianEmail && atlassianApiToken
+              const hasJiraOrConfluence = jiraBaseUrl || confluenceUrl
+
+              if (hasAtlassianCredentials && hasJiraOrConfluence) {
+                // Include both Jira and Confluence docs since they share credentials
+                enabledServices.push('jira')
+                enabledServices.push('confluence')
+              }
               if (azureOrg && azurePat) enabledServices.push('azdo')
-              if (confluenceUrl && atlassianEmail && atlassianApiToken) enabledServices.push('confluence')
 
               await updateDocumentationWithEnterprise(enabledServices)
             }
