@@ -61,6 +61,32 @@ jobs:
           cache: true
           cache-dependency-path: packages/tui/go.sum
 
+      - name: Get version from tag
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          elif [[ $GITHUB_REF == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            echo "version=$(cat packages/snowcode/package.json | grep '"version"' | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')" >> $GITHUB_OUTPUT
+          fi
+          echo "Version: ${{ steps.version.outputs.version }}"
+
+      - name: Update package.json version before build
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Updating package.json to version $VERSION"
+          cd packages/snowcode
+          if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
+          else
+            sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
+          fi
+          grep '"version"' package.json
+
       - name: Install dependencies
         run: |
           # Install from monorepo root to get all workspace dependencies
@@ -151,6 +177,19 @@ jobs:
           sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
           # Verify the change
           grep '"version"' package.json
+
+      - name: Update binary package versions
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Updating binary packages to version $VERSION"
+          cd packages/snowcode/dist/@groeimetai
+          for dir in snow-code-*; do
+            if [ -d "$dir" ] && [ -f "$dir/package.json" ]; then
+              echo "Updating $dir/package.json to version $VERSION"
+              sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" "$dir/package.json"
+              grep '"version"' "$dir/package.json"
+            fi
+          done
 
       - name: Publish platform binaries
         run: |
