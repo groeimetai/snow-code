@@ -1,414 +1,223 @@
-<p align="center">
-  <picture>
-    <img src="packages/console/app/src/asset/logo-ornate-light.svg" alt="SnowCode logo" width="300">
-  </picture>
-</p>
+# Snow-Code
 
-<h1 align="center">SnowCode</h1>
-<h3 align="center">AI-Powered ServiceNow Development IDE</h3>
-<p align="center"><strong>Part of the Snow-Flow Enterprise Suite</strong></p>
+**AI-Powered ServiceNow Development IDE**
 
-<p align="center">
-  <a href="https://github.com/groeimetai/snowcode"><img alt="GitHub" src="https://img.shields.io/github/stars/groeimetai/snowcode?style=flat-square" /></a>
-  <a href="https://github.com/groeimetai/snow-flow"><img alt="Snow-Flow MCP" src="https://img.shields.io/badge/snow--flow-350%2B%20tools-blue?style=flat-square" /></a>
-  <a href="#enterprise-edition"><img alt="Enterprise" src="https://img.shields.io/badge/enterprise-available-green?style=flat-square" /></a>
-</p>
+[![GitHub stars](https://img.shields.io/github/stars/groeimetai/snow-code?style=for-the-badge&logo=github)](https://github.com/groeimetai/snow-code)
+[![npm](https://img.shields.io/npm/v/@groeimetai/snow-code?style=for-the-badge&logo=npm&color=CB3837)](https://www.npmjs.com/package/@groeimetai/snow-code)
+
+**Built by developers, for developers.** Snow-Code is the terminal-based AI IDE for ServiceNow development. Part of the [Snow-Flow](https://github.com/groeimetai/snow-flow) platform - the free, open-source alternative to ServiceNow Build Agent.
 
 ---
 
-## 🎯 What is SnowCode?
-
-SnowCode is a specialized fork of [OpenCode](https://github.com/sst/opencode) (formerly Windsurf) optimized specifically for **ServiceNow development**. It combines an AI-powered coding assistant with deep ServiceNow integration through the [Snow-Flow MCP framework](https://github.com/groeimetai/snow-flow).
-
-**Built for ServiceNow developers by ServiceNow experts.**
-
-### Why SnowCode?
-
-| Feature | SnowCode | Generic AI IDEs |
-|---------|----------|-----------------|
-| **ServiceNow MCP Tools** | ✅ 350+ built-in tools | ❌ None |
-| **ES5 Validation** | ✅ Rhino engine checks | ❌ Modern JS only |
-| **Update Set Workflow** | ✅ Automatic tracking | ❌ Manual process |
-| **Widget Coherence** | ✅ HTML/Client/Server validation | ❌ No awareness |
-| **Enterprise Integrations** | ✅ Jira/Azure/Confluence | ❌ Not available |
-| **ServiceNow Best Practices** | ✅ Built-in CLAUDE.md rules | ❌ Generic guidance |
-
----
-
-## 🚀 Quick Start
-
-### Installation
+## Get Started in 60 Seconds
 
 ```bash
-# macOS/Linux - Quick install
-curl -fsSL https://raw.githubusercontent.com/groeimetai/snowcode/main/install.sh | bash
+# Install Snow-Flow (includes Snow-Code)
+npm install -g snow-flow
 
-# Or with package managers
-npm i -g snowcode-ai@latest        # npm
-brew install groeimetai/tap/snowcode   # Homebrew (coming soon)
+# Initialize your project
+snow-flow init
 
-# Windows
-# Download from: https://github.com/groeimetai/snowcode/releases
+# Authenticate with ServiceNow (+ optional Jira/Azure/Confluence)
+snow-flow auth login
+
+# Start developing
+snow-flow swarm "create an incident dashboard widget"
 ```
 
-### First Launch
+That's it. You're now developing ServiceNow through conversation.
+
+---
+
+## Why Snow-Code?
+
+### vs ServiceNow Build Agent
+
+| | Snow-Code + Snow-Flow | ServiceNow Build Agent |
+|---|---|---|
+| **Price** | **Free** (open source) | $100-200/user/month + Pro Plus |
+| **AI Model** | **Any** - Claude, GPT-4, Gemini, Ollama | NowLLM only |
+| **Development** | **Local terminal/IDE** | Browser-based Studio |
+| **Enterprise Tools** | **Jira, Azure DevOps, Confluence** | ServiceNow only |
+| **Open Source** | **Yes** | No |
+
+### vs Generic AI IDEs
+
+| Feature | Snow-Code | Cursor/Windsurf/etc |
+|---------|----------|---------------------|
+| **ServiceNow MCP Tools** | 410+ built-in | None |
+| **ES5 Validation** | Rhino engine checks | Modern JS only |
+| **Update Set Workflow** | Automatic tracking | Manual |
+| **Widget Coherence** | HTML/Client/Server validation | No awareness |
+| **Enterprise Integrations** | Jira/Azure/Confluence | Not ServiceNow-specific |
+
+---
+
+## What You Get
+
+- **410+ MCP Tools** - Complete ServiceNow API coverage
+- **Any LLM Provider** - Claude, GPT-4, Gemini, Mistral, DeepSeek, or free Ollama
+- **ES5 Validation** - Catches Rhino engine errors before deployment
+- **Update Set Management** - Automatic change tracking
+- **Widget Coherence Checking** - Validates HTML ↔ Client ↔ Server communication
+- **Local Development** - Pull artifacts to local files, edit with native tools
+- **Enterprise Integrations** - Jira, Azure DevOps, Confluence
+
+---
+
+## How It Works
+
+Snow-Code uses the Model Context Protocol (MCP) to give AI direct access to ServiceNow:
 
 ```bash
-# Start SnowCode
-snowcode
+# Create widgets
+snow-flow swarm "create incident dashboard with priority charts"
 
-# SnowCode will automatically:
-# 1. Configure Snow-Flow MCP servers (350+ ServiceNow tools)
-# 2. Load ServiceNow best practices (CLAUDE.md)
-# 3. Set up ES5 validation for Rhino engine
+# Build automation
+snow-flow swarm "create business rule to auto-assign incidents by category"
+
+# Query data
+snow-flow swarm "show me all P1 incidents from last week"
+
+# Enterprise workflows (requires enterprise license)
+snow-flow swarm "sync this story from Jira and implement it"
 ```
 
----
-
-## 🏗️ The Complete Snow-Flow Suite
-
-SnowCode is part of a comprehensive ServiceNow development platform:
-
-| Component | Purpose | Target Users | Tools Available |
-|-----------|---------|--------------|-----------------|
-| **[Snow-Flow](https://github.com/groeimetai/snow-flow)** | MCP Framework | Individual developers | **350+ ServiceNow tools** |
-| **SnowCode** (This Project) | AI-Powered IDE | Development teams | All Snow-Flow + IDE features |
-| **Enterprise Edition** | External Integrations | Service integrators | +40 enterprise tools |
-
-### Open Source (Free)
-
-**Snow-Flow** provides 350+ MCP tools covering:
-- Core operations (query, CRUD, discovery)
-- Widget & UI Builder development
-- Update Set management
-- Flow Designer integration
-- Agent Workspace creation
-- Platform development (business rules, client scripts, etc.)
-- Automation & scripting
-- ML & predictive intelligence
-
-**SnowCode** adds:
-- Terminal-based AI coding assistant
-- Deep integration with Snow-Flow tools
-- ServiceNow-optimized UI/UX
-- ES5 syntax validation
-- Update Set workflow automation
-- Widget coherence checking
-
-### 💰 Pricing & Plans
-
-SnowCode is part of the Snow-Flow Suite with transparent 3-tier pricing:
-
-#### 🆓 Open Source (Free Forever)
-
-**Snow-Flow MCP Framework** - 350+ ServiceNow tools, self-hosted
-
-- ✅ All ServiceNow MCP tools
-- ✅ Use with any AI IDE (Claude Desktop, OpenCode, etc.)
-- ✅ Self-host locally
-- ✅ Community support
-
-**SnowCode IDE:** Use OpenCode (free, open source) + Snow-Flow
-
-#### 👤 Individual Plan - $99/month
-
-**Everything in Open Source + enterprise tools + managed SaaS**
-
-- ✅ **40+ Enterprise MCP Tools:**
-  - 🔷 Azure DevOps (10 tools) - work items, pipelines, PRs
-  - 🟦 Jira (8 tools) - backlog sync, issue tracking
-  - 📚 Confluence (8 tools) - documentation sync
-  - 🤖 ML & Analytics (15+ tools) - predictive intelligence
-- ✅ **Fully managed SaaS** - hosted on Google Cloud (europe-west4)
-- ✅ **Zero maintenance** - automatic updates
-- ✅ **Email support** - 24h response time
-- ✅ **99.9% SLA** - enterprise reliability
-
-**Perfect for:** Freelance consultants, solo practitioners
-
-#### 👥 Teams Plan - $79/user/month
-
-**Everything in Individual + team collaboration**
-
-- ✅ All Individual plan features
-- ✅ **Team Dashboard** - centralized license management
-- ✅ **Usage Analytics** - track team tool usage
-- ✅ **Priority Support** - 4h response time, Slack channel
-- ✅ **Volume Discount** - save 20% vs Individual
-
-**Minimum:** 3 users
-**Perfect for:** Development teams, agencies, consulting firms
-
-#### 🏢 Enterprise (Service Integrators)
-
-**Wholesale pricing for service integrators**
-
-- ✅ All Teams plan features
-- ✅ **White-Label Portal** - branded customer experience
-- ✅ **Wholesale Pricing** - $49/seat/month (50+ seats)
-- ✅ **Partner Margins** - resell at $69-79/seat, keep 40-75% margin
-- ✅ **24/7 Priority Support** - dedicated support team
-- ✅ **Custom Integrations** - build custom MCP tools
-- ✅ **SOC 2 / ISO 27001** - enterprise compliance ready
-
-**Minimum:** 25 seats
-**Perfect for:** Enterprise ServiceNow consulting firms and systems integrators
-
-**Contact:** [sales@snow-flow.dev](mailto:sales@snow-flow.dev)
+The AI:
+1. Creates an Update Set to track changes
+2. Builds the artifacts (widgets, business rules, etc.)
+3. Deploys to your ServiceNow instance
+4. Validates ES5 compliance and coherence
 
 ---
 
-### What is "Managed SaaS"?
+## Configuration
 
-**Self-Hosted (Open Source):**
-- You run MCP servers locally on your machine
-- You manage updates and configuration
-- No monthly cost, but requires technical setup
+### ServiceNow OAuth Setup
 
-**Managed SaaS (Paid Plans):**
-- Snow-Flow hosts MCP servers on Google Cloud
-- Zero server maintenance - we handle everything
-- Automatic updates with zero downtime
-- Just add license key - enterprise tools activate instantly
-
-**Example:** With Individual plan, you install SnowCode locally, add your license key to config, and enterprise MCP servers (Jira/Azure/Confluence) connect automatically to our cloud infrastructure. No server setup required!
-
----
-
-## 🎓 For Service Integrators
-
-### Why Service Integrators Choose SnowCode
-
-**1. Accelerate ServiceNow Projects**
-- Pre-configured with 350+ ServiceNow tools
-- AI agent handles repetitive coding tasks
-- Built-in best practices reduce review cycles
-- Update Set workflow automation
-
-**2. Consistent Delivery Quality**
-- ES5 validation prevents Rhino engine errors
-- Widget coherence checks ensure working UIs
-- Automatic Update Set tracking for all changes
-- ServiceNow-specific code generation
-
-**3. Team Productivity**
-- Onboard consultants faster (best practices built-in)
-- Reduce context switching (terminal-based workflow)
-- Knowledge retention through AI-powered guidance
-- Multi-project support with isolated environments
-
-**4. Client Billability**
-- Faster development = more projects delivered
-- Higher quality = fewer post-deployment issues
-- Better documentation = easier knowledge transfer
-- Enterprise integrations = unified backlog management
-
-**5. Enterprise Features**
-- White-label portal for your customers
-- Jira/Azure/Confluence integration for unified workflows
-- Client-specific licensing and customization
-- Priority support and training for your team
-
-### Typical Service Integrator Workflow
+1. In ServiceNow: **System OAuth → Application Registry → New**
+2. Create OAuth endpoint:
+   - **Redirect URL**: `http://localhost:3005/callback`
+   - **Refresh Token Lifespan**: `0` (unlimited)
+3. Add to `.env`:
 
 ```bash
-# 1. Consultant starts new ServiceNow project
-snowcode
-
-# 2. Agent automatically:
-#    - Creates Update Set for new feature
-#    - Pulls latest requirements from Jira/Azure
-#    - Generates ServiceNow artifacts (widgets, business rules, etc.)
-#    - Validates ES5 compliance
-#    - Tracks all changes in Update Set
-#    - Syncs status back to Jira/Azure
-
-# 3. Deploy with confidence
-#    - All changes tracked in Update Set
-#    - No manual field updates or forgotten artifacts
-#    - Ready for UAT/Production migration
+SNOW_INSTANCE=your-instance.service-now.com
+SNOW_CLIENT_ID=your-client-id
+SNOW_CLIENT_SECRET=your-client-secret
 ```
 
-### ROI for Service Integrators
+### LLM Provider
 
-**Without SnowCode:**
-- Manual Update Set tracking
-- ES5 syntax errors discovered in production
-- Consultants forget ServiceNow best practices
-- Jira/ServiceNow context switching overhead
-- Average feature: 8 hours development + 2 hours fixes
+```bash
+# Claude (recommended)
+DEFAULT_LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
 
-**With SnowCode + Enterprise:**
-- Automatic Update Set management
-- ES5 validation catches errors during development
-- Built-in best practices guidance
-- Unified backlog management (Jira/Azure → ServiceNow)
-- Average feature: 4 hours development + 0.5 hours fixes
+# Claude Pro/Max subscription (no API key)
+DEFAULT_LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=
+# Run: snow-flow auth login
 
-**Result: 40-50% faster delivery per consultant**
+# GPT-4
+DEFAULT_LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-...
 
----
-
-## 🛠️ Key Features
-
-### ServiceNow-Specific
-
-- **350+ MCP Tools**: Direct access to every ServiceNow API and operation
-- **ES5 Validation**: Real-time checks for Rhino engine compatibility
-- **Update Set Automation**: Automatic change tracking in Update Sets
-- **Widget Coherence**: Validates HTML/Client/Server script communication
-- **Local Artifact Sync**: Edit large widgets/pages locally without token limits
-- **Background Script Execution**: Test scripts with full output capture
-
-### AI Development
-
-- **Autonomous Agent**: AI handles multi-step ServiceNow development tasks
-- **Context-Aware**: Understands ServiceNow architecture and best practices
-- **Error Recovery**: Automatically fixes ES5 errors and validation issues
-- **Code Generation**: Creates production-ready ServiceNow code
-
-### Developer Experience
-
-- **Terminal-Based**: Fast, keyboard-driven workflow
-- **LSP Support**: Auto-completion for ServiceNow APIs
-- **Multi-Provider**: Works with Anthropic, OpenAI, Google, or local models
-- **Extensible**: Add custom MCP servers for your organization's tools
-
----
-
-## 📚 Documentation
-
-### Getting Started
-- [Installation Guide](./docs/installation.md)
-- [First Project Tutorial](./docs/tutorial.md)
-- [Configuration Reference](./docs/configuration.md)
-
-### ServiceNow Development
-- [Snow-Flow MCP Documentation](https://github.com/groeimetai/snow-flow#readme)
-- [ServiceNow Best Practices (CLAUDE.md)](https://github.com/groeimetai/snow-flow/blob/main/CLAUDE.md)
-- [Widget Development Guide](./docs/widgets.md)
-- [Update Set Workflow](./docs/update-sets.md)
-
-### Enterprise
-- [Enterprise Edition Overview](https://github.com/groeimetai/snow-flow#-enterprise-edition)
-- [Service Integrator Onboarding](./docs/service-integrators.md)
-- [White-Label Setup](./docs/white-label.md)
-- [License Key Activation](./docs/license-activation.md)
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! SnowCode is built on top of OpenCode and maintains compatibility with upstream.
-
-**Before contributing:**
-1. Read our [Contributing Guide](./CONTRIBUTING.md)
-2. Check existing [Issues](https://github.com/groeimetai/snowcode/issues)
-3. Join our [Discord Community](https://discord.gg/snowflow)
-
-**Areas we're actively developing:**
-- ServiceNow-specific UI improvements
-- Additional MCP server integrations
-- Performance optimizations for large instances
-- Mobile client support
-
----
-
-## 📦 Architecture
-
-SnowCode uses a client/server architecture:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         SnowCode CLI                        │
-│                    (Terminal Interface)                     │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    MCP Client Layer                         │
-│            (Manages MCP Server Connections)                 │
-└─────┬────────────────┬────────────────┬─────────────────────┘
-      │                │                │
-      ▼                ▼                ▼
-┌───────────┐  ┌──────────────┐  ┌────────────────┐
-│ Snow-Flow │  │ Enterprise   │  │  Custom MCP    │
-│ MCP (350) │  │  MCP (+40)   │  │  Servers       │
-└─────┬─────┘  └──────┬───────┘  └────────┬───────┘
-      │                │                   │
-      ▼                ▼                   ▼
-┌───────────────────────────────────────────────────────────┐
-│              ServiceNow Instance / APIs                   │
-└───────────────────────────────────────────────────────────┘
+# 100% Free - Ollama
+DEFAULT_LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+DEFAULT_OLLAMA_MODEL=llama3.3
 ```
 
-This architecture allows:
-- Remote execution (run on server, drive from mobile)
-- Multiple clients (CLI, web, mobile apps)
-- Extensible MCP servers (add your own tools)
-- Separation of concerns (UI ≠ Logic)
+---
+
+## Enterprise Features
+
+For teams needing external integrations:
+
+### Jira Integration
+- Bidirectional story/epic sync
+- JQL queries from AI
+- Automatic status updates
+- Full autonomous workflow
+
+### Azure DevOps Integration
+- Work item sync
+- Pipeline status
+- Pull request tracking
+
+### Confluence Integration
+- Documentation sync
+- Knowledge article generation
+
+**Pricing:** Starting at $99/month - [portal.snow-flow.dev](https://portal.snow-flow.dev)
 
 ---
 
-## 🔒 Security & Privacy
+## Commands
 
-- **Local-first**: Your code and data stay on your machine
-- **No telemetry**: We don't collect usage data (unless you explicitly opt-in)
-- **Open source**: Audit the entire codebase
-- **Encrypted connections**: All ServiceNow API calls use HTTPS
-- **Enterprise-ready**: SOC 2 / ISO 27001 compliance for Enterprise Edition
+```bash
+# Main workflow
+snow-flow init              # Initialize project
+snow-flow auth login        # Authenticate everything
+snow-flow swarm "task"      # Execute any ServiceNow task
 
----
-
-## 📄 License
-
-SnowCode is licensed under the MIT License. See [LICENSE](./LICENSE) for details.
-
-**Based on OpenCode** by [SST](https://github.com/sst/opencode) (MIT License).
+# Or launch the IDE directly
+snow-code                   # Start Snow-Code IDE
+```
 
 ---
 
-## 🌟 Why We Forked OpenCode
+## Architecture
 
-OpenCode is an excellent AI coding assistant with a strong foundation. We chose to fork it to:
+Snow-Code is part of the Snow-Flow platform:
 
-1. **ServiceNow Specialization**: Deep integration with ServiceNow APIs and workflows
-2. **MCP-First Design**: Built around Model Context Protocol for extensibility
-3. **Enterprise Features**: White-label capabilities for service integrators
-4. **Terminal Focus**: Optimized for professional ServiceNow developers
-5. **Community-Driven**: ServiceNow-specific improvements and best practices
-
-We maintain compatibility with upstream OpenCode and contribute improvements back to the community when applicable.
-
----
-
-## 📞 Support & Community
-
-- **Documentation**: [Snow-Flow Docs](https://github.com/groeimetai/snow-flow)
-- **Discord**: [Join our community](https://discord.gg/snowflow)
-- **Issues**: [GitHub Issues](https://github.com/groeimetai/snowcode/issues)
-- **Enterprise Sales**: sales@snow-flow.dev
-- **Twitter/X**: [@snowflow_dev](https://twitter.com/snowflow_dev)
-
----
-
-## 🚀 What's Next?
-
-**Roadmap (2025):**
-- [ ] Mobile client (iOS/Android) for remote development
-- [ ] Web-based UI for browser access
-- [ ] ServiceNow Studio integration
-- [ ] Advanced debugging tools (breakpoints, watches)
-- [ ] Team collaboration features
-- [ ] Additional enterprise integrations (GitHub, GitLab, Bitbucket)
-
-**Want to influence our roadmap?** Join our [Discord](https://discord.gg/snowflow) and share your feedback!
+```
+┌─────────────────────────────────────────────┐
+│              Snow-Code (IDE)                │
+│         Terminal-based AI assistant         │
+└─────────────────┬───────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────┐
+│            Snow-Flow (MCP Layer)            │
+│              410+ ServiceNow tools          │
+└─────────────────┬───────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────┐
+│     ServiceNow Instance + Enterprise APIs   │
+│     (Jira, Azure DevOps, Confluence)        │
+└─────────────────────────────────────────────┘
+```
 
 ---
 
-<p align="center">
-  <strong>Built with ❤️ for the ServiceNow community</strong><br>
-  <a href="https://github.com/groeimetai/snow-flow">Snow-Flow</a> •
-  <a href="https://github.com/groeimetai/snowcode">SnowCode</a> •
-  <a href="https://github.com/groeimetai/snow-flow#-enterprise-edition">Enterprise Edition</a>
-</p>
+## Requirements
+
+- **Node.js** 18+
+- **ServiceNow** instance with OAuth
+- **LLM Provider** - API key or Ollama
+
+---
+
+## Links
+
+- **Snow-Flow** (MCP framework): [github.com/groeimetai/snow-flow](https://github.com/groeimetai/snow-flow)
+- **npm**: [npmjs.com/package/snow-flow](https://www.npmjs.com/package/snow-flow)
+- **Enterprise Portal**: [portal.snow-flow.dev](https://portal.snow-flow.dev)
+- **Issues**: [GitHub Issues](https://github.com/groeimetai/snow-code/issues)
+
+---
+
+## License
+
+MIT License - Based on [OpenCode](https://github.com/sst/opencode).
+
+---
+
+**Snow-Code** - The AI-powered ServiceNow IDE. Built by developers, for developers.
+
+```bash
+npm install -g snow-flow && snow-flow init && snow-flow auth login && snow-flow swarm "hello servicenow"
+```
