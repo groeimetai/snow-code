@@ -1,4 +1,4 @@
-# Agent Guidelines for @opencode/app
+# Agent Guidelines for @snowcode/app
 
 ## Build/Test Commands
 

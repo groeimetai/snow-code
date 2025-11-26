@@ -1,3 +1,19 @@
+<p align="center">
+  <picture>
+    <img src="packages/console/app/src/asset/logo-ornate-light.svg" alt="SnowCode logo" width="300">
+  </picture>
+</p>
+
+<h1 align="center">Snow-Code</h1>
+<h3 align="center">AI-Powered ServiceNow Development IDE</h3>
+<p align="center"><strong>Part of the Snow-Flow Enterprise Suite</strong></p>
+
+<p align="center">
+  <a href="https://github.com/groeimetai/snow-code"><img alt="GitHub" src="https://img.shields.io/github/stars/groeimetai/snow-flow?style=flat-square" /></a>
+  <a href="https://github.com/groeimetai/snow-flow"><img alt="Snow-Flow" src="https://img.shields.io/badge/snow--flow-350%2B%20tools-blue?style=flat-square" /></a>
+  <a href="#enterprise-edition"><img alt="Enterprise" src="https://img.shields.io/badge/enterprise-available-green?style=flat-square" /></a>
+</p>
+
 # Snow-Code
 
 **AI-Powered ServiceNow Development IDE**
@@ -22,7 +38,7 @@ snow-flow init
 snow-flow auth login
 
 # Start developing
-snow-flow swarm "create an incident dashboard widget"
+snow-flow agent "create an incident dashboard widget"
 ```
 
 That's it. You're now developing ServiceNow through conversation.
@@ -71,16 +87,16 @@ Snow-Code uses the Model Context Protocol (MCP) to give AI direct access to Serv
 
 ```bash
 # Create widgets
-snow-flow swarm "create incident dashboard with priority charts"
+snow-flow agent "create incident dashboard with priority charts"
 
 # Build automation
-snow-flow swarm "create business rule to auto-assign incidents by category"
+snow-flow agent "create business rule to auto-assign incidents by category"
 
 # Query data
-snow-flow swarm "show me all P1 incidents from last week"
+snow-flow agent "show me all P1 incidents from last week"
 
 # Enterprise workflows (requires enterprise license)
-snow-flow swarm "sync this story from Jira and implement it"
+snow-flow agent "sync this story from Jira and implement it"
 ```
 
 The AI:
@@ -160,7 +176,7 @@ For teams needing external integrations:
 # Main workflow
 snow-flow init              # Initialize project
 snow-flow auth login        # Authenticate everything
-snow-flow swarm "task"      # Execute any ServiceNow task
+snow-flow agent "task"      # Execute any ServiceNow task
 
 # Or launch the IDE directly
 snow-code                   # Start Snow-Code IDE
@@ -219,5 +235,5 @@ MIT License - Based on [OpenCode](https://github.com/sst/opencode).
 **Snow-Code** - The AI-powered ServiceNow IDE. Built by developers, for developers.
 
 ```bash
-npm install -g snow-flow && snow-flow init && snow-flow auth login && snow-flow swarm "hello servicenow"
+npm install -g snow-flow && snow-flow init && snow-flow auth login && snow-flow agent "hello servicenow"
 ```
