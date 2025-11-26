@@ -186,9 +186,25 @@ export function Part(props: PartProps) {
             <Spacer />
           </div>
         )}
+        {/* Handle MCP tool semantic failures (success: false in output) */}
         {props.part.type === "tool" &&
           props.part.state.status === "completed" &&
-          props.message.role === "assistant" && (
+          props.message.role === "assistant" &&
+          isToolOutputFailure(props.part.state.output) && (
+            <div data-component="tool" data-tool="error">
+              <div data-component="tool-title">
+                <span data-slot="name">{props.part.tool}</span>
+              </div>
+              <ContentError>
+                {formatErrorString(getToolOutputError(props.part.state.output) || "Operation failed")}
+              </ContentError>
+              <Spacer />
+            </div>
+          )}
+        {props.part.type === "tool" &&
+          props.part.state.status === "completed" &&
+          props.message.role === "assistant" &&
+          !isToolOutputFailure(props.part.state.output) && (
             <>
               <div data-component="tool" data-tool={props.part.tool}>
                 <Switch>
@@ -382,6 +398,36 @@ function formatErrorString(error: string): JSX.Element {
       <span data-color="dimmed">{error}</span>
     </pre>
   )
+}
+
+/**
+ * Check if MCP tool output indicates a failure (success: false in JSON response)
+ * This helps distinguish between invocation success and semantic failure
+ */
+function isToolOutputFailure(output: string | undefined): boolean {
+  if (!output) return false
+  try {
+    const parsed = JSON.parse(output)
+    return parsed && typeof parsed === "object" && parsed.success === false
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Extract error message from MCP tool output when success: false
+ */
+function getToolOutputError(output: string | undefined): string | undefined {
+  if (!output) return undefined
+  try {
+    const parsed = JSON.parse(output)
+    if (parsed && typeof parsed === "object" && parsed.success === false) {
+      return parsed.error || parsed.message || "Operation failed"
+    }
+  } catch {
+    // Not JSON, ignore
+  }
+  return undefined
 }
 
 export function TodoWriteTool(props: ToolProps) {

@@ -157,19 +157,41 @@ export namespace ACP {
                 })
               break
             case "completed":
+              // Check if MCP tool output indicates a semantic failure (success: false)
+              const isSemanticFailure = (() => {
+                try {
+                  const parsed = JSON.parse(part.state.output)
+                  return parsed && typeof parsed === "object" && parsed.success === false
+                } catch {
+                  return false
+                }
+              })()
+
+              // Extract error message from semantic failure if present
+              const semanticError = (() => {
+                if (!isSemanticFailure) return undefined
+                try {
+                  const parsed = JSON.parse(part.state.output)
+                  return parsed.error || parsed.message || "Operation failed"
+                } catch {
+                  return "Operation failed"
+                }
+              })()
+
               await this.connection
                 .sessionUpdate({
                   sessionId: acpSession.id,
                   update: {
                     sessionUpdate: "tool_call_update",
                     toolCallId: part.callID,
-                    status: "completed",
+                    // Report as "failed" when MCP tool returns success: false
+                    status: isSemanticFailure ? "failed" : "completed",
                     content: [
                       {
                         type: "content",
                         content: {
                           type: "text",
-                          text: part.state.output,
+                          text: isSemanticFailure ? semanticError : part.state.output,
                         },
                       },
                     ],
@@ -177,6 +199,7 @@ export namespace ACP {
                     rawOutput: {
                       output: part.state.output,
                       metadata: part.state.metadata,
+                      ...(isSemanticFailure && { semanticError }),
                     },
                   },
                 })
