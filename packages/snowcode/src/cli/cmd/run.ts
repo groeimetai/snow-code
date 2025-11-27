@@ -323,8 +323,15 @@ export const RunCommand = cmd({
             process.stdout.write('\x1b[J') // Clear from cursor to end
           }
 
-          // Print final event header if not already printed
-          if (!streamingOutputs.has(part.callID)) {
+          // If semantic failure, we need to reprint the header with red color
+          // by going back up one line and overwriting it
+          if (isSemanticFailure && streamingOutputs.has(part.callID)) {
+            process.stdout.write('\x1b[1A') // Move cursor up one line (to the header)
+            process.stdout.write('\x1b[2K') // Clear the entire line
+            process.stdout.write('\r') // Move to start of line
+            printEvent(color, tool, title)
+          } else if (!streamingOutputs.has(part.callID)) {
+            // Print final event header if not already printed
             printEvent(color, tool, title)
           }
 
