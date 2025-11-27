@@ -297,19 +297,7 @@ export const RunCommand = cmd({
         if (part.type === "tool" && part.state.status === "completed") {
           if (outputJsonEvent("tool_use", { part })) return
 
-          // Check if MCP tool output indicates a semantic failure (success: false)
-          const isSemanticFailure = (() => {
-            try {
-              const parsed = JSON.parse(part.state.output)
-              return parsed && typeof parsed === "object" && parsed.success === false
-            } catch {
-              return false
-            }
-          })()
-
-          const [tool, defaultColor] = TOOL[part.tool] ?? [part.tool, UI.Style.TEXT_INFO_BOLD]
-          // Use error color (red) for semantic failures, default color otherwise
-          const color = isSemanticFailure ? UI.Style.TEXT_DANGER_BOLD : defaultColor
+          const [tool, color] = TOOL[part.tool] ?? [part.tool, UI.Style.TEXT_INFO_BOLD]
           const title =
             part.state.title ||
             (Object.keys(part.state.input).length > 0
@@ -323,15 +311,8 @@ export const RunCommand = cmd({
             process.stdout.write('\x1b[J') // Clear from cursor to end
           }
 
-          // If semantic failure, we need to reprint the header with red color
-          // by going back up one line and overwriting it
-          if (isSemanticFailure && streamingOutputs.has(part.callID)) {
-            process.stdout.write('\x1b[1A') // Move cursor up one line (to the header)
-            process.stdout.write('\x1b[2K') // Clear the entire line
-            process.stdout.write('\r') // Move to start of line
-            printEvent(color, tool, title)
-          } else if (!streamingOutputs.has(part.callID)) {
-            // Print final event header if not already printed
+          // Print final event header if not already printed
+          if (!streamingOutputs.has(part.callID)) {
             printEvent(color, tool, title)
           }
 
