@@ -429,6 +429,45 @@ async function updateDocumentationWithEnterprise(enabledServices?: string[]): Pr
   }
 }
 
+/**
+ * Replace CLAUDE.md and AGENTS.md with stakeholder-specific read-only documentation
+ * This completely replaces the files (not appends) for stakeholder role users
+ * Must be called BEFORE updateDocumentationWithEnterprise() when role is 'stakeholder'
+ *
+ * @param role - User role from enterprise authentication
+ */
+async function replaceDocumentationForStakeholder(role: string): Promise<void> {
+  if (role !== 'stakeholder') {
+    return // Only replace for stakeholder role
+  }
+
+  try {
+    const projectRoot = process.cwd()
+    const claudeMdPath = path.join(projectRoot, "CLAUDE.md")
+    const agentsMdPath = path.join(projectRoot, "AGENTS.md")
+
+    // Import the stakeholder documentation generator (single comprehensive function for both files)
+    const { generateStakeholderDocumentation } = await import("./enterprise-docs-generator.js")
+
+    // Generate stakeholder-specific documentation (same content for both files)
+    const stakeholderDocs = generateStakeholderDocumentation()
+
+    // Completely replace CLAUDE.md with stakeholder version
+    await Bun.write(claudeMdPath, stakeholderDocs)
+    prompts.log.success("📖 CLAUDE.md replaced with stakeholder read-only documentation")
+
+    // Completely replace AGENTS.md with stakeholder version (same content)
+    await Bun.write(agentsMdPath, stakeholderDocs)
+    prompts.log.success("📖 AGENTS.md replaced with stakeholder read-only documentation")
+
+    prompts.log.info("🔒 Stakeholder documentation configured - READ-ONLY access enabled")
+
+  } catch (error: any) {
+    prompts.log.info(`Failed to replace stakeholder documentation: ${error.message}`)
+    // Don't throw - this is not critical
+  }
+}
+
 export const AuthCommand = cmd({
   command: "auth",
   describe: "manage credentials",
@@ -1674,6 +1713,8 @@ export const AuthLoginCommand = cmd({
               }
               if (azureOrg && azurePat) enabledServices.push('azdo')
 
+              // For stakeholders, replace documentation with read-only version BEFORE adding enterprise features
+              await replaceDocumentationForStakeholder(role)
               await updateDocumentationWithEnterprise(enabledServices)
             }
           } catch (error: any) {
@@ -2763,6 +2804,9 @@ export const AuthLoginCommand = cmd({
                 const enabledServices2: string[] = []
                 if (enterpriseJiraBaseUrl && enterpriseAtlassianEmail && enterpriseAtlassianApiToken) enabledServices2.push('jira')
                 // Note: Azure DevOps and Confluence not available in this flow
+
+                // For stakeholders, replace documentation with read-only version BEFORE adding enterprise features
+                await replaceDocumentationForStakeholder(enterpriseRole)
                 await updateDocumentationWithEnterprise(enabledServices2)
               }
             } catch (error: any) {
@@ -3313,6 +3357,10 @@ export const AuthLoginCommand = cmd({
                 if (azureOrg && azurePat) enabledServices3.push('azdo')
                 if (confluenceUrl && atlassianEmail && atlassianApiToken) enabledServices3.push('confluence')
 
+                // For stakeholders, replace documentation with read-only version BEFORE adding enterprise features
+                // Use role from JWT data if available, otherwise default to "developer"
+                const userRole = jwtData?.role || "developer"
+                await replaceDocumentationForStakeholder(userRole)
                 await updateDocumentationWithEnterprise(enabledServices3)
               }
             } catch (error: any) {
