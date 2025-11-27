@@ -822,10 +822,35 @@ func getTodoTitle(toolCall opencode.ToolPart) string {
 	return "Plan"
 }
 
-func renderStatusIndicator(status opencode.ToolPartStateStatus) string {
+// isSemanticFailure checks if a tool output contains success: false
+// indicating the operation failed even though the tool call completed
+func isSemanticFailure(output string) bool {
+	if output == "" {
+		return false
+	}
+	// Try to parse as JSON and check for success: false
+	var result map[string]any
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		return false
+	}
+	if success, ok := result["success"]; ok {
+		if successBool, ok := success.(bool); ok && !successBool {
+			return true
+		}
+	}
+	return false
+}
+
+func renderStatusIndicator(status opencode.ToolPartStateStatus, output string) string {
 	// Unicode filled circle (●) for status indicator
 	indicator := "●"
 	t := theme.CurrentTheme()
+
+	// Check for semantic failure (success: false in output)
+	if status == opencode.ToolPartStateStatusCompleted && isSemanticFailure(output) {
+		// Red for semantic failure
+		return styles.NewStyle().Foreground(t.Error()).Render(indicator)
+	}
 
 	switch status {
 	case opencode.ToolPartStateStatusPending, opencode.ToolPartStateStatusRunning:
@@ -856,7 +881,7 @@ func renderToolTitle(
 	width int,
 ) string {
 	// Add status indicator at the beginning
-	statusIndicator := renderStatusIndicator(toolCall.State.Status)
+	statusIndicator := renderStatusIndicator(toolCall.State.Status, toolCall.State.Output)
 	if toolCall.State.Status == opencode.ToolPartStateStatusPending {
 		title := renderToolAction(toolCall.Tool)
 		t := theme.CurrentTheme()
