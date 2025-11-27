@@ -253,19 +253,14 @@ export const RunCommand = cmd({
         // Handle tool running state - show streaming output like Claude Code
         if (part.type === "tool" && part.state.status === "running") {
           const [tool, color] = TOOL[part.tool] ?? [part.tool, UI.Style.TEXT_INFO_BOLD]
-          const isMcpTool = !TOOL[part.tool] // MCP tools are not in the TOOL list
 
           // Only print the event header once when the tool starts
-          // But for MCP tools, defer printing until completion so we can show correct color
           if (!streamingOutputs.has(part.callID)) {
             const title =
               part.state.title ||
               (Object.keys(part.state.input).length > 0 ? JSON.stringify(part.state.input) : "Unknown")
-            if (!isMcpTool) {
-              // Built-in tools: print header immediately
-              printEvent(color, tool, title)
-            }
-            streamingOutputs.set(part.callID, { lastOutput: "", linesPrinted: 0, isMcpTool })
+            printEvent(color, tool, title)
+            streamingOutputs.set(part.callID, { lastOutput: "", linesPrinted: 0 })
           }
 
           // Stream output for tools that should show it
@@ -328,11 +323,15 @@ export const RunCommand = cmd({
             process.stdout.write('\x1b[J') // Clear from cursor to end
           }
 
-          // For MCP tools, we deferred printing the header until now so we can show correct color
-          // For built-in tools, header was already printed during running state
-          const isMcpTool = tracker?.isMcpTool ?? !TOOL[part.tool]
-          if (isMcpTool || !streamingOutputs.has(part.callID)) {
-            // Print header with correct color (red for failures, default otherwise)
+          // If semantic failure, we need to reprint the header with red color
+          // by going back up one line and overwriting it
+          if (isSemanticFailure && streamingOutputs.has(part.callID)) {
+            process.stdout.write('\x1b[1A') // Move cursor up one line (to the header)
+            process.stdout.write('\x1b[2K') // Clear the entire line
+            process.stdout.write('\r') // Move to start of line
+            printEvent(color, tool, title)
+          } else if (!streamingOutputs.has(part.callID)) {
+            // Print final event header if not already printed
             printEvent(color, tool, title)
           }
 
