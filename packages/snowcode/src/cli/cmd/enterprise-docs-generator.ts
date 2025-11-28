@@ -561,7 +561,7 @@ export function generateEnterpriseInstructions(enabledServices: string[]): strin
 
 /**
  * Generate Activity Tracking Instructions
- * These instruct the agent to report activity to the enterprise dashboard
+ * These instruct the agent to report activity to the enterprise dashboard using MCP tools
  */
 function generateActivityTrackingInstructions(): string {
   return `## 📊 ACTIVITY DASHBOARD TRACKING (MANDATORY!)
@@ -570,100 +570,74 @@ function generateActivityTrackingInstructions(): string {
 
 **Every story or request you work on MUST be tracked** in the Snow-Flow Enterprise dashboard. This provides visibility for stakeholders and non-technical users who want to see what the agent is accomplishing.
 
+**You have 4 MCP tools for activity tracking:**
+- \`activity_start\` - Start tracking when beginning work
+- \`activity_update\` - Update progress during work
+- \`activity_complete\` - Mark as completed with summary
+- \`activity_add_artifact\` - Record artifacts you create
+
 ---
 
 ### 🚀 WHEN STARTING WORK
 
-**Before you begin ANY story, task, or request** from Jira, Azure DevOps, or a user request, you MUST call the activity tracking endpoint:
+**Before you begin ANY story, task, or request** from Jira, Azure DevOps, or a user request, you MUST call \`activity_start\`:
 
 \`\`\`javascript
-// Generate a unique activity ID
-var activityId = crypto.randomUUID(); // Store this for later use!
-
-// Report activity start
-await fetch('https://portal.snow-flow.dev/api/agent/activity/start', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'X-License-Key': process.env.SNOW_FLOW_LICENSE_KEY
-  },
-  body: JSON.stringify({
-    activityId: activityId,
-    source: 'jira',  // or 'azure-devops', 'manual', 'request'
-    storyId: 'PROJ-123',  // External story ID (if applicable)
-    storyTitle: 'Implement feature X',  // Always provide a clear title
-    storyUrl: 'https://jira.company.com/browse/PROJ-123',  // Link to source
-    storyType: 'story',  // 'story', 'bug', 'task', 'feature', 'request', 'other'
-    agentVersion: 'snow-flow-3.4.10'
-  })
+// Start tracking activity
+const result = await activity_start({
+  source: 'jira',  // 'jira', 'azure-devops', 'confluence', 'manual', or 'request'
+  storyId: 'PROJ-123',  // External story ID (optional for manual requests)
+  storyTitle: 'Implement feature X',  // Always provide a clear title
+  storyUrl: 'https://jira.company.com/browse/PROJ-123',  // Link to source (optional)
+  storyType: 'story'  // 'story', 'bug', 'task', 'feature', 'request', or 'other'
 });
+
+// IMPORTANT: Store the activityId for later use!
+const activityId = result.activityId;
 \`\`\`
 
 ### ✅ WHEN COMPLETING WORK
 
-**When you finish a story/request** (successfully or with failure), report the completion:
+**When you finish a story/request successfully**, call \`activity_complete\`:
 
 \`\`\`javascript
 // Report successful completion
-await fetch('https://portal.snow-flow.dev/api/agent/activity/complete', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'X-License-Key': process.env.SNOW_FLOW_LICENSE_KEY
-  },
-  body: JSON.stringify({
-    activityId: activityId,  // Same ID from start
-    summary: 'Created Business Rule for auto-assignment. Created Script Include for validation. All 5 acceptance criteria met.',
-    metadata: {
-      updateSetName: 'Feature: Auto-Assignment',
-      updateSetSysId: 'abc123...',
-      artifactsCreated: [
-        { type: 'business_rule', name: 'Auto Assign Incident', sysId: 'br123' },
-        { type: 'script_include', name: 'IncidentValidator', sysId: 'si456' }
-      ],
-      acceptanceCriteria: {
-        total: 5,
-        passed: 5
-      },
-      testResults: 'All tests passed'
-    }
-  })
+await activity_complete({
+  activityId: activityId,  // The ID from activity_start
+  summary: 'Created Business Rule for auto-assignment. Created Script Include for validation. All 5 acceptance criteria met.',
+  metadata: {
+    updateSetName: 'Feature: Auto-Assignment',
+    artifactsCreated: 3,
+    acceptanceCriteria: { total: 5, passed: 5 },
+    testResults: 'All tests passed'
+  }
 });
+\`\`\`
 
-// Or report failure
-await fetch('https://portal.snow-flow.dev/api/agent/activity/update', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'X-License-Key': process.env.SNOW_FLOW_LICENSE_KEY
-  },
-  body: JSON.stringify({
-    activityId: activityId,
-    status: 'failed',
-    errorMessage: 'Could not complete: Missing access to cmdb_ci table',
-    summary: 'Failed during CMDB integration step'
-  })
+**If work fails**, call \`activity_update\` with failed status:
+
+\`\`\`javascript
+// Report failure
+await activity_update({
+  activityId: activityId,
+  status: 'failed',
+  errorMessage: 'Could not complete: Missing access to cmdb_ci table',
+  summary: 'Failed during CMDB integration step'
 });
 \`\`\`
 
 ### 🔧 REPORTING ARTIFACTS
 
-**When you create artifacts** (business rules, widgets, scripts, etc.), report them:
+**When you create artifacts** (business rules, widgets, scripts, etc.), report each one:
 
 \`\`\`javascript
-await fetch('https://portal.snow-flow.dev/api/agent/activity/artifact', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'X-License-Key': process.env.SNOW_FLOW_LICENSE_KEY
-  },
-  body: JSON.stringify({
-    activityId: activityId,
-    artifactType: 'business_rule',
-    artifactName: 'Auto Assign Incident',
-    artifactSysId: 'br_sys_id_123',
-    artifactUrl: 'https://dev12345.service-now.com/sys_script.do?sys_id=br_sys_id_123'
-  })
+// Report each artifact created
+await activity_add_artifact({
+  activityId: activityId,
+  artifactType: 'business_rule',  // 'business_rule', 'script_include', 'widget', 'client_script', 'ui_action', 'update_set', etc.
+  artifactName: 'Auto Assign Incident',
+  artifactSysId: 'br_sys_id_123',  // Optional ServiceNow sys_id
+  artifactUrl: 'https://dev12345.service-now.com/sys_script.do?sys_id=br_sys_id_123'  // Optional direct link
 });
 \`\`\`
 
@@ -671,12 +645,13 @@ await fetch('https://portal.snow-flow.dev/api/agent/activity/artifact', {
 
 ### 📋 ACTIVITY TRACKING CHECKLIST
 
-| When | Action | Required Fields |
-|------|--------|-----------------|
-| **Start of work** | POST /api/agent/activity/start | activityId, source, storyTitle |
-| **After each artifact** | POST /api/agent/activity/artifact | activityId, artifactType, artifactName |
-| **Completion** | POST /api/agent/activity/complete | activityId, summary |
-| **Failure** | POST /api/agent/activity/update | activityId, status='failed', errorMessage |
+| When | MCP Tool | Required Fields |
+|------|----------|-----------------|
+| **Start of work** | \`activity_start\` | source, storyTitle |
+| **After each artifact** | \`activity_add_artifact\` | activityId, artifactType, artifactName |
+| **Progress update** | \`activity_update\` | activityId, (status, summary) |
+| **Successful completion** | \`activity_complete\` | activityId, summary |
+| **Failure** | \`activity_update\` | activityId, status='failed', errorMessage |
 
 ### ⚠️ IMPORTANT RULES
 
