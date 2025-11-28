@@ -533,6 +533,9 @@ export function generateEnterpriseInstructions(enabledServices: string[]): strin
   instructions += `**YOU HAVE ACCESS TO ENTERPRISE TOOLS:** ${enabledServices.map(s => s.toUpperCase()).join(', ')}\n\n`;
   instructions += `This is not just about fetching data - you have **FULL AUTONOMY** to manage the entire development lifecycle across platforms.\n\n`;
 
+  // Add Activity Tracking instructions (ALWAYS for enterprise users)
+  instructions += generateActivityTrackingInstructions();
+
   // Add Jira instructions
   if (hasJira) {
     instructions += generateJiraInstructions();
@@ -555,6 +558,152 @@ export function generateEnterpriseInstructions(enabledServices: string[]): strin
 
   return instructions;
 }
+
+/**
+ * Generate Activity Tracking Instructions
+ * These instruct the agent to report activity to the enterprise dashboard
+ */
+function generateActivityTrackingInstructions(): string {
+  return `## 📊 ACTIVITY DASHBOARD TRACKING (MANDATORY!)
+
+### CRITICAL: Report All Story/Request Work to Dashboard
+
+**Every story or request you work on MUST be tracked** in the Snow-Flow Enterprise dashboard. This provides visibility for stakeholders and non-technical users who want to see what the agent is accomplishing.
+
+---
+
+### 🚀 WHEN STARTING WORK
+
+**Before you begin ANY story, task, or request** from Jira, Azure DevOps, or a user request, you MUST call the activity tracking endpoint:
+
+\`\`\`javascript
+// Generate a unique activity ID
+var activityId = crypto.randomUUID(); // Store this for later use!
+
+// Report activity start
+await fetch('https://portal.snow-flow.dev/api/agent/activity/start', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-License-Key': process.env.SNOW_FLOW_LICENSE_KEY
+  },
+  body: JSON.stringify({
+    activityId: activityId,
+    source: 'jira',  // or 'azure-devops', 'manual', 'request'
+    storyId: 'PROJ-123',  // External story ID (if applicable)
+    storyTitle: 'Implement feature X',  // Always provide a clear title
+    storyUrl: 'https://jira.company.com/browse/PROJ-123',  // Link to source
+    storyType: 'story',  // 'story', 'bug', 'task', 'feature', 'request', 'other'
+    agentVersion: 'snow-flow-3.4.10'
+  })
+});
+\`\`\`
+
+### ✅ WHEN COMPLETING WORK
+
+**When you finish a story/request** (successfully or with failure), report the completion:
+
+\`\`\`javascript
+// Report successful completion
+await fetch('https://portal.snow-flow.dev/api/agent/activity/complete', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-License-Key': process.env.SNOW_FLOW_LICENSE_KEY
+  },
+  body: JSON.stringify({
+    activityId: activityId,  // Same ID from start
+    summary: 'Created Business Rule for auto-assignment. Created Script Include for validation. All 5 acceptance criteria met.',
+    metadata: {
+      updateSetName: 'Feature: Auto-Assignment',
+      updateSetSysId: 'abc123...',
+      artifactsCreated: [
+        { type: 'business_rule', name: 'Auto Assign Incident', sysId: 'br123' },
+        { type: 'script_include', name: 'IncidentValidator', sysId: 'si456' }
+      ],
+      acceptanceCriteria: {
+        total: 5,
+        passed: 5
+      },
+      testResults: 'All tests passed'
+    }
+  })
+});
+
+// Or report failure
+await fetch('https://portal.snow-flow.dev/api/agent/activity/update', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-License-Key': process.env.SNOW_FLOW_LICENSE_KEY
+  },
+  body: JSON.stringify({
+    activityId: activityId,
+    status: 'failed',
+    errorMessage: 'Could not complete: Missing access to cmdb_ci table',
+    summary: 'Failed during CMDB integration step'
+  })
+});
+\`\`\`
+
+### 🔧 REPORTING ARTIFACTS
+
+**When you create artifacts** (business rules, widgets, scripts, etc.), report them:
+
+\`\`\`javascript
+await fetch('https://portal.snow-flow.dev/api/agent/activity/artifact', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-License-Key': process.env.SNOW_FLOW_LICENSE_KEY
+  },
+  body: JSON.stringify({
+    activityId: activityId,
+    artifactType: 'business_rule',
+    artifactName: 'Auto Assign Incident',
+    artifactSysId: 'br_sys_id_123',
+    artifactUrl: 'https://dev12345.service-now.com/sys_script.do?sys_id=br_sys_id_123'
+  })
+});
+\`\`\`
+
+---
+
+### 📋 ACTIVITY TRACKING CHECKLIST
+
+| When | Action | Required Fields |
+|------|--------|-----------------|
+| **Start of work** | POST /api/agent/activity/start | activityId, source, storyTitle |
+| **After each artifact** | POST /api/agent/activity/artifact | activityId, artifactType, artifactName |
+| **Completion** | POST /api/agent/activity/complete | activityId, summary |
+| **Failure** | POST /api/agent/activity/update | activityId, status='failed', errorMessage |
+
+### ⚠️ IMPORTANT RULES
+
+1. **ALWAYS generate a UUID** at the start and use it throughout
+2. **ALWAYS report start** before doing any work
+3. **ALWAYS report completion** when done (success or failure)
+4. **Include meaningful summaries** - stakeholders read these!
+5. **Include metadata** when available (update sets, artifacts, test results)
+6. **Use correct source** - 'jira', 'azure-devops', 'manual' (user typed request), or 'request'
+
+### 💡 SOURCE TYPES
+
+| Source | When to Use |
+|--------|-------------|
+| \`jira\` | Story from Jira integration |
+| \`azure-devops\` | Work item from Azure DevOps |
+| \`confluence\` | Documentation task from Confluence |
+| \`manual\` | User typed a specific request in chat |
+| \`request\` | User asked for help/feature without formal story |
+
+---
+
+**Remember: This tracking makes your work VISIBLE to the entire organization. Non-technical stakeholders can see what's being accomplished without needing to understand the code!**
+
+`;
+}
+
 
 function generateJiraInstructions(): string {
   return `## 🎯 JIRA - AUTONOMOUS STORY MANAGEMENT
