@@ -410,7 +410,6 @@ async function updateDocumentationWithEnterprise(enabledServices?: string[]): Pr
             content.slice(0, insertionPoint) + enterpriseDocSection + "\n\n" + content.slice(insertionPoint)
 
           await Bun.write(filePath, updatedContent)
-          prompts.log.success(`Updated ${fileName} with comprehensive enterprise workflow documentation`)
         }
       } catch (err: any) {
         if (err.code !== "ENOENT") {
@@ -1625,24 +1624,19 @@ export const AuthLoginCommand = cmd({
               prompts.log.warn(`License validation failed: ${validation.error}`)
               prompts.log.info("Continuing with local configuration only")
             } else {
-              validationSpinner.stop("✅ License validated successfully")
+              validationSpinner.stop("License validated")
 
-              // 🔥 CRITICAL FIX: Generate JWT token before configuring MCP server
-              // The enterprise MCP server expects a JWT, NOT a plain text license key!
-              prompts.log.step("Generating enterprise JWT token...")
-
-              // Generate machine ID for seat tracking (same as snow-flow)
+              // Generate JWT token for MCP authentication
               const crypto = await import("crypto")
               const machineId = crypto.createHash("sha256").update(os.hostname()).digest("hex")
 
-              // Call portal server to generate JWT
               const jwtResponse = await fetch(`${licenseServerUrl}/api/auth/mcp/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   licenseKey,
                   machineId,
-                  role: "developer", // Default role for CLI users
+                  role: "developer",
                 }),
               })
 
@@ -1657,12 +1651,10 @@ export const AuthLoginCommand = cmd({
               }
 
               const jwtToken = jwtData.token
-              prompts.log.success(`✅ JWT token generated (role: developer)`)
 
-              // Configure enterprise MCP server with JWT token (NOT plain text license key!)
-              // Always use enterprise MCP server, not portal
+              // Configure enterprise MCP server with JWT token
               await addEnterpriseMcpServer({
-                licenseKey: jwtToken, // ← CRITICAL: Use JWT token, not plain text!
+                licenseKey: jwtToken,
                 serverUrl: mcpServerUrl,
                 credentials: {
                   atlassian: atlassianEmail && atlassianApiToken
@@ -1679,8 +1671,6 @@ export const AuthLoginCommand = cmd({
                     : undefined,
                 },
               })
-
-              prompts.log.success("✅ Enterprise MCP server configured")
 
               // Update documentation with enterprise features
               // Determine which services are enabled based on provided credentials
@@ -1706,9 +1696,6 @@ export const AuthLoginCommand = cmd({
             prompts.log.info("Local configuration saved, but enterprise validation skipped")
           }
 
-          prompts.log.message("")
-          prompts.log.success("Enterprise configuration saved")
-          prompts.log.info("Credentials saved to .env file")
           prompts.log.message("")
           prompts.log.success("✅ Authentication complete!")
           prompts.log.message("")
@@ -2652,7 +2639,7 @@ export const AuthLoginCommand = cmd({
 
             // Optional integrations
             const configureJira = await prompts.confirm({
-              message: "Configure optional integrations (Jira, Azure DevOps)?",
+              message: "Configure optional integrations (Jira, Azure DevOps, Confluence)?",
               initialValue: false,
             })
 
@@ -2720,11 +2707,9 @@ export const AuthLoginCommand = cmd({
                 prompts.log.warn(`License validation failed: ${validation.error}`)
                 prompts.log.info("Continuing with local configuration only")
               } else {
-                validationSpinner.stop("✅ License validated successfully")
+                validationSpinner.stop("License validated")
 
-                // 🔥 Generate JWT token for MCP authentication
-                prompts.log.step("Generating enterprise JWT token...")
-
+                // Generate JWT token for MCP authentication
                 const crypto = await import("crypto")
                 const machineId = crypto.createHash("sha256").update(os.hostname()).digest("hex")
 
@@ -2744,12 +2729,10 @@ export const AuthLoginCommand = cmd({
 
                 const jwtData: any = await jwtResponse.json()
                 const jwtToken = jwtData.token
-                prompts.log.success(`✅ JWT token generated`)
 
                 // Configure enterprise MCP server with validated credentials
-                // Always use enterprise MCP server
                 await addEnterpriseMcpServer({
-                  licenseKey: jwtToken, // ← Use JWT!
+                  licenseKey: jwtToken,
                   serverUrl: "https://enterprise.snow-flow.dev",
                   credentials: {
                     atlassian: enterpriseAtlassianEmail && enterpriseAtlassianApiToken
@@ -2760,8 +2743,6 @@ export const AuthLoginCommand = cmd({
                       : undefined,
                   },
                 })
-
-                prompts.log.success("✅ Enterprise MCP server configured")
 
                 // Update documentation with enterprise features
                 // Determine which services are enabled based on provided credentials
@@ -2778,9 +2759,6 @@ export const AuthLoginCommand = cmd({
               prompts.log.info("Local configuration saved, but enterprise validation skipped")
             }
 
-            prompts.log.message("")
-            prompts.log.success("Enterprise configuration saved")
-            prompts.log.info("Credentials saved to .env file")
             prompts.log.message("")
             prompts.log.success("✅ Authentication complete!")
             prompts.log.message("")
@@ -3251,11 +3229,9 @@ export const AuthLoginCommand = cmd({
                 prompts.log.warn(`License validation failed: ${validation.error}`)
                 prompts.log.info("Continuing with local configuration only")
               } else {
-                validationSpinner.stop("✅ License validated successfully")
+                validationSpinner.stop("License validated")
 
-                // 🔥 Generate JWT token for MCP authentication
-                prompts.log.step("Generating enterprise JWT token...")
-
+                // Generate JWT token for MCP authentication
                 const crypto = await import("crypto")
                 const machineId = crypto.createHash("sha256").update(os.hostname()).digest("hex")
 
@@ -3275,12 +3251,10 @@ export const AuthLoginCommand = cmd({
 
                 const jwtData: any = await jwtResponse.json()
                 const jwtToken = jwtData.token
-                prompts.log.success(`✅ JWT token generated`)
 
                 // Configure enterprise MCP server with validated credentials
-                // Always use enterprise MCP server
                 await addEnterpriseMcpServer({
-                  licenseKey: jwtToken, // ← Use JWT!
+                  licenseKey: jwtToken,
                   serverUrl: "https://enterprise.snow-flow.dev",
                   credentials: {
                     atlassian: atlassianEmail && atlassianApiToken
@@ -3297,8 +3271,6 @@ export const AuthLoginCommand = cmd({
                       : undefined,
                   },
                 })
-
-                prompts.log.success("✅ Enterprise MCP server configured")
 
                 // Update documentation with enterprise features
                 // Determine which services are enabled based on provided credentials
@@ -3318,10 +3290,7 @@ export const AuthLoginCommand = cmd({
               prompts.log.info("Local configuration saved, but enterprise validation skipped")
             }
 
-            prompts.log.success("Enterprise configuration saved")
-            prompts.log.info("Credentials saved to .env file")
-
-            // Show completion and exit (prevents duplicate completion message)
+            // Show completion and exit
             prompts.log.message("")
             prompts.log.success("✅ Authentication complete!")
             prompts.log.message("")
