@@ -769,24 +769,8 @@ export const AuthLoginCommand = cmd({
 
           if (prompts.isCancel(licenseKey)) throw new UI.CancelledError()
 
-          const portalUrl = (await prompts.text({
-            message: "Enterprise Portal URL (for authentication)",
-            placeholder: "https://portal.snow-flow.dev",
-            initialValue: "https://portal.snow-flow.dev",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "URL is required"
-              try {
-                const url = new URL(value)
-                if (url.protocol !== "https:") {
-                  return "URL must use HTTPS for secure credential transmission"
-                }
-              } catch {
-                return "Invalid URL format (must include https://)"
-              }
-            },
-          })) as string
-
-          if (prompts.isCancel(portalUrl)) throw new UI.CancelledError()
+          // Enterprise portal URL is fixed
+          const portalUrl = "https://portal.snow-flow.dev"
 
           // License validation goes to portal.snow-flow.dev (public endpoint, no auth)
           const licenseServerUrl = portalUrl
@@ -2148,28 +2132,8 @@ export const AuthLoginCommand = cmd({
               return
             }
 
-            const enterpriseServerUrl = (await prompts.text({
-              message: "Enterprise License Server URL (optional)",
-              placeholder: "https://portal.snow-flow.dev",
-              initialValue: "https://portal.snow-flow.dev",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "URL is required"
-                try {
-                  const url = new URL(value)
-                  if (url.protocol !== "https:") {
-                    return "URL must use HTTPS for secure credential transmission"
-                  }
-                } catch {
-                  return "Invalid URL format (must include https://)"
-                }
-              },
-            })) as string
-
-            if (prompts.isCancel(enterpriseServerUrl)) {
-              prompts.outro("Done")
-              await Instance.dispose()
-              return
-            }
+            // Enterprise portal URL is fixed
+            const enterpriseServerUrl = "https://portal.snow-flow.dev"
 
             // Test connection to enterprise server first
             prompts.log.message("")
@@ -3080,22 +3044,8 @@ export const AuthLoginCommand = cmd({
           })) as string
 
           if (!prompts.isCancel(licenseKey)) {
-            const enterpriseUrl = (await prompts.text({
-              message: "Enterprise License Server URL (optional)",
-              placeholder: "https://portal.snow-flow.dev",
-              initialValue: "https://portal.snow-flow.dev",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "URL is required"
-                try {
-                  const url = new URL(value)
-                  if (url.protocol !== "https:") {
-                    return "URL must use HTTPS for secure credential transmission"
-                  }
-                } catch {
-                  return "Invalid URL format (must include https://)"
-                }
-              },
-            })) as string
+            // Enterprise portal URL is fixed
+            const enterpriseUrl = "https://portal.snow-flow.dev"
 
             // External integrations configuration
             const configureExternal = await prompts.confirm({
