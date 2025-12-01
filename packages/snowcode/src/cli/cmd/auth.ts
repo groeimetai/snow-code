@@ -20,6 +20,14 @@ import {
   AuthEnterpriseStatusCommand
 } from "./auth-enterprise.js"
 
+// Import portal auth commands (Individual/Teams - email-based)
+import {
+  AuthPortalLoginCommand,
+  AuthPortalLogoutCommand,
+  AuthPortalStatusCommand,
+  AuthPortalRefreshCommand
+} from "./auth-portal.js"
+
 /**
  * Generate a unique machine ID for device binding
  * Uses hostname + platform + homedir for consistent ID across sessions
@@ -476,9 +484,15 @@ export const AuthCommand = cmd({
       .command(AuthLoginCommand)
       .command(AuthLogoutCommand)
       .command(AuthListCommand)
+      // Enterprise commands (license key auth)
       .command(AuthEnterpriseLoginCommand)
       .command(AuthEnterpriseSyncCommand)
       .command(AuthEnterpriseStatusCommand)
+      // Portal commands (email-based auth for Individual/Teams)
+      .command(AuthPortalLoginCommand)
+      .command(AuthPortalLogoutCommand)
+      .command(AuthPortalStatusCommand)
+      .command(AuthPortalRefreshCommand)
       .demandCommand(),
   async handler() {},
 })
@@ -569,42 +583,150 @@ export const AuthLoginCommand = cmd({
           await Instance.dispose()
           process.exit(0)
         }
-        await ModelsDev.refresh().catch(() => {})
-        const providers = await ModelsDev.get()
-        const priority: Record<string, number> = {
-          anthropic: 0,
-          "github-copilot": 1,
-          openai: 2,
-          google: 3,
-          openrouter: 4,
-          vercel: 5,
-          opencode: 99,
-        }
-        let provider = await prompts.autocomplete({
-          message: "Select provider",
-          maxItems: 10,
+        // First ask what type of authentication they want
+        const authCategory = await prompts.select({
+          message: "What would you like to authenticate?",
           options: [
-            ...pipe(
-              providers,
-              values(),
-              sortBy(
-                (x) => priority[x.id] ?? 99,
-                (x) => x.name ?? x.id,
-              ),
-              map((x) => ({
-                label: x.name,
-                value: x.id,
-                hint: priority[x.id] === 0 ? "recommended" : undefined,
-              })),
-            ),
             {
-              value: "other",
-              label: "Other",
+              value: "snow-flow",
+              label: "Snow-Flow Portal",
+              hint: "ServiceNow MCP tools access",
+            },
+            {
+              value: "llm",
+              label: "LLM Provider",
+              hint: "Anthropic, OpenAI, etc.",
+            },
+            {
+              value: "servicenow",
+              label: "ServiceNow Instance",
+              hint: "direct ServiceNow connection",
             },
           ],
         })
 
-        if (prompts.isCancel(provider)) throw new UI.CancelledError()
+        if (prompts.isCancel(authCategory)) throw new UI.CancelledError()
+
+        // Handle Snow-Flow Portal authentication
+        if (authCategory === "snow-flow") {
+          prompts.log.step("Snow-Flow Portal Authentication")
+          prompts.log.info("")
+
+          const accountType = await prompts.select({
+            message: "Select your account type",
+            options: [
+              {
+                value: "portal",
+                label: "Individual / Teams",
+                hint: "email-based login (€99/mo or €79/seat)",
+              },
+              {
+                value: "enterprise",
+                label: "Enterprise",
+                hint: "license key login (custom pricing)",
+              },
+            ],
+          })
+
+          if (prompts.isCancel(accountType)) throw new UI.CancelledError()
+
+          if (accountType === "portal") {
+            // Portal authentication (Individual/Teams)
+            const authMethod = await prompts.select({
+              message: "How would you like to authenticate?",
+              options: [
+                {
+                  value: "browser",
+                  label: "Browser",
+                  hint: "recommended - opens browser for approval",
+                },
+                {
+                  value: "email",
+                  label: "Email & Password",
+                  hint: "direct login",
+                },
+                {
+                  value: "magic-link",
+                  label: "Magic Link",
+                  hint: "passwordless via email",
+                },
+              ],
+            })
+
+            if (prompts.isCancel(authMethod)) throw new UI.CancelledError()
+
+            // Import and run portal auth flow
+            const {
+              AuthPortalLoginCommand
+            } = await import("./auth-portal.js")
+
+            prompts.outro("Starting portal authentication...")
+
+            // Execute the appropriate auth flow based on method
+            const portalArgs = { method: authMethod }
+            await AuthPortalLoginCommand.handler(portalArgs as any)
+
+            await Instance.dispose()
+            process.exit(0)
+          } else {
+            // Enterprise authentication
+            prompts.outro("Starting enterprise authentication...")
+
+            // Execute the enterprise login command
+            await AuthEnterpriseLoginCommand.handler({} as any)
+
+            await Instance.dispose()
+            process.exit(0)
+          }
+        }
+
+        // LLM Provider authentication
+        let provider: string = ""
+        await ModelsDev.refresh().catch(() => {})
+        const providers = await ModelsDev.get()
+
+        if (authCategory === "llm") {
+          const priority: Record<string, number> = {
+            anthropic: 0,
+            "github-copilot": 1,
+            openai: 2,
+            google: 3,
+            openrouter: 4,
+            vercel: 5,
+            opencode: 99,
+          }
+          const selectedProvider = await prompts.autocomplete({
+            message: "Select LLM provider",
+            maxItems: 10,
+            options: [
+              ...pipe(
+                providers,
+                values(),
+                sortBy(
+                  (x) => priority[x.id] ?? 99,
+                  (x) => x.name ?? x.id,
+                ),
+                map((x) => ({
+                  label: x.name,
+                  value: x.id,
+                  hint: priority[x.id] === 0 ? "recommended" : undefined,
+                })),
+              ),
+              {
+                value: "other",
+                label: "Other",
+              },
+            ],
+          })
+
+          if (prompts.isCancel(selectedProvider)) throw new UI.CancelledError()
+          provider = selectedProvider as string
+        }
+
+        // Handle direct ServiceNow authentication from category selection
+        if (authCategory === "servicenow") {
+          provider = "servicenow"
+        }
 
         // Handle ServiceNow authentication
         if (provider === "servicenow") {
@@ -2839,13 +2961,12 @@ export const AuthLoginCommand = cmd({
         }
 
         if (provider === "other") {
-          provider = await prompts.text({
+          const otherProvider = await prompts.text({
             message: "Enter provider id",
             validate: (x) => (x && x.match(/^[0-9a-z-]+$/) ? undefined : "a-z, 0-9 and hyphens only"),
           })
-          if (prompts.isCancel(provider)) throw new UI.CancelledError()
-          provider = provider.replace(/^@ai-sdk\//, "")
-          if (prompts.isCancel(provider)) throw new UI.CancelledError()
+          if (prompts.isCancel(otherProvider)) throw new UI.CancelledError()
+          provider = (otherProvider as string).replace(/^@ai-sdk\//, "")
           prompts.log.warn(
             `This only stores a credential for ${provider} - you will need configure it in opencode.json, check the docs for examples.`,
           )

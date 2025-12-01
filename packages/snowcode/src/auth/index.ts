@@ -70,8 +70,26 @@ export namespace Auth {
     })
     .meta({ ref: "Enterprise" })
 
+  // Portal auth for Individual/Teams users (email-based authentication)
+  export const Portal = z
+    .object({
+      type: z.literal("portal"),
+      token: z.string(),
+      refreshToken: z.string().optional(),
+      expiresAt: z.number().optional(),
+      userId: z.number(),
+      email: z.string(),
+      name: z.string().optional(),
+      plan: z.enum(["individual", "teams"]),
+      organizationId: z.number().optional(),
+      organizationName: z.string().optional(),
+      role: z.enum(["owner", "admin", "developer", "stakeholder"]).optional(),
+      machineId: z.string().optional(),
+    })
+    .meta({ ref: "Portal" })
+
   export const Info = z
-    .discriminatedUnion("type", [Oauth, Api, WellKnown, ServiceNowOAuth, ServiceNowBasic, Enterprise])
+    .discriminatedUnion("type", [Oauth, Api, WellKnown, ServiceNowOAuth, ServiceNowBasic, Enterprise, Portal])
     .meta({ ref: "Auth" })
   export type Info = z.infer<typeof Info>
 
