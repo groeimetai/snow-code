@@ -1392,9 +1392,11 @@ export const AuthLoginCommand = cmd({
               fetchSpinner.stop(`Found ${credCount} credential(s) in portal`)
 
               // Show what credentials are available
-              if (creds.jira) prompts.log.info(`  📋 Jira: ${creds.jira.baseUrl}`)
-              if (creds.azureDevOps) prompts.log.info(`  🔷 Azure DevOps: ${creds.azureDevOps.org}`)
-              if (creds.confluence) prompts.log.info(`  📚 Confluence: ${creds.confluence.baseUrl}`)
+              prompts.log.message("")
+              if (creds.jira) prompts.log.message(`  • Jira: ${creds.jira.baseUrl}`)
+              if (creds.azureDevOps) prompts.log.message(`  • Azure DevOps: ${creds.azureDevOps.org}`)
+              if (creds.confluence) prompts.log.message(`  • Confluence: ${creds.confluence.baseUrl}`)
+              prompts.log.message("")
 
               const usePortalCreds = await prompts.confirm({
                 message: "Use these credentials from portal?",
@@ -1418,7 +1420,7 @@ export const AuthLoginCommand = cmd({
                   atlassianApiToken = atlassianApiToken || creds.confluence.apiToken
                 }
 
-                prompts.log.success("✅ Portal credentials applied")
+                prompts.log.success("Portal credentials applied")
               }
             } else {
               fetchSpinner.stop("No credentials found in portal")
