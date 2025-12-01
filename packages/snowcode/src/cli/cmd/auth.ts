@@ -11,6 +11,7 @@ import { Global } from "../../global"
 import { Plugin } from "../../plugin"
 import { Instance } from "../../project/instance"
 import { ServiceNowOAuth } from "../../auth/servicenow-oauth"
+import { PortalSync } from "../../auth/portal-sync"
 
 // Import enterprise auth commands
 import {
@@ -1694,6 +1695,18 @@ export const AuthLoginCommand = cmd({
           } catch (error: any) {
             prompts.log.warn(`Enterprise setup warning: ${error.message}`)
             prompts.log.info("Local configuration saved, but enterprise validation skipped")
+          }
+
+          // Auto-sync any existing credentials to the portal
+          // This ensures credentials from previous sessions are synced
+          try {
+            const syncResult = await PortalSync.syncToPortal(licenseKey, portalUrl)
+            if (syncResult.success && syncResult.results && syncResult.results.length > 0) {
+              const successCount = syncResult.results.filter(r => r.success).length
+              prompts.log.info(`✅ Synced ${successCount} credential(s) to portal`)
+            }
+          } catch (syncError) {
+            // Silently ignore sync errors - don't block the login flow
           }
 
           prompts.log.message("")
