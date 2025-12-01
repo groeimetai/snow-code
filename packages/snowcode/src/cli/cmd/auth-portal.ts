@@ -16,7 +16,7 @@ import { Auth } from "../../auth"
 
 // Portal URLs
 const PORTAL_URL = process.env.SNOW_FLOW_PORTAL_URL || "https://portal.snow-flow.dev"
-const API_URL = process.env.SNOW_FLOW_API_URL || PORTAL_URL
+const API_URL = process.env.SNOW_FLOW_API_URL || "https://api.snow-flow.dev"
 
 // Config directory
 const CONFIG_DIR = path.join(os.homedir(), ".snow-code")
