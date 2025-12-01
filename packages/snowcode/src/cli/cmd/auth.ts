@@ -1369,12 +1369,6 @@ export const AuthLoginCommand = cmd({
             prompts.log.info(`Active sessions: ${authData.user.activeSessions} (max 1 per user)`)
           }
 
-          // Optional integrations
-          const configureIntegrations = await prompts.confirm({
-            message: "Configure optional integrations (Jira, Azure DevOps, Confluence)?",
-            initialValue: false,
-          })
-
           let jiraBaseUrl: string | undefined
           let confluenceUrl: string | undefined
           let atlassianEmail: string | undefined
@@ -1382,6 +1376,63 @@ export const AuthLoginCommand = cmd({
           let azureOrg: string | undefined
           let azureProject: string | undefined
           let azurePat: string | undefined
+
+          // Check for existing credentials in portal
+          prompts.log.message("")
+          const fetchSpinner = prompts.spinner()
+          fetchSpinner.start("Checking for existing credentials in portal...")
+
+          const portalCredentials = await PortalSync.pullFromPortal(licenseKey, portalUrl)
+
+          if (portalCredentials.success && portalCredentials.credentials) {
+            const creds = portalCredentials.credentials
+            const credCount = (creds.jira ? 1 : 0) + (creds.azureDevOps ? 1 : 0) + (creds.confluence ? 1 : 0)
+
+            if (credCount > 0) {
+              fetchSpinner.stop(`Found ${credCount} credential(s) in portal`)
+
+              // Show what credentials are available
+              if (creds.jira) prompts.log.info(`  📋 Jira: ${creds.jira.baseUrl}`)
+              if (creds.azureDevOps) prompts.log.info(`  🔷 Azure DevOps: ${creds.azureDevOps.org}`)
+              if (creds.confluence) prompts.log.info(`  📚 Confluence: ${creds.confluence.baseUrl}`)
+
+              const usePortalCreds = await prompts.confirm({
+                message: "Use these credentials from portal?",
+                initialValue: true,
+              })
+
+              if (!prompts.isCancel(usePortalCreds) && usePortalCreds) {
+                // Apply portal credentials
+                if (creds.jira) {
+                  jiraBaseUrl = creds.jira.baseUrl
+                  atlassianEmail = atlassianEmail || creds.jira.email
+                  atlassianApiToken = atlassianApiToken || creds.jira.apiToken
+                }
+                if (creds.azureDevOps) {
+                  azureOrg = creds.azureDevOps.org
+                  azurePat = creds.azureDevOps.pat
+                }
+                if (creds.confluence) {
+                  confluenceUrl = creds.confluence.baseUrl
+                  atlassianEmail = atlassianEmail || creds.confluence.email
+                  atlassianApiToken = atlassianApiToken || creds.confluence.apiToken
+                }
+
+                prompts.log.success("✅ Portal credentials applied")
+              }
+            } else {
+              fetchSpinner.stop("No credentials found in portal")
+            }
+          } else {
+            fetchSpinner.stop("Could not fetch portal credentials")
+          }
+
+          // Optional integrations (only ask if not all credentials are set)
+          const hasAllCredentials = jiraBaseUrl && azureOrg && confluenceUrl
+          const configureIntegrations = hasAllCredentials ? false : await prompts.confirm({
+            message: "Configure additional integrations (Jira, Azure DevOps, Confluence)?",
+            initialValue: false,
+          })
 
           if (!prompts.isCancel(configureIntegrations) && configureIntegrations) {
             const integrations = await prompts.multiselect({

@@ -160,4 +160,157 @@ export namespace PortalSync {
       console.warn(`⚠ Failed to sync credentials to portal: ${result.error}`)
     }
   }
+
+  /**
+   * Credential from portal (decrypted)
+   */
+  interface PortalCredential {
+    service: 'jira' | 'azure-devops' | 'confluence'
+    credentialType: 'api_token' | 'basic_auth'
+    baseUrl: string
+    email?: string
+    username?: string
+    apiToken?: string
+    password?: string
+  }
+
+  /**
+   * Fetch credentials from Enterprise Portal
+   * Returns decrypted credentials that can be used locally
+   *
+   * @param licenseKey - Enterprise license key for authentication
+   * @param portalUrl - Optional custom portal URL (defaults to production)
+   * @returns Credentials from portal
+   */
+  export async function fetchFromPortal(
+    licenseKey: string,
+    portalUrl?: string
+  ): Promise<{
+    success: boolean
+    credentials?: PortalCredential[]
+    message?: string
+    error?: string
+  }> {
+    try {
+      // Determine portal URL
+      const baseUrl = portalUrl || process.env.SNOW_FLOW_PORTAL_URL || "https://portal.snow-flow.dev"
+      const fetchUrl = `${baseUrl}/api/credentials/fetch-for-cli`
+
+      // Fetch credentials from portal
+      const response = await fetch(fetchUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ licenseKey }),
+        signal: AbortSignal.timeout(15000)
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || `HTTP ${response.status}: ${response.statusText}`
+        }
+      }
+
+      return {
+        success: true,
+        credentials: data.credentials || [],
+        message: data.message
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    }
+  }
+
+  /**
+   * Fetch credentials from portal and store them locally
+   *
+   * @param licenseKey - Enterprise license key
+   * @param portalUrl - Optional portal URL
+   * @returns Result of the operation
+   */
+  export async function pullFromPortal(
+    licenseKey: string,
+    portalUrl?: string
+  ): Promise<{
+    success: boolean
+    message?: string
+    credentials?: {
+      jira?: { baseUrl: string; email?: string; apiToken?: string }
+      azureDevOps?: { org: string; pat?: string }
+      confluence?: { baseUrl: string; email?: string; apiToken?: string }
+    }
+    error?: string
+  }> {
+    try {
+      // Fetch credentials from portal
+      const result = await fetchFromPortal(licenseKey, portalUrl)
+
+      if (!result.success || !result.credentials) {
+        return {
+          success: false,
+          error: result.error || "No credentials found"
+        }
+      }
+
+      if (result.credentials.length === 0) {
+        return {
+          success: true,
+          message: "No credentials configured in portal",
+          credentials: {}
+        }
+      }
+
+      // Convert portal credentials to local auth format
+      const credentials: {
+        jira?: { baseUrl: string; email?: string; apiToken?: string }
+        azureDevOps?: { org: string; pat?: string }
+        confluence?: { baseUrl: string; email?: string; apiToken?: string }
+      } = {}
+
+      for (const cred of result.credentials) {
+        switch (cred.service) {
+          case 'jira':
+            credentials.jira = {
+              baseUrl: cred.baseUrl,
+              email: cred.email,
+              apiToken: cred.apiToken
+            }
+            break
+          case 'azure-devops':
+            // Extract org from baseUrl (https://dev.azure.com/ORG)
+            const orgMatch = cred.baseUrl.match(/dev\.azure\.com\/([^\/]+)/)
+            credentials.azureDevOps = {
+              org: orgMatch ? orgMatch[1] : cred.baseUrl,
+              pat: cred.apiToken
+            }
+            break
+          case 'confluence':
+            credentials.confluence = {
+              baseUrl: cred.baseUrl,
+              email: cred.email,
+              apiToken: cred.apiToken
+            }
+            break
+        }
+      }
+
+      return {
+        success: true,
+        message: `Found ${result.credentials.length} credential(s) in portal`,
+        credentials
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    }
+  }
 }
