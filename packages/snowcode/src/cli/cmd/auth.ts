@@ -769,6 +769,13 @@ export const AuthLoginCommand = cmd({
             machineId,
           })
 
+          // Write to .env file
+          const envUpdates: Array<{ key: string; value: string }> = [
+            { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: licenseKey },
+            { key: "SNOW_ENTERPRISE_URL", value: portalUrl },
+          ]
+          await updateEnvFile(envUpdates)
+
           prompts.log.success(`Welcome, ${username}!`)
           prompts.log.info(`Role: ${authData.user?.role || role}`)
           if (authData.customer?.company) {
@@ -1061,155 +1068,198 @@ export const AuthLoginCommand = cmd({
           // Fall through to Enterprise handler below
         }
 
-        // Handle Enterprise authentication
+        // Handle Enterprise authentication (uses same flow as standalone)
         if (provider === "enterprise") {
-          prompts.log.step("Snow-Flow License Setup")
-
-          const licenseKey = (await prompts.password({
-            message: "Enterprise License Key (format: SNOW-ENT-*-* or SNOW-SI-*-*)",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "License key is required"
-              if (!value.startsWith("SNOW-ENT-") && !value.startsWith("SNOW-SI-")) {
-                return "Invalid license key format (should start with SNOW-ENT- or SNOW-SI-)"
-              }
-            },
-          })) as string
-
-          if (prompts.isCancel(licenseKey)) throw new UI.CancelledError()
+          prompts.log.step("Snow-Flow Enterprise Login")
+          prompts.log.info("Login with the credentials provided by your admin")
+          prompts.log.message("")
 
           // Enterprise portal URL is fixed
           const portalUrl = "https://portal.snow-flow.dev"
-
-          // License validation goes to portal.snow-flow.dev (public endpoint, no auth)
-          const licenseServerUrl = portalUrl
-
-          // MCP server for credential sync (enterprise.snow-flow.dev)
           const mcpServerUrl = "https://enterprise.snow-flow.dev"
 
-          // ✅ VALIDATE LICENSE KEY IMMEDIATELY (before user account setup)
-          prompts.log.message("")
-          const licenseSpinner = prompts.spinner()
-          licenseSpinner.start("Validating license key...")
+          let username: string = ""
+          let password: string
+          let authData: any
+          const machineId = generateMachineId()
 
-          try {
-            const licenseResponse = await fetch(`${licenseServerUrl}/api/license/validate`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
+          // Login flow
+          let loginSuccess = false
+
+          while (!loginSuccess) {
+            username = (await prompts.text({
+              message: "Username",
+              placeholder: "john.doe",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Username is required"
               },
-              body: JSON.stringify({
-                licenseKey,
-              }),
-              signal: AbortSignal.timeout(10000), // 10 second timeout
-            })
+            })) as string
 
-            const licenseData = await licenseResponse.json()
+            if (prompts.isCancel(username)) throw new UI.CancelledError()
 
-            if (!licenseResponse.ok || !licenseData.success) {
-              licenseSpinner.stop("License key validation failed", 1)
-              prompts.log.error(licenseData.error || "Invalid license key")
-              prompts.log.message("")
-              prompts.log.warn("Please check your license key and try again")
-              prompts.log.info("License key format: SNOW-ENT-*-* or SNOW-SI-*-*")
-              prompts.outro("Done")
+            password = (await prompts.password({
+              message: "Password",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Password is required"
+              },
+            })) as string
+
+            if (prompts.isCancel(password)) throw new UI.CancelledError()
+
+            prompts.log.message("")
+            const spinner = prompts.spinner()
+            spinner.start("Authenticating...")
+
+            try {
+              const response = await fetch(`${portalUrl}/api/user-auth/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password }),
+              })
+
+              authData = await response.json()
+
+              if (!response.ok || !authData.success) {
+                spinner.stop("Authentication failed", 1)
+                prompts.log.error(authData.error || "Invalid username or password")
+
+                const tryAgain = await prompts.confirm({
+                  message: "Would you like to try again?",
+                  initialValue: true,
+                })
+                if (prompts.isCancel(tryAgain) || !tryAgain) {
+                  prompts.outro("Login cancelled")
+                  await Instance.dispose()
+                  process.exit(1)
+                }
+                continue
+              }
+
+              spinner.stop("Authentication successful!")
+              loginSuccess = true
+            } catch (error: any) {
+              spinner.stop("Connection error", 1)
+              prompts.log.error(`Connection error: ${error.message}`)
+              prompts.outro("Login cancelled")
               await Instance.dispose()
               process.exit(1)
             }
-
-            licenseSpinner.stop("License key valid!")
-
-            // Show license details if available
-            if (licenseData.license) {
-              prompts.log.message("")
-              prompts.log.success(`License: ${licenseData.license.type || 'Enterprise'}`)
-              if (licenseData.license.company) {
-                prompts.log.info(`Company: ${licenseData.license.company}`)
-              }
-              if (licenseData.license.expiresAt) {
-                const expiryDate = new Date(licenseData.license.expiresAt)
-                prompts.log.info(`Expires: ${expiryDate.toLocaleDateString()}`)
-              }
-            }
-          } catch (licenseError: any) {
-            licenseSpinner.stop("License validation failed", 1)
-            prompts.log.error(`Connection error: ${licenseError.message}`)
-            prompts.log.message("")
-            prompts.log.warn("Unable to validate license key with enterprise server")
-            prompts.log.info(`URL: ${licenseServerUrl}/api/license/validate`)
-
-            const continueAnyway = await prompts.confirm({
-              message: "Continue anyway? (License will be validated during registration)",
-              initialValue: false,
-            })
-
-            if (prompts.isCancel(continueAnyway) || !continueAnyway) {
-              prompts.outro("Done")
-              await Instance.dispose()
-              process.exit(1)
-            }
-
-            prompts.log.warn("Continuing without license validation...")
           }
 
-          // Test connection to enterprise server first
-          prompts.log.message("")
-          const testSpinner = prompts.spinner()
-          testSpinner.start("Testing connection to enterprise server...")
+          const role = authData.user?.role || "developer"
+          const email = authData.user?.email
+          const licenseKey = authData.customer?.licenseKey || ""
 
-          try {
-            const testResponse = await fetch(`${portalUrl}/api/health`, {
-              method: "GET",
-              signal: AbortSignal.timeout(5000), // 5 second timeout
-            })
-            testSpinner.stop("Connection successful!")
-          } catch (testError: any) {
-            testSpinner.stop("Connection failed", 1)
-            prompts.log.warn(`Unable to reach ${portalUrl}`)
-            prompts.log.message("")
-
-            const skipEnterprise = await prompts.confirm({
-              message: "Enterprise server is not accessible. Skip enterprise setup?",
-              initialValue: true,
-            })
-
-            if (prompts.isCancel(skipEnterprise) || skipEnterprise) {
-              prompts.log.message("")
-              prompts.log.success("✅ Authentication complete! (without enterprise features)")
-              prompts.log.message("")
-              prompts.log.info("Next steps:")
-              prompts.log.message("")
-              prompts.log.message('  • Run: snow-flow agent "<objective>" to start developing')
-              prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
-              prompts.outro("Done")
-              await Instance.dispose()
-              process.exit(0)
-            }
-
-            // User wants to continue anyway - proceed with setup
-            prompts.log.warn("Continuing with enterprise setup...")
-          }
-
-          // User Registration/Login Flow
-          prompts.log.message("")
-          prompts.log.step("User Account Setup")
-
-          const accountAction = await prompts.select({
-            message: "Do you want to login or register?",
-            options: [
-              {
-                value: "register",
-                label: "Register",
-                hint: "Create a new user account",
-              },
-              {
-                value: "login",
-                label: "Login",
-                hint: "Login with existing account",
-              },
-            ],
+          // Store enterprise auth
+          await Auth.set("enterprise", {
+            type: "enterprise",
+            licenseKey,
+            enterpriseUrl: portalUrl,
+            token: authData.token,
+            sessionToken: authData.sessionToken,
+            username,
+            email,
+            role: authData.user?.role || role,
+            machineId,
           })
 
-          if (prompts.isCancel(accountAction)) throw new UI.CancelledError()
+          // Write to .env file
+          const envUpdates: Array<{ key: string; value: string }> = [
+            { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: licenseKey },
+            { key: "SNOW_ENTERPRISE_URL", value: portalUrl },
+          ]
+          await updateEnvFile(envUpdates)
+
+          prompts.log.success(`Welcome, ${username}!`)
+          prompts.log.info(`Role: ${authData.user?.role || role}`)
+          if (authData.customer?.company) {
+            prompts.log.info(`Company: ${authData.customer.company}`)
+          }
+
+          // Fetch third-party tool credentials from portal (optional)
+          prompts.log.message("")
+          const fetchSpinner = prompts.spinner()
+          fetchSpinner.start("Checking third-party tool integrations...")
+
+          // Check if we have a license key to fetch credentials
+          if (!licenseKey) {
+            fetchSpinner.stop("Could not fetch credentials (no license key)")
+            prompts.log.warn("Your customer account may not have a license key configured")
+          } else {
+            const portalCredentials = await PortalSync.pullFromPortal(licenseKey, portalUrl)
+
+            if (portalCredentials.success && portalCredentials.credentials) {
+              const creds = portalCredentials.credentials
+              const credCount = (creds.jira ? 1 : 0) + (creds.azureDevOps ? 1 : 0) + (creds.confluence ? 1 : 0)
+
+              if (credCount > 0) {
+                fetchSpinner.stop(`Found ${credCount} integration(s)`)
+                if (creds.jira) prompts.log.message(`  • Jira: ${creds.jira.baseUrl}`)
+                if (creds.azureDevOps) prompts.log.message(`  • Azure DevOps: ${creds.azureDevOps.org}`)
+                if (creds.confluence) prompts.log.message(`  • Confluence: ${creds.confluence.baseUrl}`)
+              } else {
+                fetchSpinner.stop("No third-party integrations configured in portal")
+              }
+            } else {
+              fetchSpinner.stop("Could not fetch credentials")
+              if (portalCredentials.error) {
+                prompts.log.warn(`Reason: ${portalCredentials.error}`)
+              }
+            }
+          }
+
+          // Configure MCP server
+          try {
+            const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
+            const configPath = path.join(globalSnowCodeDir, "config.json")
+            await Bun.write(path.join(globalSnowCodeDir, ".keep"), "")
+
+            const file = Bun.file(configPath)
+            var config: any = {}
+            if (await file.exists()) {
+              config = JSON.parse(await file.text())
+            }
+            if (!config.mcp) config.mcp = {}
+
+            const enterpriseProxyPath = await findEnterpriseProxyPath()
+            config.mcp["snow-flow-enterprise"] = {
+              command: enterpriseProxyPath === "npx" ? "npx" : "node",
+              args: enterpriseProxyPath === "npx" ? ["snow-flow-enterprise-proxy"] : [enterpriseProxyPath],
+              env: {
+                SNOW_LICENSE_KEY: licenseKey,
+                SNOW_ENTERPRISE_URL: mcpServerUrl,
+              },
+            }
+
+            await Bun.write(configPath, JSON.stringify(config, null, 2))
+            prompts.log.info("Added snow-flow-enterprise MCP server to config")
+          } catch (error: any) {
+            prompts.log.warn(`Failed to configure MCP server: ${error.message}`)
+          }
+
+          prompts.log.message("")
+          prompts.log.success("✅ Enterprise authentication complete!")
+          prompts.log.message("")
+          prompts.log.info("Next steps:")
+          prompts.log.message("")
+          prompts.log.message('  • Run: snow-code init to configure Claude Code')
+          prompts.log.message('  • Run: snow-flow agent "<objective>" to start developing')
+          prompts.outro("Done")
+          await Instance.dispose()
+          process.exit(0)
+        }
+
+        // Old enterprise registration/login code has been removed.
+        // The new flow uses simple username/password login (admin creates users).
+        // This placeholder prevents syntax errors while we clean up the dead code.
+        if (false && "DEAD_CODE_MARKER") {
+          const accountAction = "login"
+
+          // Placeholder variables for dead code (TypeScript needs these)
+          const licenseKey = ""
+          const portalUrl = ""
+          const licenseServerUrl = ""
+          const mcpServerUrl = ""
 
           let username: string = ""
           let email: string | undefined
