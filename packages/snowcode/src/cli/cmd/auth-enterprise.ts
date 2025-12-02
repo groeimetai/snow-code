@@ -112,8 +112,9 @@ export const AuthEnterpriseLoginCommand = cmd({
       const requestResponse = await fetch(`${API_URL}/api/auth/device/request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ machineInfo })
-      })
+        body: JSON.stringify({ machineInfo }),
+        verbose: true, // Required for Bun compiled binary fetch to work
+      } as RequestInit)
 
       if (!requestResponse.ok) {
         const error = await requestResponse.json()
@@ -168,8 +169,9 @@ export const AuthEnterpriseLoginCommand = cmd({
       const verifyResponse = await fetch(`${API_URL}/api/auth/device/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, authCode })
-      })
+        body: JSON.stringify({ sessionId, authCode }),
+        verbose: true,
+      } as RequestInit)
 
       if (!verifyResponse.ok) {
         const error = await verifyResponse.json()
@@ -186,8 +188,9 @@ export const AuthEnterpriseLoginCommand = cmd({
 
       const credentialsResponse = await fetch(`${API_URL}/api/auth/enterprise/credentials`, {
         method: "GET",
-        headers: { "Authorization": `Bearer ${token}` }
-      })
+        headers: { "Authorization": `Bearer ${token}` },
+        verbose: true,
+      } as RequestInit)
 
       if (!credentialsResponse.ok) {
         const error = await credentialsResponse.json()
@@ -276,8 +279,9 @@ export const AuthEnterpriseSyncCommand = cmd({
 
       const credentialsResponse = await fetch(`${API_URL}/api/auth/enterprise/credentials`, {
         method: "GET",
-        headers: { "Authorization": `Bearer ${existingConfig.token}` }
-      })
+        headers: { "Authorization": `Bearer ${existingConfig.token}` },
+        verbose: true,
+      } as RequestInit)
 
       if (!credentialsResponse.ok) {
         const error = await credentialsResponse.json()

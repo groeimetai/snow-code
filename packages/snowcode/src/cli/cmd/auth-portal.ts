@@ -229,7 +229,8 @@ async function browserAuthFlow(apiUrl: string, portalUrl: string) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ machineInfo }),
-    })
+      verbose: true, // Required for Bun compiled binary fetch to work
+    } as RequestInit)
   } catch (networkError: any) {
     // Network error - can't connect to the API
     prompts.log.error("")
@@ -308,7 +309,8 @@ async function browserAuthFlow(apiUrl: string, portalUrl: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId, authCode }),
-  })
+    verbose: true,
+  } as RequestInit)
 
   if (!verifyResponse.ok) {
     const error = await verifyResponse.json()
@@ -378,7 +380,8 @@ async function emailAuthFlow(apiUrl: string, portalUrl: string) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
-    })
+      verbose: true,
+    } as RequestInit)
   } catch (networkError: any) {
     prompts.log.error("")
     prompts.log.error(`❌ Could not connect to API: ${apiUrl}`)
@@ -439,7 +442,8 @@ async function magicLinkAuthFlow(apiUrl: string, portalUrl: string) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
-    })
+      verbose: true,
+    } as RequestInit)
   } catch (networkError: any) {
     prompts.log.error("")
     prompts.log.error(`❌ Could not connect to API: ${apiUrl}`)
@@ -490,7 +494,8 @@ async function magicLinkAuthFlow(apiUrl: string, portalUrl: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token: verificationToken }),
-  })
+    verbose: true,
+  } as RequestInit)
 
   if (!verifyResponse.ok) {
     const error = await verifyResponse.json()
@@ -541,7 +546,8 @@ async function handlePortalAuthSuccess(data: {
         "Authorization": `Bearer ${data.token}`,
         "Content-Type": "application/json",
       },
-    })
+      verbose: true,
+    } as RequestInit)
 
     if (credentialsResponse.ok) {
       const credData = await credentialsResponse.json()
@@ -701,7 +707,8 @@ export const AuthPortalStatusCommand = cmd({
         headers: {
           Authorization: `Bearer ${config.token}`,
         },
-      })
+        verbose: true,
+      } as RequestInit)
       tokenValid = response.ok
     } catch (error) {
       // Network error - can't verify
@@ -758,7 +765,8 @@ export const AuthPortalRefreshCommand = cmd({
           Authorization: `Bearer ${config.token}`,
           "Content-Type": "application/json",
         },
-      })
+        verbose: true,
+      } as RequestInit)
 
       if (!response.ok) {
         const error = await response.json()
