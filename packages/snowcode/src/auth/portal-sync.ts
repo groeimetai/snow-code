@@ -165,7 +165,7 @@ export namespace PortalSync {
    * Credential from portal (decrypted)
    */
   interface PortalCredential {
-    service: 'jira' | 'azure-devops' | 'confluence'
+    service: 'jira' | 'azure-devops' | 'confluence' | 'github' | 'gitlab'
     credentialType: 'api_token' | 'basic_auth'
     baseUrl: string
     email?: string
@@ -254,6 +254,8 @@ export namespace PortalSync {
       jira?: { baseUrl: string; email?: string; apiToken?: string }
       azureDevOps?: { org: string; pat?: string }
       confluence?: { baseUrl: string; email?: string; apiToken?: string }
+      github?: { apiToken?: string }
+      gitlab?: { baseUrl?: string; apiToken?: string }
     }
     error?: string
   }> {
@@ -281,6 +283,8 @@ export namespace PortalSync {
         jira?: { baseUrl: string; email?: string; apiToken?: string }
         azureDevOps?: { org: string; pat?: string }
         confluence?: { baseUrl: string; email?: string; apiToken?: string }
+        github?: { apiToken?: string }
+        gitlab?: { baseUrl?: string; apiToken?: string }
       } = {}
 
       for (const cred of result.credentials) {
@@ -304,6 +308,17 @@ export namespace PortalSync {
             credentials.confluence = {
               baseUrl: cred.baseUrl,
               email: cred.email,
+              apiToken: cred.apiToken
+            }
+            break
+          case 'github':
+            credentials.github = {
+              apiToken: cred.apiToken
+            }
+            break
+          case 'gitlab':
+            credentials.gitlab = {
+              baseUrl: cred.baseUrl || 'https://gitlab.com',
               apiToken: cred.apiToken
             }
             break
