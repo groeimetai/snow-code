@@ -674,14 +674,409 @@ export const AuthLoginCommand = cmd({
             await Instance.dispose()
             process.exit(0)
           } else {
-            // Enterprise authentication
-            prompts.outro("Starting enterprise authentication...")
+            // Enterprise authentication - use license key + username/password flow
+            prompts.log.step("Snow-Flow Enterprise Setup")
 
-            // Execute the enterprise login command
-            await AuthEnterpriseLoginCommand.handler({} as any)
+          const licenseKey = (await prompts.password({
+            message: "Enterprise License Key (format: SNOW-ENT-*-* or SNOW-SI-*-*)",
+            validate: (value) => {
+              if (!value || value.trim() === "") return "License key is required"
+              if (!value.startsWith("SNOW-ENT-") && !value.startsWith("SNOW-SI-")) {
+                return "Invalid license key format (should start with SNOW-ENT- or SNOW-SI-)"
+              }
+            },
+          })) as string
 
+          if (prompts.isCancel(licenseKey)) throw new UI.CancelledError()
+
+          // Enterprise portal URL is fixed
+          const portalUrl = "https://portal.snow-flow.dev"
+          const mcpServerUrl = "https://enterprise.snow-flow.dev"
+
+          // Validate license key
+          prompts.log.message("")
+          const licenseSpinner = prompts.spinner()
+          licenseSpinner.start("Validating license key...")
+
+          try {
+            const licenseResponse = await fetch(`${portalUrl}/api/license/validate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ licenseKey }),
+              signal: AbortSignal.timeout(10000),
+            })
+
+            const licenseData = await licenseResponse.json()
+
+            if (!licenseResponse.ok || !licenseData.success) {
+              licenseSpinner.stop("License key validation failed", 1)
+              prompts.log.error(licenseData.error || "Invalid license key")
+              prompts.outro("Done")
+              await Instance.dispose()
+              process.exit(1)
+            }
+
+            licenseSpinner.stop("License key valid!")
+
+            if (licenseData.license) {
+              prompts.log.message("")
+              prompts.log.success(`License: ${licenseData.license.type || 'Enterprise'}`)
+              if (licenseData.license.company) {
+                prompts.log.info(`Company: ${licenseData.license.company}`)
+              }
+            }
+          } catch (licenseError: any) {
+            licenseSpinner.stop("License validation failed", 1)
+            prompts.log.error(`Connection error: ${licenseError.message}`)
+            prompts.outro("Done")
             await Instance.dispose()
-            process.exit(0)
+            process.exit(1)
+          }
+
+          // User Registration/Login Flow
+          prompts.log.message("")
+          prompts.log.step("User Account Setup")
+
+          const accountAction = await prompts.select({
+            message: "Do you want to login or register?",
+            options: [
+              {
+                value: "login",
+                label: "Login",
+                hint: "Login with existing account",
+              },
+              {
+                value: "register",
+                label: "Register",
+                hint: "Create a new user account",
+              },
+            ],
+          })
+
+          if (prompts.isCancel(accountAction)) throw new UI.CancelledError()
+
+          let username: string = ""
+          let email: string | undefined
+          let password: string
+          let role: "developer" | "stakeholder" | "admin" = "developer"
+          let authData: any
+
+          const machineId = generateMachineId()
+
+          if (accountAction === "register") {
+            // New user registration
+            let registrationSuccess = false
+
+            while (!registrationSuccess) {
+              prompts.log.info("Creating your user account...")
+
+              // Username
+              let usernameValid = false
+              while (!usernameValid) {
+                username = (await prompts.text({
+                  message: "Choose a username",
+                  placeholder: "john.doe",
+                  validate: (value) => {
+                    if (!value || value.trim() === "") return "Username is required"
+                    if (value.length < 3) return "Username must be at least 3 characters"
+                  },
+                })) as string
+
+                if (prompts.isCancel(username)) throw new UI.CancelledError()
+
+                // Check username availability
+                try {
+                  const checkResponse = await fetch(
+                    `${portalUrl}/api/user-auth/check-availability?username=${encodeURIComponent(username)}&licenseKey=${encodeURIComponent(licenseKey)}`,
+                    { method: "GET", signal: AbortSignal.timeout(10000) }
+                  )
+                  if (checkResponse.ok) {
+                    const checkData = await checkResponse.json()
+                    if (!checkData.usernameAvailable) {
+                      prompts.log.error("⚠️  Username already taken")
+                      continue
+                    }
+                  }
+                  usernameValid = true
+                } catch { usernameValid = true }
+              }
+
+              // Email
+              let emailValid = false
+              while (!emailValid) {
+                email = (await prompts.text({
+                  message: "Your email",
+                  placeholder: "john.doe@company.com",
+                  validate: (value) => {
+                    if (!value || value.trim() === "") return "Email is required"
+                    if (!value.includes("@")) return "Please enter a valid email"
+                  },
+                })) as string
+
+                if (prompts.isCancel(email)) throw new UI.CancelledError()
+
+                try {
+                  const checkResponse = await fetch(
+                    `${portalUrl}/api/user-auth/check-availability?email=${encodeURIComponent(email)}&licenseKey=${encodeURIComponent(licenseKey)}`,
+                    { method: "GET", signal: AbortSignal.timeout(10000) }
+                  )
+                  if (checkResponse.ok) {
+                    const checkData = await checkResponse.json()
+                    if (!checkData.emailAvailable) {
+                      prompts.log.error("⚠️  Email already registered")
+                      continue
+                    }
+                  }
+                  emailValid = true
+                } catch { emailValid = true }
+              }
+
+              // Password
+              password = (await prompts.password({
+                message: "Choose a password",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Password is required"
+                  if (value.length < 8) return "Password must be at least 8 characters"
+                },
+              })) as string
+
+              if (prompts.isCancel(password)) throw new UI.CancelledError()
+
+              const passwordConfirm = (await prompts.password({
+                message: "Confirm password",
+                validate: (value) => {
+                  if (value !== password) return "Passwords do not match"
+                },
+              })) as string
+
+              if (prompts.isCancel(passwordConfirm)) throw new UI.CancelledError()
+
+              // Role selection
+              const roleChoice = (await prompts.select({
+                message: "Select your role",
+                options: [
+                  { value: "developer", label: "Developer", hint: "Full MCP access + ServiceNow tools" },
+                  { value: "stakeholder", label: "Stakeholder", hint: "Read-only access for monitoring" },
+                ],
+              })) as string
+
+              if (prompts.isCancel(roleChoice)) throw new UI.CancelledError()
+              role = roleChoice as "developer" | "stakeholder" | "admin"
+
+              // Check seat availability
+              prompts.log.message("")
+              const seatCheckSpinner = prompts.spinner()
+              seatCheckSpinner.start(`Checking ${role} seat availability...`)
+
+              try {
+                const seatCheckResponse = await fetch(
+                  `${portalUrl}/api/user-auth/check-seats?licenseKey=${encodeURIComponent(licenseKey)}&role=${role}`
+                )
+                const seatCheck = await seatCheckResponse.json()
+
+                if (!seatCheckResponse.ok || !seatCheck.success || !seatCheck.seatsAvailable) {
+                  seatCheckSpinner.stop("No seats available", 1)
+                  prompts.log.error(seatCheck.message || `No ${role} seats available`)
+                  prompts.outro("Registration cancelled")
+                  await Instance.dispose()
+                  process.exit(1)
+                }
+                seatCheckSpinner.stop(seatCheck.message || "Seats available")
+              } catch (error: any) {
+                seatCheckSpinner.stop("Connection error", 1)
+                prompts.log.warn("Continuing with registration (seat check unavailable)")
+              }
+
+              // Register
+              prompts.log.message("")
+              const spinner = prompts.spinner()
+              spinner.start("Registering user account...")
+
+              try {
+                const response = await fetch(`${portalUrl}/api/user-auth/register`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ licenseKey, username, email, password, role }),
+                })
+
+                authData = await response.json()
+
+                if (!response.ok || !authData.success) {
+                  spinner.stop("Registration failed", 1)
+                  prompts.log.error(authData.error || "Unknown error")
+
+                  const tryAgain = await prompts.confirm({
+                    message: "Would you like to try again?",
+                    initialValue: true,
+                  })
+                  if (prompts.isCancel(tryAgain) || !tryAgain) {
+                    prompts.outro("Registration cancelled")
+                    await Instance.dispose()
+                    process.exit(1)
+                  }
+                  continue
+                }
+
+                spinner.stop("Registration successful!")
+                registrationSuccess = true
+              } catch (error: any) {
+                spinner.stop("Connection error", 1)
+                prompts.log.error(`Connection error: ${error.message}`)
+                prompts.outro("Registration cancelled")
+                await Instance.dispose()
+                process.exit(1)
+              }
+            }
+          } else {
+            // Login
+            let loginSuccess = false
+
+            while (!loginSuccess) {
+              prompts.log.info("Logging in with existing account...")
+
+              username = (await prompts.text({
+                message: "Your username",
+                placeholder: "john.doe",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Username is required"
+                },
+              })) as string
+
+              if (prompts.isCancel(username)) throw new UI.CancelledError()
+
+              password = (await prompts.password({
+                message: "Your password",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Password is required"
+                },
+              })) as string
+
+              if (prompts.isCancel(password)) throw new UI.CancelledError()
+
+              prompts.log.message("")
+              const spinner = prompts.spinner()
+              spinner.start("Authenticating...")
+
+              try {
+                const response = await fetch(`${portalUrl}/api/user-auth/login`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ licenseKey, username, password }),
+                })
+
+                authData = await response.json()
+
+                if (!response.ok || !authData.success) {
+                  spinner.stop("Authentication failed", 1)
+                  prompts.log.error(authData.error || "Invalid username or password")
+
+                  const tryAgain = await prompts.confirm({
+                    message: "Would you like to try again?",
+                    initialValue: true,
+                  })
+                  if (prompts.isCancel(tryAgain) || !tryAgain) {
+                    prompts.outro("Login cancelled")
+                    await Instance.dispose()
+                    process.exit(1)
+                  }
+                  continue
+                }
+
+                spinner.stop("Authentication successful!")
+                loginSuccess = true
+                role = authData.user?.role || "developer"
+                email = authData.user?.email
+              } catch (error: any) {
+                spinner.stop("Connection error", 1)
+                prompts.log.error(`Connection error: ${error.message}`)
+                prompts.outro("Login cancelled")
+                await Instance.dispose()
+                process.exit(1)
+              }
+            }
+          }
+
+          // Store enterprise auth
+          await Auth.set("enterprise", {
+            type: "enterprise",
+            licenseKey,
+            enterpriseUrl: portalUrl,
+            token: authData.token,
+            sessionToken: authData.sessionToken,
+            username,
+            email,
+            role: authData.user?.role || role,
+            machineId,
+          })
+
+          prompts.log.success(`Welcome, ${username}!`)
+          prompts.log.info(`Role: ${authData.user?.role || role}`)
+          if (authData.customer?.company) {
+            prompts.log.info(`Company: ${authData.customer.company}`)
+          }
+
+          // Fetch credentials from portal
+          prompts.log.message("")
+          const fetchSpinner = prompts.spinner()
+          fetchSpinner.start("Fetching enterprise credentials...")
+
+          const portalCredentials = await PortalSync.pullFromPortal(licenseKey, portalUrl)
+
+          if (portalCredentials.success && portalCredentials.credentials) {
+            const creds = portalCredentials.credentials
+            const credCount = (creds.jira ? 1 : 0) + (creds.azureDevOps ? 1 : 0) + (creds.confluence ? 1 : 0)
+
+            if (credCount > 0) {
+              fetchSpinner.stop(`Found ${credCount} credential(s)`)
+              if (creds.jira) prompts.log.message(`  • Jira: ${creds.jira.baseUrl}`)
+              if (creds.azureDevOps) prompts.log.message(`  • Azure DevOps: ${creds.azureDevOps.org}`)
+              if (creds.confluence) prompts.log.message(`  • Confluence: ${creds.confluence.baseUrl}`)
+            } else {
+              fetchSpinner.stop("No credentials configured in portal")
+            }
+          } else {
+            fetchSpinner.stop("Could not fetch credentials")
+          }
+
+          // Configure MCP server
+          try {
+            const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
+            const configPath = path.join(globalSnowCodeDir, "config.json")
+            await Bun.write(path.join(globalSnowCodeDir, ".keep"), "")
+
+            const file = Bun.file(configPath)
+            var config: any = {}
+            if (await file.exists()) {
+              config = JSON.parse(await file.text())
+            }
+            if (!config.mcp) config.mcp = {}
+
+            const enterpriseProxyPath = await findEnterpriseProxyPath()
+            config.mcp["snow-flow-enterprise"] = {
+              command: enterpriseProxyPath === "npx" ? "npx" : "node",
+              args: enterpriseProxyPath === "npx" ? ["snow-flow-enterprise-proxy"] : [enterpriseProxyPath],
+              env: {
+                SNOW_LICENSE_KEY: licenseKey,
+                SNOW_ENTERPRISE_URL: mcpServerUrl,
+              },
+            }
+
+            await Bun.write(configPath, JSON.stringify(config, null, 2))
+            prompts.log.info("Added snow-flow-enterprise MCP server to config")
+          } catch (error: any) {
+            prompts.log.warn(`Failed to configure MCP server: ${error.message}`)
+          }
+
+          prompts.log.message("")
+          prompts.log.success("✅ Enterprise authentication complete!")
+          prompts.log.message("")
+          prompts.log.info("Next steps:")
+          prompts.log.message("")
+          prompts.log.message('  • Run: snow-code init to configure Claude Code')
+          prompts.log.message('  • Run: snow-flow agent "<objective>" to start developing')
+          prompts.outro("Done")
+          await Instance.dispose()
+          process.exit(0)
           }
         }
 
