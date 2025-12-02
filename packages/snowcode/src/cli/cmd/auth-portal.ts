@@ -14,9 +14,20 @@ import open from "open"
 import crypto from "crypto"
 import { Auth } from "../../auth"
 
-// Portal URLs
-const PORTAL_URL = process.env.SNOW_FLOW_PORTAL_URL || "https://portal.snow-flow.dev"
-const API_URL = process.env.SNOW_FLOW_API_URL || "https://api.snow-flow.dev"
+// Portal URLs - Default to production (hosted portal)
+// Can be overridden with environment variables or CLI options for local development
+const DEFAULT_API_URL = "https://portal.snow-flow.dev"
+const DEFAULT_PORTAL_URL = "https://portal.snow-flow.dev"
+
+// Local development URLs (used when SNOW_FLOW_LOCAL=true)
+const LOCAL_API_URL = "http://localhost:8001"
+const LOCAL_PORTAL_URL = "http://localhost:5173"
+
+// Check if running in local development mode
+const IS_LOCAL = process.env.SNOW_FLOW_LOCAL === "true"
+
+const PORTAL_URL = process.env.SNOW_FLOW_PORTAL_URL || DEFAULT_PORTAL_URL
+const API_URL = process.env.SNOW_FLOW_API_URL || DEFAULT_API_URL
 
 // Config directory
 const CONFIG_DIR = path.join(os.homedir(), ".snow-code")
@@ -126,6 +137,19 @@ function deletePortalConfig(): void {
 }
 
 /**
+ * Get API URL - defaults to production, uses localhost if SNOW_FLOW_LOCAL=true
+ */
+function getApiUrl(): string {
+  if (process.env.SNOW_FLOW_API_URL) return process.env.SNOW_FLOW_API_URL
+  return IS_LOCAL ? LOCAL_API_URL : DEFAULT_API_URL
+}
+
+function getPortalUrl(): string {
+  if (process.env.SNOW_FLOW_PORTAL_URL) return process.env.SNOW_FLOW_PORTAL_URL
+  return IS_LOCAL ? LOCAL_PORTAL_URL : DEFAULT_PORTAL_URL
+}
+
+/**
  * Portal Login Command - Email/Password or Magic Link
  * Uses device authorization flow with browser-based approval
  */
@@ -133,26 +157,48 @@ export const AuthPortalLoginCommand = cmd({
   command: "portal-login",
   describe: "Authenticate with Snow-Flow Portal (Individual/Teams)",
   builder: (yargs) =>
-    yargs.option("method", {
-      describe: "Authentication method",
-      type: "string",
-      choices: ["browser", "email", "magic-link"],
-      default: "browser",
-    }),
+    yargs
+      .option("method", {
+        describe: "Authentication method",
+        type: "string",
+        choices: ["browser", "email", "magic-link"],
+        default: "browser",
+      })
+      .option("local", {
+        describe: "Use local development URLs (localhost:8001 for API, localhost:5173 for portal)",
+        type: "boolean",
+        default: false,
+      })
+      .option("api-url", {
+        describe: "Custom API URL (overrides --local)",
+        type: "string",
+      })
+      .option("portal-url", {
+        describe: "Custom portal frontend URL (overrides --local)",
+        type: "string",
+      }),
   async handler(args) {
+    // Determine if using local mode (CLI flag or env var)
+    const useLocal = (args as any).local || IS_LOCAL
+
+    // Use command-line args if provided, otherwise check local mode, otherwise defaults
+    const apiUrl = (args as any)["api-url"] || (useLocal ? LOCAL_API_URL : getApiUrl())
+    const portalUrl = (args as any)["portal-url"] || (useLocal ? LOCAL_PORTAL_URL : getPortalUrl())
+
     prompts.log.info("")
     prompts.log.info("🚀 Snow-Flow Portal Authentication")
+    prompts.log.info(`   API: ${apiUrl}`)
     prompts.log.info("")
 
     const method = (args as any).method || "browser"
 
     try {
       if (method === "browser") {
-        await browserAuthFlow()
+        await browserAuthFlow(apiUrl, portalUrl)
       } else if (method === "email") {
-        await emailAuthFlow()
+        await emailAuthFlow(apiUrl, portalUrl)
       } else if (method === "magic-link") {
-        await magicLinkAuthFlow()
+        await magicLinkAuthFlow(apiUrl, portalUrl)
       }
     } catch (error: any) {
       if (error.message === "cancelled") {
@@ -171,16 +217,44 @@ export const AuthPortalLoginCommand = cmd({
 /**
  * Browser-based device authorization flow
  */
-async function browserAuthFlow() {
+async function browserAuthFlow(apiUrl: string, portalUrl: string) {
   // Step 1: Request device authorization session
   prompts.log.step("Requesting device authorization...")
 
   const machineInfo = getMachineInfo()
-  const requestResponse = await fetch(`${API_URL}/api/auth/device/request`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ machineInfo }),
-  })
+
+  let requestResponse: Response
+  try {
+    requestResponse = await fetch(`${apiUrl}/api/auth/device/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ machineInfo }),
+    })
+  } catch (networkError: any) {
+    // Network error - can't connect to the API
+    prompts.log.error("")
+    prompts.log.error(`❌ Could not connect to API: ${apiUrl}`)
+    prompts.log.error("")
+
+    const isLocalUrl = apiUrl.includes("localhost") || apiUrl.includes("127.0.0.1")
+    if (isLocalUrl) {
+      prompts.log.info("💡 Make sure the portal backend is running:")
+      prompts.log.info("")
+      prompts.log.info("   cd snow-flow-enterprise/portal/backend")
+      prompts.log.info("   npm run dev")
+      prompts.log.info("")
+      prompts.log.info("   Or connect to production:")
+      prompts.log.info("   snow-code auth portal-login (without --local)")
+    } else {
+      prompts.log.info("💡 Check your internet connection and try again.")
+      prompts.log.info("")
+      prompts.log.info("   For local development, use:")
+      prompts.log.info("   snow-code auth portal-login --local")
+    }
+    prompts.log.info("")
+
+    throw new Error(`Unable to connect to ${apiUrl}`)
+  }
 
   if (!requestResponse.ok) {
     const error = await requestResponse.json()
@@ -230,7 +304,7 @@ async function browserAuthFlow() {
   // Step 4: Verify code and get token
   prompts.log.step("Verifying authorization code...")
 
-  const verifyResponse = await fetch(`${API_URL}/api/auth/device/verify`, {
+  const verifyResponse = await fetch(`${apiUrl}/api/auth/device/verify`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId, authCode }),
@@ -245,7 +319,7 @@ async function browserAuthFlow() {
 
   // Handle different response types (portal vs enterprise)
   if (verifyData.authType === "portal" || verifyData.portalUser) {
-    await handlePortalAuthSuccess(verifyData)
+    await handlePortalAuthSuccess(verifyData, apiUrl, portalUrl)
   } else if (verifyData.customer) {
     // Enterprise user - redirect to enterprise login
     prompts.log.info("")
@@ -261,7 +335,7 @@ async function browserAuthFlow() {
 /**
  * Email/password authentication flow
  */
-async function emailAuthFlow() {
+async function emailAuthFlow(apiUrl: string, portalUrl: string) {
   prompts.log.info("📧 Email/Password Authentication")
   prompts.log.info("")
 
@@ -298,11 +372,28 @@ async function emailAuthFlow() {
 
   prompts.log.step("Authenticating...")
 
-  const response = await fetch(`${API_URL}/api/portal/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  })
+  let response: Response
+  try {
+    response = await fetch(`${apiUrl}/api/portal/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    })
+  } catch (networkError: any) {
+    prompts.log.error("")
+    prompts.log.error(`❌ Could not connect to API: ${apiUrl}`)
+    prompts.log.info("")
+
+    const isLocalUrl = apiUrl.includes("localhost") || apiUrl.includes("127.0.0.1")
+    if (isLocalUrl) {
+      prompts.log.info("💡 Make sure the portal backend is running:")
+      prompts.log.info("   cd snow-flow-enterprise/portal/backend && npm run dev")
+    } else {
+      prompts.log.info("💡 Check your internet connection and try again.")
+    }
+    prompts.log.info("")
+    throw new Error(`Unable to connect to ${apiUrl}`)
+  }
 
   if (!response.ok) {
     const error = await response.json()
@@ -314,13 +405,13 @@ async function emailAuthFlow() {
     token: data.token,
     portalUser: data.user,
     organization: data.organization,
-  })
+  }, apiUrl, portalUrl)
 }
 
 /**
  * Magic link authentication flow
  */
-async function magicLinkAuthFlow() {
+async function magicLinkAuthFlow(apiUrl: string, portalUrl: string) {
   prompts.log.info("🔗 Magic Link Authentication")
   prompts.log.info("")
 
@@ -342,11 +433,28 @@ async function magicLinkAuthFlow() {
 
   prompts.log.step("Sending magic link...")
 
-  const response = await fetch(`${API_URL}/api/portal/auth/magic-link/request`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
-  })
+  let response: Response
+  try {
+    response = await fetch(`${apiUrl}/api/portal/auth/magic-link/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    })
+  } catch (networkError: any) {
+    prompts.log.error("")
+    prompts.log.error(`❌ Could not connect to API: ${apiUrl}`)
+    prompts.log.info("")
+
+    const isLocalUrl = apiUrl.includes("localhost") || apiUrl.includes("127.0.0.1")
+    if (isLocalUrl) {
+      prompts.log.info("💡 Make sure the portal backend is running:")
+      prompts.log.info("   cd snow-flow-enterprise/portal/backend && npm run dev")
+    } else {
+      prompts.log.info("💡 Check your internet connection and try again.")
+    }
+    prompts.log.info("")
+    throw new Error(`Unable to connect to ${apiUrl}`)
+  }
 
   if (!response.ok) {
     const error = await response.json()
@@ -378,7 +486,7 @@ async function magicLinkAuthFlow() {
 
   prompts.log.step("Verifying magic link...")
 
-  const verifyResponse = await fetch(`${API_URL}/api/portal/auth/magic-link/verify`, {
+  const verifyResponse = await fetch(`${apiUrl}/api/portal/auth/magic-link/verify`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token: verificationToken }),
@@ -394,7 +502,7 @@ async function magicLinkAuthFlow() {
     token: data.token,
     portalUser: data.user,
     organization: data.organization,
-  })
+  }, apiUrl, portalUrl)
 }
 
 /**
@@ -414,7 +522,7 @@ async function handlePortalAuthSuccess(data: {
     id: number
     name: string
   }
-}) {
+}, apiUrl: string = API_URL, portalUrl: string = PORTAL_URL) {
   const machineId = generateMachineId()
 
   prompts.log.success("✓ Authentication successful!")
@@ -427,7 +535,7 @@ async function handlePortalAuthSuccess(data: {
   let mcpServerUrl = ""
 
   try {
-    const credentialsResponse = await fetch(`${API_URL}/api/portal/auth/credentials`, {
+    const credentialsResponse = await fetch(`${apiUrl}/api/portal/auth/credentials`, {
       method: "GET",
       headers: {
         "Authorization": `Bearer ${data.token}`,
@@ -519,7 +627,7 @@ async function handlePortalAuthSuccess(data: {
   if (!hasIntegrations) {
     prompts.log.info("")
     prompts.log.info("   💡 Configure integrations at:")
-    prompts.log.info(`      ${PORTAL_URL}/portal/credentials`)
+    prompts.log.info(`      ${portalUrl}/portal/credentials`)
   }
 
   if (mcpServerUrl) {
