@@ -787,6 +787,9 @@ export const AuthLoginCommand = cmd({
           const fetchSpinner = prompts.spinner()
           fetchSpinner.start("Checking third-party tool integrations...")
 
+          // Track enabled services for documentation generation
+          let enabledServices: string[] = []
+
           // Check if we have a license key to fetch credentials
           if (!licenseKey) {
             fetchSpinner.stop("Could not fetch credentials (no license key)")
@@ -803,6 +806,11 @@ export const AuthLoginCommand = cmd({
                 if (creds.jira) prompts.log.message(`  • Jira: ${creds.jira.baseUrl}`)
                 if (creds.azureDevOps) prompts.log.message(`  • Azure DevOps: ${creds.azureDevOps.org}`)
                 if (creds.confluence) prompts.log.message(`  • Confluence: ${creds.confluence.baseUrl}`)
+
+                // Build enabled services list based on fetched credentials
+                if (creds.jira) enabledServices.push('jira')
+                if (creds.azureDevOps) enabledServices.push('azdo')
+                if (creds.confluence) enabledServices.push('confluence')
               } else {
                 fetchSpinner.stop("No third-party integrations configured in portal")
               }
@@ -812,6 +820,13 @@ export const AuthLoginCommand = cmd({
                 prompts.log.warn(`Reason: ${portalCredentials.error}`)
               }
             }
+          }
+
+          // Update documentation with enterprise features based on enabled integrations
+          if (enabledServices.length > 0) {
+            // For stakeholders, replace docs with read-only version BEFORE adding enterprise features
+            await replaceDocumentationForStakeholder(role)
+            await updateDocumentationWithEnterprise(enabledServices)
           }
 
           // Configure MCP server
@@ -1241,6 +1256,9 @@ export const AuthLoginCommand = cmd({
           const fetchSpinner = prompts.spinner()
           fetchSpinner.start("Checking third-party tool integrations...")
 
+          // Track enabled services for documentation generation
+          let enabledServices: string[] = []
+
           // Check if we have a license key to fetch credentials
           if (!licenseKey) {
             fetchSpinner.stop("Could not fetch credentials (no license key)")
@@ -1257,6 +1275,11 @@ export const AuthLoginCommand = cmd({
                 if (creds.jira) prompts.log.message(`  • Jira: ${creds.jira.baseUrl}`)
                 if (creds.azureDevOps) prompts.log.message(`  • Azure DevOps: ${creds.azureDevOps.org}`)
                 if (creds.confluence) prompts.log.message(`  • Confluence: ${creds.confluence.baseUrl}`)
+
+                // Build enabled services list based on fetched credentials
+                if (creds.jira) enabledServices.push('jira')
+                if (creds.azureDevOps) enabledServices.push('azdo')
+                if (creds.confluence) enabledServices.push('confluence')
               } else {
                 fetchSpinner.stop("No third-party integrations configured in portal")
               }
@@ -1266,6 +1289,13 @@ export const AuthLoginCommand = cmd({
                 prompts.log.warn(`Reason: ${portalCredentials.error}`)
               }
             }
+          }
+
+          // Update documentation with enterprise features based on enabled integrations
+          if (enabledServices.length > 0) {
+            // For stakeholders, replace docs with read-only version BEFORE adding enterprise features
+            await replaceDocumentationForStakeholder(role)
+            await updateDocumentationWithEnterprise(enabledServices)
           }
 
           // Configure MCP server
@@ -1888,6 +1918,9 @@ export const AuthLoginCommand = cmd({
             const enterpriseFetchSpinner = prompts.spinner()
             enterpriseFetchSpinner.start("Checking third-party tool integrations...")
 
+            // Track enabled services for documentation generation
+            let enabledServicesEnterprise: string[] = []
+
             // Check if we have a license key to fetch credentials
             if (!enterpriseLicenseKey) {
               enterpriseFetchSpinner.stop("Could not fetch credentials (no license key)")
@@ -1904,6 +1937,11 @@ export const AuthLoginCommand = cmd({
                   if (creds.jira) prompts.log.message(`  • Jira: ${creds.jira.baseUrl}`)
                   if (creds.azureDevOps) prompts.log.message(`  • Azure DevOps: ${creds.azureDevOps.org}`)
                   if (creds.confluence) prompts.log.message(`  • Confluence: ${creds.confluence.baseUrl}`)
+
+                  // Build enabled services list based on fetched credentials
+                  if (creds.jira) enabledServicesEnterprise.push('jira')
+                  if (creds.azureDevOps) enabledServicesEnterprise.push('azdo')
+                  if (creds.confluence) enabledServicesEnterprise.push('confluence')
                 } else {
                   enterpriseFetchSpinner.stop("No third-party integrations configured in portal")
                 }
@@ -1913,6 +1951,13 @@ export const AuthLoginCommand = cmd({
                   prompts.log.warn(`Reason: ${enterprisePortalCredentials.error}`)
                 }
               }
+            }
+
+            // Update documentation with enterprise features based on enabled integrations
+            if (enabledServicesEnterprise.length > 0) {
+              // For stakeholders, replace docs with read-only version BEFORE adding enterprise features
+              await replaceDocumentationForStakeholder(enterpriseRole)
+              await updateDocumentationWithEnterprise(enabledServicesEnterprise)
             }
 
             // Configure MCP server
@@ -2379,6 +2424,9 @@ export const AuthLoginCommand = cmd({
           const enterpriseFetchSpinnerFinal = prompts.spinner()
           enterpriseFetchSpinnerFinal.start("Checking third-party tool integrations...")
 
+          // Track enabled services for documentation generation
+          let enabledServicesFinal: string[] = []
+
           // Check if we have a license key to fetch credentials
           if (!enterpriseLicenseKeyFinal) {
             enterpriseFetchSpinnerFinal.stop("Could not fetch credentials (no license key)")
@@ -2395,6 +2443,11 @@ export const AuthLoginCommand = cmd({
                 if (creds.jira) prompts.log.message(`  • Jira: ${creds.jira.baseUrl}`)
                 if (creds.azureDevOps) prompts.log.message(`  • Azure DevOps: ${creds.azureDevOps.org}`)
                 if (creds.confluence) prompts.log.message(`  • Confluence: ${creds.confluence.baseUrl}`)
+
+                // Build enabled services list based on fetched credentials
+                if (creds.jira) enabledServicesFinal.push('jira')
+                if (creds.azureDevOps) enabledServicesFinal.push('azdo')
+                if (creds.confluence) enabledServicesFinal.push('confluence')
               } else {
                 enterpriseFetchSpinnerFinal.stop("No third-party integrations configured in portal")
               }
@@ -2404,6 +2457,13 @@ export const AuthLoginCommand = cmd({
                 prompts.log.warn(`Reason: ${enterprisePortalCredentialsFinal.error}`)
               }
             }
+          }
+
+          // Update documentation with enterprise features based on enabled integrations
+          if (enabledServicesFinal.length > 0) {
+            // For stakeholders, replace docs with read-only version BEFORE adding enterprise features
+            await replaceDocumentationForStakeholder(enterpriseRoleFinal)
+            await updateDocumentationWithEnterprise(enabledServicesFinal)
           }
 
           // Configure MCP server
