@@ -775,10 +775,10 @@ export const AuthLoginCommand = cmd({
             prompts.log.info(`Company: ${authData.customer.company}`)
           }
 
-          // Fetch credentials from portal
+          // Fetch third-party tool credentials from portal (optional)
           prompts.log.message("")
           const fetchSpinner = prompts.spinner()
-          fetchSpinner.start("Fetching enterprise credentials...")
+          fetchSpinner.start("Checking third-party tool integrations...")
 
           const portalCredentials = await PortalSync.pullFromPortal(licenseKey, portalUrl)
 
@@ -787,15 +787,15 @@ export const AuthLoginCommand = cmd({
             const credCount = (creds.jira ? 1 : 0) + (creds.azureDevOps ? 1 : 0) + (creds.confluence ? 1 : 0)
 
             if (credCount > 0) {
-              fetchSpinner.stop(`Found ${credCount} credential(s)`)
+              fetchSpinner.stop(`Found ${credCount} integration(s)`)
               if (creds.jira) prompts.log.message(`  • Jira: ${creds.jira.baseUrl}`)
               if (creds.azureDevOps) prompts.log.message(`  • Azure DevOps: ${creds.azureDevOps.org}`)
               if (creds.confluence) prompts.log.message(`  • Confluence: ${creds.confluence.baseUrl}`)
             } else {
-              fetchSpinner.stop("No credentials configured in portal")
+              fetchSpinner.stop("No third-party integrations configured")
             }
           } else {
-            fetchSpinner.stop("Could not fetch credentials")
+            fetchSpinner.stop("No third-party integrations configured")
           }
 
           // Configure MCP server
