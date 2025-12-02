@@ -588,9 +588,14 @@ export const AuthLoginCommand = cmd({
           message: "What would you like to authenticate?",
           options: [
             {
+              value: "complete",
+              label: "Complete Setup",
+              hint: "LLM + ServiceNow + Snow-Flow License (recommended)",
+            },
+            {
               value: "snow-flow",
-              label: "Snow-Flow Portal",
-              hint: "ServiceNow MCP tools access",
+              label: "Snow-Flow License",
+              hint: "Individual/Teams or Enterprise license",
             },
             {
               value: "llm",
@@ -607,9 +612,9 @@ export const AuthLoginCommand = cmd({
 
         if (prompts.isCancel(authCategory)) throw new UI.CancelledError()
 
-        // Handle Snow-Flow Portal authentication
+        // Handle Snow-Flow License authentication (Individual/Teams or Enterprise)
         if (authCategory === "snow-flow") {
-          prompts.log.step("Snow-Flow Portal Authentication")
+          prompts.log.step("Snow-Flow License Authentication")
           prompts.log.info("")
 
           const accountType = await prompts.select({
@@ -680,12 +685,15 @@ export const AuthLoginCommand = cmd({
           }
         }
 
+        // Track if this is a complete setup (chains all auth steps)
+        const isCompleteSetup = authCategory === "complete"
+
         // LLM Provider authentication
         let provider: string = ""
         await ModelsDev.refresh().catch(() => {})
         const providers = await ModelsDev.get()
 
-        if (authCategory === "llm") {
+        if (authCategory === "llm" || authCategory === "complete") {
           const priority: Record<string, number> = {
             anthropic: 0,
             "github-copilot": 1,
@@ -849,10 +857,24 @@ export const AuthLoginCommand = cmd({
             prompts.log.info("Credentials saved to .env and SnowCode configs")
           }
 
-          // After ServiceNow setup, ask about Enterprise (optional)
+          // If this is a standalone ServiceNow setup (not complete), stop here
+          if (authCategory === "servicenow") {
+            prompts.log.message("")
+            prompts.log.success("✅ ServiceNow authentication complete!")
+            prompts.log.message("")
+            prompts.log.info("Next steps:")
+            prompts.log.message("")
+            prompts.log.message('  • Run: snow-flow agent "<objective>" to start developing')
+            prompts.log.message("  • Run: snow-code auth login to configure more credentials")
+            prompts.outro("Done")
+            await Instance.dispose()
+            process.exit(0)
+          }
+
+          // For complete setup, ask about Snow-Flow License (optional)
           prompts.log.message("")
           const configureEnterprise = await prompts.confirm({
-            message: "Configure Snow-Flow Enterprise? (optional)",
+            message: "Configure Snow-Flow License? (optional - enables Jira, Azure DevOps, Confluence)",
             initialValue: false,
           })
 
@@ -877,7 +899,7 @@ export const AuthLoginCommand = cmd({
 
         // Handle Enterprise authentication
         if (provider === "enterprise") {
-          prompts.log.step("Snow-Flow Enterprise Setup")
+          prompts.log.step("Snow-Flow License Setup")
 
           const licenseKey = (await prompts.password({
             message: "Enterprise License Key (format: SNOW-ENT-*-* or SNOW-SI-*-*)",
@@ -2120,7 +2142,22 @@ export const AuthLoginCommand = cmd({
                 prompts.log.warn("Could not save model preference to config")
               }
             }
-            // Automatically continue to ServiceNow setup (required for snow-flow)
+
+            // If this is a standalone LLM setup (not complete), stop here
+            if (authCategory === "llm") {
+              prompts.log.message("")
+              prompts.log.success("✅ LLM Provider authentication complete!")
+              prompts.log.message("")
+              prompts.log.info("Next steps:")
+              prompts.log.message("")
+              prompts.log.message("  • Run: snow-code auth login to configure ServiceNow")
+              prompts.log.message("  • Run: snow-code auth list to see configured credentials")
+              prompts.outro("Done")
+              await Instance.dispose()
+              process.exit(0)
+            }
+
+            // For complete setup, continue to ServiceNow
             prompts.log.message("")
             prompts.log.step("ServiceNow Configuration")
             prompts.log.info("Snow-Flow requires ServiceNow connection for development")
@@ -2267,10 +2304,10 @@ export const AuthLoginCommand = cmd({
               prompts.log.info("Credentials saved to .env and SnowCode configs")
             }
 
-            // After ServiceNow setup, ask about Enterprise (optional)
+            // After ServiceNow setup, ask about Snow-Flow License (optional)
             prompts.log.message("")
             const configureEnterpriseAfterLLM = await prompts.confirm({
-              message: "Configure Snow-Flow Enterprise? (optional)",
+              message: "Configure Snow-Flow License? (optional - enables Jira, Azure DevOps, Confluence)",
               initialValue: false,
             })
 
@@ -2289,7 +2326,7 @@ export const AuthLoginCommand = cmd({
 
             // User wants Enterprise - handle it directly
             prompts.log.message("")
-            prompts.log.step("Snow-Flow Enterprise Setup")
+            prompts.log.step("Snow-Flow License Setup")
 
             const enterpriseLicenseKey = (await prompts.password({
               message: "Enterprise License Key (format: SNOW-ENT-*-* or SNOW-SI-*-*)",
@@ -3041,7 +3078,21 @@ export const AuthLoginCommand = cmd({
           }
         }
 
-        // Automatically continue to ServiceNow setup (required for snow-flow)
+        // If this is a standalone LLM setup (not complete), stop here
+        if (authCategory === "llm") {
+          prompts.log.message("")
+          prompts.log.success("✅ LLM Provider authentication complete!")
+          prompts.log.message("")
+          prompts.log.info("Next steps:")
+          prompts.log.message("")
+          prompts.log.message("  • Run: snow-code auth login to configure ServiceNow")
+          prompts.log.message("  • Run: snow-code auth list to see configured credentials")
+          prompts.outro("Done")
+          await Instance.dispose()
+          process.exit(0)
+        }
+
+        // For complete setup, continue to ServiceNow
         prompts.log.message("")
         prompts.log.step("ServiceNow Configuration")
         prompts.log.info("Snow-Flow requires ServiceNow connection for development")
@@ -3187,16 +3238,16 @@ export const AuthLoginCommand = cmd({
           prompts.log.info("Credentials saved to .env and SnowCode configs")
         }
 
-        // After ServiceNow setup, ask about Enterprise (optional)
+        // After ServiceNow setup, ask about Snow-Flow License (optional)
         prompts.log.message("")
         const configureEnterprise = await prompts.confirm({
-          message: "Configure Snow-Flow Enterprise? (optional)",
+          message: "Configure Snow-Flow License? (optional - enables Jira, Azure DevOps, Confluence)",
           initialValue: false,
         })
 
         if (!prompts.isCancel(configureEnterprise) && configureEnterprise) {
           prompts.log.message("")
-          prompts.log.step("Snow-Flow Enterprise Setup")
+          prompts.log.step("Snow-Flow License Setup")
 
           const licenseKey = (await prompts.password({
             message: "Enterprise License Key (format: SNOW-ENT-*-* or SNOW-SI-*-*)",
