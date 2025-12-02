@@ -822,10 +822,11 @@ export const AuthLoginCommand = cmd({
             }
           }
 
+          // For stakeholders, replace docs with read-only version (regardless of integrations)
+          await replaceDocumentationForStakeholder(role)
+
           // Update documentation with enterprise features based on enabled integrations
           if (enabledServices.length > 0) {
-            // For stakeholders, replace docs with read-only version BEFORE adding enterprise features
-            await replaceDocumentationForStakeholder(role)
             await updateDocumentationWithEnterprise(enabledServices)
           }
 
@@ -1291,10 +1292,11 @@ export const AuthLoginCommand = cmd({
             }
           }
 
+          // For stakeholders, replace docs with read-only version (regardless of integrations)
+          await replaceDocumentationForStakeholder(role)
+
           // Update documentation with enterprise features based on enabled integrations
           if (enabledServices.length > 0) {
-            // For stakeholders, replace docs with read-only version BEFORE adding enterprise features
-            await replaceDocumentationForStakeholder(role)
             await updateDocumentationWithEnterprise(enabledServices)
           }
 
@@ -1953,10 +1955,11 @@ export const AuthLoginCommand = cmd({
               }
             }
 
+            // For stakeholders, replace docs with read-only version (regardless of integrations)
+            await replaceDocumentationForStakeholder(enterpriseRole)
+
             // Update documentation with enterprise features based on enabled integrations
             if (enabledServicesEnterprise.length > 0) {
-              // For stakeholders, replace docs with read-only version BEFORE adding enterprise features
-              await replaceDocumentationForStakeholder(enterpriseRole)
               await updateDocumentationWithEnterprise(enabledServicesEnterprise)
             }
 
@@ -2459,10 +2462,11 @@ export const AuthLoginCommand = cmd({
             }
           }
 
+          // For stakeholders, replace docs with read-only version (regardless of integrations)
+          await replaceDocumentationForStakeholder(enterpriseRoleFinal)
+
           // Update documentation with enterprise features based on enabled integrations
           if (enabledServicesFinal.length > 0) {
-            // For stakeholders, replace docs with read-only version BEFORE adding enterprise features
-            await replaceDocumentationForStakeholder(enterpriseRoleFinal)
             await updateDocumentationWithEnterprise(enabledServicesFinal)
           }
 
