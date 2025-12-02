@@ -780,22 +780,31 @@ export const AuthLoginCommand = cmd({
           const fetchSpinner = prompts.spinner()
           fetchSpinner.start("Checking third-party tool integrations...")
 
-          const portalCredentials = await PortalSync.pullFromPortal(licenseKey, portalUrl)
-
-          if (portalCredentials.success && portalCredentials.credentials) {
-            const creds = portalCredentials.credentials
-            const credCount = (creds.jira ? 1 : 0) + (creds.azureDevOps ? 1 : 0) + (creds.confluence ? 1 : 0)
-
-            if (credCount > 0) {
-              fetchSpinner.stop(`Found ${credCount} integration(s)`)
-              if (creds.jira) prompts.log.message(`  • Jira: ${creds.jira.baseUrl}`)
-              if (creds.azureDevOps) prompts.log.message(`  • Azure DevOps: ${creds.azureDevOps.org}`)
-              if (creds.confluence) prompts.log.message(`  • Confluence: ${creds.confluence.baseUrl}`)
-            } else {
-              fetchSpinner.stop("No third-party integrations configured")
-            }
+          // Check if we have a license key to fetch credentials
+          if (!licenseKey) {
+            fetchSpinner.stop("Could not fetch credentials (no license key)")
+            prompts.log.warn("Your customer account may not have a license key configured")
           } else {
-            fetchSpinner.stop("No third-party integrations configured")
+            const portalCredentials = await PortalSync.pullFromPortal(licenseKey, portalUrl)
+
+            if (portalCredentials.success && portalCredentials.credentials) {
+              const creds = portalCredentials.credentials
+              const credCount = (creds.jira ? 1 : 0) + (creds.azureDevOps ? 1 : 0) + (creds.confluence ? 1 : 0)
+
+              if (credCount > 0) {
+                fetchSpinner.stop(`Found ${credCount} integration(s)`)
+                if (creds.jira) prompts.log.message(`  • Jira: ${creds.jira.baseUrl}`)
+                if (creds.azureDevOps) prompts.log.message(`  • Azure DevOps: ${creds.azureDevOps.org}`)
+                if (creds.confluence) prompts.log.message(`  • Confluence: ${creds.confluence.baseUrl}`)
+              } else {
+                fetchSpinner.stop("No third-party integrations configured in portal")
+              }
+            } else {
+              fetchSpinner.stop("Could not fetch credentials")
+              if (portalCredentials.error) {
+                prompts.log.warn(`Reason: ${portalCredentials.error}`)
+              }
+            }
           }
 
           // Configure MCP server

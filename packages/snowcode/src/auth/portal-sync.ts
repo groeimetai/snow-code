@@ -192,6 +192,14 @@ export namespace PortalSync {
     error?: string
   }> {
     try {
+      // Validate license key
+      if (!licenseKey || licenseKey.trim() === '') {
+        return {
+          success: false,
+          error: "No license key provided"
+        }
+      }
+
       // Determine portal URL
       const baseUrl = portalUrl || process.env.SNOW_FLOW_PORTAL_URL || "https://portal.snow-flow.dev"
       const fetchUrl = `${baseUrl}/api/credentials/fetch-for-cli`
@@ -211,7 +219,7 @@ export namespace PortalSync {
       if (!response.ok) {
         return {
           success: false,
-          error: data.error || `HTTP ${response.status}: ${response.statusText}`
+          error: data.error || data.details || `HTTP ${response.status}: ${response.statusText}`
         }
       }
 
@@ -221,9 +229,10 @@ export namespace PortalSync {
         message: data.message
       }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error)
+        error: errorMessage.includes('timeout') ? 'Connection timeout' : errorMessage
       }
     }
   }
