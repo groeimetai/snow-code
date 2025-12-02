@@ -2598,673 +2598,242 @@ export const AuthLoginCommand = cmd({
               process.exit(0)
             }
 
-            // User wants Enterprise - handle it directly
+            // User wants Snow-Flow License, ask which type (same as standalone)
             prompts.log.message("")
-            prompts.log.step("Snow-Flow License Setup")
 
-            const enterpriseLicenseKey = (await prompts.password({
-              message: "Enterprise License Key (format: SNOW-ENT-*-* or SNOW-SI-*-*)",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "License key is required"
-                if (!value.startsWith("SNOW-ENT-") && !value.startsWith("SNOW-SI-")) {
-                  return "Invalid license key format (should start with SNOW-ENT- or SNOW-SI-)"
-                }
-              },
-            })) as string
-
-            if (prompts.isCancel(enterpriseLicenseKey)) {
-              prompts.outro("Done")
-              await Instance.dispose()
-              return
-            }
-
-            // Enterprise portal URL is fixed
-            const enterpriseServerUrl = "https://portal.snow-flow.dev"
-
-            // Test connection to enterprise server first
-            prompts.log.message("")
-            const enterpriseTestSpinner = prompts.spinner()
-            enterpriseTestSpinner.start("Testing connection to enterprise server...")
-
-            try {
-              const testResponse = await fetch(`${enterpriseServerUrl}/api/health`, {
-                method: "GET",
-                signal: AbortSignal.timeout(5000), // 5 second timeout
-              })
-              enterpriseTestSpinner.stop("Connection successful!")
-            } catch (testError: any) {
-              enterpriseTestSpinner.stop("Connection failed", 1)
-              prompts.log.warn(`Unable to reach ${enterpriseServerUrl}`)
-              prompts.log.message("")
-
-              const skipEnterpriseSetup = await prompts.confirm({
-                message: "Enterprise server is not accessible. Skip enterprise setup?",
-                initialValue: true,
-              })
-
-              if (prompts.isCancel(skipEnterpriseSetup) || skipEnterpriseSetup) {
-                prompts.log.message("")
-                prompts.log.success("✅ Authentication complete! (without enterprise features)")
-                prompts.log.message("")
-                prompts.log.info("Next steps:")
-                prompts.log.message("")
-                prompts.log.message('  • Run: snow-flow agent "<objective>" to start developing')
-                prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
-                prompts.outro("Done")
-                await Instance.dispose()
-                process.exit(0)
-              }
-
-              // User wants to continue anyway - proceed with setup
-              prompts.log.warn("Continuing with enterprise setup...")
-            }
-
-            // User Registration/Login Flow
-            prompts.log.message("")
-            prompts.log.step("User Account Setup")
-
-            const enterpriseAccountAction = await prompts.select({
-              message: "Do you want to login or register?",
+            const accountTypeAfterLLM = await prompts.select({
+              message: "Select your account type",
               options: [
                 {
-                  value: "register",
-                  label: "Register",
-                  hint: "Create a new user account",
+                  value: "portal",
+                  label: "Individual / Teams",
+                  hint: "email-based login (€99/mo or €79/seat)",
                 },
                 {
-                  value: "login",
-                  label: "Login",
-                  hint: "Login with existing account",
+                  value: "enterprise",
+                  label: "Enterprise",
+                  hint: "license key login (custom pricing)",
                 },
               ],
             })
 
-            if (prompts.isCancel(enterpriseAccountAction)) {
-              prompts.outro("Done")
-              await Instance.dispose()
-              return
-            }
+            if (prompts.isCancel(accountTypeAfterLLM)) throw new UI.CancelledError()
 
-            let enterpriseUsername: string = ""
-            let enterpriseEmail: string | undefined
-            let enterprisePassword: string = ""
-            let enterpriseRole: "developer" | "stakeholder" | "admin" = "developer"
-            let enterpriseAuthData: any
-
-            // Generate machine ID for device binding
-            const enterpriseMachineId = generateMachineId()
-
-            if (enterpriseAccountAction === "register") {
-              // New user registration with retry loop
-              let enterpriseRegistrationSuccess = false
-
-              while (!enterpriseRegistrationSuccess) {
-                prompts.log.info("Creating your user account...")
-
-                // Username validation with availability check
-                let enterpriseUsernameValid = false
-                while (!enterpriseUsernameValid) {
-                  enterpriseUsername = (await prompts.text({
-                    message: "Choose a username",
-                    placeholder: "john.doe",
-                    validate: (value) => {
-                      if (!value || value.trim() === "") return "Username is required"
-                      if (value.length < 3) return "Username must be at least 3 characters"
-                    },
-                  })) as string
-
-                  if (prompts.isCancel(enterpriseUsername)) {
-                    prompts.outro("Done")
-                    await Instance.dispose()
-                    return
-                  }
-
-                  // Check if username is available
-                  try {
-                    const checkResponse = await fetch(
-                      `${enterpriseServerUrl}/api/user-auth/check-availability?username=${encodeURIComponent(enterpriseUsername)}&licenseKey=${encodeURIComponent(enterpriseLicenseKey)}`,
-                      { method: "GET", signal: AbortSignal.timeout(10000) }
-                    )
-
-                    if (checkResponse.ok) {
-                      const checkData = await checkResponse.json()
-                      if (!checkData.usernameAvailable) {
-                        prompts.log.error("⚠️  Username already taken")
-                        prompts.log.message("")
-                        continue // Ask for username again
-                      }
-                      enterpriseUsernameValid = true
-                    } else {
-                      // If check fails, proceed anyway (server might not have endpoint yet)
-                      enterpriseUsernameValid = true
-                    }
-                  } catch (error) {
-                    // Network error - proceed anyway
-                    enterpriseUsernameValid = true
-                  }
-                }
-
-                // Email validation with availability check
-                let enterpriseEmailValid = false
-                while (!enterpriseEmailValid) {
-                  enterpriseEmail = (await prompts.text({
-                    message: "Your email",
-                    placeholder: "john.doe@company.com",
-                    validate: (value) => {
-                      if (!value || value.trim() === "") return "Email is required"
-                      if (!value.includes("@")) return "Please enter a valid email"
-                    },
-                  })) as string
-
-                  if (prompts.isCancel(enterpriseEmail)) {
-                    prompts.outro("Done")
-                    await Instance.dispose()
-                    return
-                  }
-
-                  // Check if email is available
-                  try {
-                    const checkResponse = await fetch(
-                      `${enterpriseServerUrl}/api/user-auth/check-availability?email=${encodeURIComponent(enterpriseEmail)}&licenseKey=${encodeURIComponent(enterpriseLicenseKey)}`,
-                      { method: "GET", signal: AbortSignal.timeout(10000) }
-                    )
-
-                    if (checkResponse.ok) {
-                      const checkData = await checkResponse.json()
-                      if (!checkData.emailAvailable) {
-                        prompts.log.error("⚠️  Email already registered")
-                        prompts.log.message("")
-                        continue // Ask for email again
-                      }
-                      enterpriseEmailValid = true
-                    } else {
-                      // If check fails, proceed anyway
-                      enterpriseEmailValid = true
-                    }
-                  } catch (error) {
-                    // Network error - proceed anyway
-                    enterpriseEmailValid = true
-                  }
-                }
-
-              enterprisePassword = (await prompts.password({
-                message: "Choose a password",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Password is required"
-                  if (value.length < 8) return "Password must be at least 8 characters"
-                },
-              })) as string
-
-              if (prompts.isCancel(enterprisePassword)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              const enterprisePasswordConfirm = (await prompts.password({
-                message: "Confirm password",
-                validate: (value) => {
-                  if (value !== enterprisePassword) return "Passwords do not match"
-                },
-              })) as string
-
-              if (prompts.isCancel(enterprisePasswordConfirm)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              const enterpriseRoleChoice = (await prompts.select({
-                message: "Select your role",
+            if (accountTypeAfterLLM === "portal") {
+              // Portal authentication (Individual/Teams) - same as standalone
+              const authMethodAfterLLM = await prompts.select({
+                message: "How would you like to authenticate?",
                 options: [
                   {
-                    value: "developer",
-                    label: "Developer",
-                    hint: "Full MCP access + ServiceNow tools",
+                    value: "browser",
+                    label: "Browser",
+                    hint: "recommended - opens browser for approval",
                   },
                   {
-                    value: "stakeholder",
-                    label: "Stakeholder",
-                    hint: "Portal-only access for monitoring",
+                    value: "email",
+                    label: "Email & Password",
+                    hint: "direct login",
+                  },
+                  {
+                    value: "magic-link",
+                    label: "Magic Link",
+                    hint: "passwordless via email",
                   },
                 ],
-              })) as string
+              })
 
-              if (prompts.isCancel(enterpriseRoleChoice)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-              enterpriseRole = enterpriseRoleChoice as "developer" | "stakeholder" | "admin"
+              if (prompts.isCancel(authMethodAfterLLM)) throw new UI.CancelledError()
 
-              // Check seat availability BEFORE registration
-              prompts.log.message("")
-              const entSeatCheckSpinner = prompts.spinner()
-              entSeatCheckSpinner.start(`Checking ${enterpriseRole} seat availability...`)
+              // Import and run portal auth flow
+              const {
+                AuthPortalLoginCommand
+              } = await import("./auth-portal.js")
 
-              try {
-                const entSeatCheckResponse = await fetch(
-                  `${enterpriseServerUrl}/api/user-auth/check-seats?licenseKey=${encodeURIComponent(enterpriseLicenseKey)}&role=${enterpriseRole}`
-                )
+              prompts.outro("Starting portal authentication...")
 
-                const entSeatCheck = await entSeatCheckResponse.json()
+              // Execute the appropriate auth flow based on method
+              const portalArgsAfterLLM = { method: authMethodAfterLLM }
+              await AuthPortalLoginCommand.handler(portalArgsAfterLLM as any)
 
-                if (!entSeatCheckResponse.ok || !entSeatCheck.success) {
-                  entSeatCheckSpinner.stop("Seat check failed", 1)
-                  prompts.log.error(entSeatCheck.error || "Failed to check seat availability")
-                  prompts.outro("Registration cancelled")
-                  await Instance.dispose()
-                  process.exit(1)
-                }
+              await Instance.dispose()
+              process.exit(0)
+            }
 
-                if (!entSeatCheck.seatsAvailable) {
-                  entSeatCheckSpinner.stop("No seats available", 1)
-                  prompts.log.error(entSeatCheck.message || `No ${enterpriseRole} seats available`)
-                  if (!entSeatCheck.unlimited && entSeatCheck.totalSeats) {
-                    prompts.log.info(`Current usage: ${entSeatCheck.usedSeats}/${entSeatCheck.totalSeats} seats used`)
-                  }
-                  prompts.log.message("")
-                  prompts.log.warn("Please contact your administrator to increase seat allocation")
-                  prompts.outro("Registration cancelled")
-                  await Instance.dispose()
-                  process.exit(1)
-                }
+            // Enterprise - simple username/password login (admin creates users)
+            prompts.log.step("Snow-Flow Enterprise Login")
+            prompts.log.info("Login with the credentials provided by your admin")
+            prompts.log.message("")
 
-                entSeatCheckSpinner.stop(entSeatCheck.message || "Seats available")
-                if (!entSeatCheck.unlimited && entSeatCheck.totalSeats) {
-                  prompts.log.info(`Available seats: ${entSeatCheck.availableSeats}/${entSeatCheck.totalSeats}`)
-                }
-              } catch (error: any) {
-                entSeatCheckSpinner.stop("Connection error", 1)
-                prompts.log.error(`Failed to check seat availability: ${error.message}`)
-                prompts.log.warn("Continuing with registration (seat check unavailable)")
-              }
+            // Enterprise portal URL is fixed
+            const enterprisePortalUrl = "https://portal.snow-flow.dev"
+            const enterpriseMcpUrl = "https://enterprise.snow-flow.dev"
 
-              prompts.log.info(`Machine ID: ${enterpriseMachineId.substring(0, 16)}...`)
+            let enterpriseUser: string = ""
+            let enterprisePass: string
+            let enterpriseAuthResult: any
+            const enterpriseMachineId = generateMachineId()
 
-              // Register with enterprise backend
-              prompts.log.message("")
-              const enterpriseSpinner = prompts.spinner()
-              enterpriseSpinner.start("Registering user account...")
+            // Login flow
+            let enterpriseLoginSuccess = false
 
-              try {
-                const response = await fetch(`${enterpriseServerUrl}/api/user-auth/register`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    licenseKey: enterpriseLicenseKey,
-                    username: enterpriseUsername,
-                    email: enterpriseEmail,
-                    password: enterprisePassword,
-                    role: enterpriseRole,
-                  }),
-                })
-
-                enterpriseAuthData = await response.json()
-
-                if (!response.ok || !enterpriseAuthData.success) {
-                  enterpriseSpinner.stop("Registration failed", 1)
-                  prompts.log.error(enterpriseAuthData.error || "Unknown error")
-
-                  // Check if error is due to duplicate username/email
-                  if (enterpriseAuthData.error && (
-                    enterpriseAuthData.error.includes("username") ||
-                    enterpriseAuthData.error.includes("email") ||
-                    enterpriseAuthData.error.includes("already exists")
-                  )) {
-                    prompts.log.message("")
-                    prompts.log.warn("Please try a different username or email")
-                    prompts.log.message("")
-                    continue // Retry registration with different credentials
-                  }
-
-                  // Other errors - exit
-                  prompts.outro("Done")
-                  await Instance.dispose()
-                  process.exit(1)
-                }
-
-                enterpriseSpinner.stop("Registration successful!")
-                enterpriseRegistrationSuccess = true // Break out of retry loop
-              } catch (error: any) {
-                prompts.log.error(`Connection error: ${error.message}`)
-                prompts.log.message("")
-                prompts.log.warn("Unable to connect to enterprise server")
-                prompts.log.info(`URL: ${enterpriseServerUrl}/api/user-auth/register`)
-                prompts.outro("Done")
-                await Instance.dispose()
-                process.exit(1)
-              }
-            } // End of while (!enterpriseRegistrationSuccess) loop
-            } else {
-              // Existing user login
-              prompts.log.info("Logging in with existing account...")
-
-              enterpriseUsername = (await prompts.text({
-                message: "Your username",
+            while (!enterpriseLoginSuccess) {
+              enterpriseUser = (await prompts.text({
+                message: "Username",
                 placeholder: "john.doe",
                 validate: (value) => {
                   if (!value || value.trim() === "") return "Username is required"
                 },
               })) as string
 
-              if (prompts.isCancel(enterpriseUsername)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
+              if (prompts.isCancel(enterpriseUser)) throw new UI.CancelledError()
 
-              enterprisePassword = (await prompts.password({
-                message: "Your password",
+              enterprisePass = (await prompts.password({
+                message: "Password",
                 validate: (value) => {
                   if (!value || value.trim() === "") return "Password is required"
                 },
               })) as string
 
-              if (prompts.isCancel(enterprisePassword)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
+              if (prompts.isCancel(enterprisePass)) throw new UI.CancelledError()
 
-              prompts.log.info(`Machine ID: ${enterpriseMachineId.substring(0, 16)}...`)
-
-              // Login with enterprise backend
               prompts.log.message("")
               const enterpriseSpinner = prompts.spinner()
               enterpriseSpinner.start("Authenticating...")
 
               try {
-                const response = await fetch(`${enterpriseServerUrl}/api/user-auth/login`, {
+                const response = await fetch(`${enterprisePortalUrl}/api/user-auth/login`, {
                   method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    licenseKey: enterpriseLicenseKey,
-                    username: enterpriseUsername,
-                    password: enterprisePassword,
-                  }),
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ username: enterpriseUser, password: enterprisePass }),
                 })
 
-                enterpriseAuthData = await response.json()
+                enterpriseAuthResult = await response.json()
 
-                if (!response.ok || !enterpriseAuthData.success) {
+                if (!response.ok || !enterpriseAuthResult.success) {
                   enterpriseSpinner.stop("Authentication failed", 1)
-                  prompts.log.error(enterpriseAuthData.error || "Invalid username or password")
-                  prompts.outro("Done")
-                  await Instance.dispose()
-                  process.exit(1)
+                  prompts.log.error(enterpriseAuthResult.error || "Invalid username or password")
+
+                  const tryAgainEnterprise = await prompts.confirm({
+                    message: "Would you like to try again?",
+                    initialValue: true,
+                  })
+                  if (prompts.isCancel(tryAgainEnterprise) || !tryAgainEnterprise) {
+                    prompts.outro("Login cancelled")
+                    await Instance.dispose()
+                    process.exit(1)
+                  }
+                  continue
                 }
 
                 enterpriseSpinner.stop("Authentication successful!")
-
-                // Extract role and email from response
-                enterpriseRole = enterpriseAuthData.user?.role || "developer"
-                enterpriseEmail = enterpriseAuthData.user?.email
-
-                // 🔐 CHECK IF PASSWORD RESET IS REQUIRED
-                try {
-                  const userId = enterpriseAuthData.user?.userId || crypto.createHash('sha256').update(enterpriseEmail || enterpriseUsername).digest('hex')
-                  const resetCheckResponse = await fetch(`${enterpriseServerUrl}/api/user-auth/password-reset-required?userId=${userId}`, {
-                    signal: AbortSignal.timeout(5000),
-                  })
-
-                  if (resetCheckResponse.ok) {
-                    const resetData = await resetCheckResponse.json()
-
-                    if (resetData.passwordResetRequired) {
-                      prompts.log.message("")
-                      prompts.log.warn("⚠️  Password reset required")
-                      prompts.log.info("You must change your temporary password before continuing")
-                      prompts.log.message("")
-
-                      const newPassword = (await prompts.password({
-                        message: "Enter your new password",
-                        validate: (value) => {
-                          if (!value || value.trim() === "") return "Password is required"
-                          if (value.length < 8) return "Password must be at least 8 characters"
-                          if (value === enterprisePassword) return "New password must be different from current password"
-                        },
-                      })) as string
-
-                      if (prompts.isCancel(newPassword)) {
-                        prompts.log.error("Password reset cancelled")
-                        prompts.outro("Done")
-                        await Instance.dispose()
-                        process.exit(1)
-                      }
-
-                      const confirmPassword = (await prompts.password({
-                        message: "Confirm your new password",
-                        validate: (value) => {
-                          if (value !== newPassword) return "Passwords do not match"
-                        },
-                      })) as string
-
-                      if (prompts.isCancel(confirmPassword)) {
-                        prompts.log.error("Password reset cancelled")
-                        prompts.outro("Done")
-                        await Instance.dispose()
-                        process.exit(1)
-                      }
-
-                      // Reset password
-                      prompts.log.message("")
-                      const resetSpinner = prompts.spinner()
-                      resetSpinner.start("Resetting password...")
-
-                      try {
-                        const resetResponse = await fetch(`${enterpriseServerUrl}/api/user-auth/reset-password`, {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                          },
-                          body: JSON.stringify({
-                            userId,
-                            currentPassword: enterprisePassword,
-                            newPassword,
-                          }),
-                          signal: AbortSignal.timeout(10000),
-                        })
-
-                        const resetResult = await resetResponse.json()
-
-                        if (!resetResponse.ok || !resetResult.success) {
-                          resetSpinner.stop("Password reset failed", 1)
-                          prompts.log.error(resetResult.error || "Failed to reset password")
-                          prompts.log.warn("Please try again or contact support")
-                          prompts.outro("Done")
-                          await Instance.dispose()
-                          process.exit(1)
-                        }
-
-                        resetSpinner.stop("Password reset successful!")
-                        prompts.log.success("✅ Your password has been updated")
-                        prompts.log.info("You can now use your new password for future logins")
-
-                        // Update password variable for storage
-                        enterprisePassword = newPassword
-                      } catch (resetError: any) {
-                        resetSpinner.stop("Password reset failed", 1)
-                        prompts.log.error(`Connection error: ${resetError.message}`)
-                        prompts.log.warn("Unable to reset password. Please try again later.")
-                        prompts.outro("Done")
-                        await Instance.dispose()
-                        process.exit(1)
-                      }
-                    }
-                  }
-                } catch (checkError) {
-                  // Silently continue if password reset check fails
-                  // This ensures backward compatibility if endpoint doesn't exist
-                }
+                enterpriseLoginSuccess = true
               } catch (error: any) {
+                enterpriseSpinner.stop("Connection error", 1)
                 prompts.log.error(`Connection error: ${error.message}`)
-                prompts.log.message("")
-                prompts.log.warn("Unable to connect to enterprise server")
-                prompts.log.info(`URL: ${enterpriseServerUrl}/api/user-auth/login`)
-                prompts.outro("Done")
+                prompts.outro("Login cancelled")
                 await Instance.dispose()
                 process.exit(1)
               }
             }
 
-            // Update enterprise auth storage with user info and token
-            const existingEnterpriseAuth = await Auth.all().then(x => x["enterprise"])
+            const enterpriseRole = enterpriseAuthResult.user?.role || "developer"
+            const enterpriseEmail = enterpriseAuthResult.user?.email
+            const enterpriseLicenseKey = enterpriseAuthResult.customer?.licenseKey || ""
+
+            // Store enterprise auth
             await Auth.set("enterprise", {
-              ...(existingEnterpriseAuth || {}),
               type: "enterprise",
               licenseKey: enterpriseLicenseKey,
-              enterpriseUrl: enterpriseServerUrl || undefined,
-              token: enterpriseAuthData.token,
-              sessionToken: enterpriseAuthData.sessionToken,
-              username: enterpriseUsername,
+              enterpriseUrl: enterprisePortalUrl,
+              token: enterpriseAuthResult.token,
+              sessionToken: enterpriseAuthResult.sessionToken,
+              username: enterpriseUser,
               email: enterpriseEmail,
-              role: enterpriseAuthData.user?.role || enterpriseRole,
+              role: enterpriseAuthResult.user?.role || enterpriseRole,
               machineId: enterpriseMachineId,
             })
 
-            prompts.log.success(`Welcome, ${enterpriseUsername}!`)
-            prompts.log.info(`Role: ${enterpriseAuthData.user?.role || enterpriseRole}`)
-            if (enterpriseAuthData.customer?.company) {
-              prompts.log.info(`Company: ${enterpriseAuthData.customer.company}`)
-            }
-            if (enterpriseAuthData.user?.activeSessions !== undefined) {
-              prompts.log.info(`Active sessions: ${enterpriseAuthData.user.activeSessions} (max 1 per user)`)
-            }
-
-            // Optional integrations
-            const configureJira = await prompts.confirm({
-              message: "Configure optional integrations (Jira, Azure DevOps, Confluence)?",
-              initialValue: false,
-            })
-
-            let enterpriseJiraBaseUrl: string | undefined
-            let enterpriseAtlassianEmail: string | undefined
-            let enterpriseAtlassianApiToken: string | undefined
-
-            if (!prompts.isCancel(configureJira) && configureJira) {
-              enterpriseAtlassianEmail = (await prompts.text({
-                message: "Atlassian Email (for Jira/Confluence)",
-                placeholder: "admin@company.com",
-              })) as string
-
-              if (!prompts.isCancel(enterpriseAtlassianEmail)) {
-                enterpriseAtlassianApiToken = (await prompts.password({
-                  message: "Atlassian API Token",
-                })) as string
-
-                if (!prompts.isCancel(enterpriseAtlassianApiToken)) {
-                  enterpriseJiraBaseUrl = (await prompts.text({
-                    message: "Jira Base URL (optional)",
-                    placeholder: "https://company.atlassian.net",
-                  })) as string
-                }
-              }
-            }
-
-            // Save Enterprise config to Auth store (preserve existing fields like token, username, etc.)
-            const currentEnterpriseAuth = await Auth.get("enterprise")
-            await Auth.set("enterprise", {
-              ...currentEnterpriseAuth, // Preserve token, username, email, role, machineId, sessionToken
-              type: "enterprise",
-              licenseKey: enterpriseLicenseKey,
-              enterpriseUrl: enterpriseServerUrl || undefined,
-              jiraBaseUrl: enterpriseJiraBaseUrl || undefined,
-              atlassianEmail: enterpriseAtlassianEmail || undefined,
-              atlassianApiToken: enterpriseAtlassianApiToken || undefined,
-            })
-
             // Write to .env file
-            const envUpdates: Array<{ key: string; value: string }> = [
+            const enterpriseEnvUpdates: Array<{ key: string; value: string }> = [
               { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: enterpriseLicenseKey },
+              { key: "SNOW_ENTERPRISE_URL", value: enterprisePortalUrl },
             ]
-            if (enterpriseServerUrl)
-              envUpdates.push({ key: "SNOW_ENTERPRISE_URL", value: enterpriseServerUrl })
-            if (enterpriseJiraBaseUrl)
-              envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: enterpriseJiraBaseUrl })
-            if (enterpriseAtlassianEmail)
-              envUpdates.push({ key: "SNOW_ATLASSIAN_EMAIL", value: enterpriseAtlassianEmail })
-            if (enterpriseAtlassianApiToken)
-              envUpdates.push({ key: "SNOW_ATLASSIAN_API_TOKEN", value: enterpriseAtlassianApiToken })
-            await updateEnvFile(envUpdates)
+            await updateEnvFile(enterpriseEnvUpdates)
 
-            // Validate license key with enterprise server
-            try {
-              const validationSpinner = prompts.spinner()
-              validationSpinner.start("Validating enterprise license...")
+            prompts.log.success(`Welcome, ${enterpriseUser}!`)
+            prompts.log.info(`Role: ${enterpriseAuthResult.user?.role || enterpriseRole}`)
+            if (enterpriseAuthResult.customer?.company) {
+              prompts.log.info(`Company: ${enterpriseAuthResult.customer.company}`)
+            }
 
-              // Validate license key (no auth token needed - license key validates itself)
-              // Uses portal server (enterpriseServerUrl)
-              const validation = await validateLicenseKey(enterpriseLicenseKey, enterpriseServerUrl)
+            // Fetch third-party tool credentials from portal (optional)
+            prompts.log.message("")
+            const enterpriseFetchSpinner = prompts.spinner()
+            enterpriseFetchSpinner.start("Checking third-party tool integrations...")
 
-              if (!validation.valid) {
-                validationSpinner.stop("⚠️  License validation failed", 1)
-                prompts.log.warn(`License validation failed: ${validation.error}`)
-                prompts.log.info("Continuing with local configuration only")
-              } else {
-                validationSpinner.stop("License validated")
+            // Check if we have a license key to fetch credentials
+            if (!enterpriseLicenseKey) {
+              enterpriseFetchSpinner.stop("Could not fetch credentials (no license key)")
+              prompts.log.warn("Your customer account may not have a license key configured")
+            } else {
+              const enterprisePortalCredentials = await PortalSync.pullFromPortal(enterpriseLicenseKey, enterprisePortalUrl)
 
-                // Generate JWT token for MCP authentication
-                const crypto = await import("crypto")
-                const machineId = crypto.createHash("sha256").update(os.hostname()).digest("hex")
+              if (enterprisePortalCredentials.success && enterprisePortalCredentials.credentials) {
+                const creds = enterprisePortalCredentials.credentials
+                const credCount = (creds.jira ? 1 : 0) + (creds.azureDevOps ? 1 : 0) + (creds.confluence ? 1 : 0)
 
-                const jwtResponse = await fetch(`${enterpriseServerUrl}/api/auth/mcp/login`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    licenseKey: enterpriseLicenseKey,
-                    machineId,
-                    role: "developer",
-                  }),
-                })
-
-                if (!jwtResponse.ok) {
-                  throw new Error(`Failed to generate JWT: ${jwtResponse.statusText}`)
+                if (credCount > 0) {
+                  enterpriseFetchSpinner.stop(`Found ${credCount} integration(s)`)
+                  if (creds.jira) prompts.log.message(`  • Jira: ${creds.jira.baseUrl}`)
+                  if (creds.azureDevOps) prompts.log.message(`  • Azure DevOps: ${creds.azureDevOps.org}`)
+                  if (creds.confluence) prompts.log.message(`  • Confluence: ${creds.confluence.baseUrl}`)
+                } else {
+                  enterpriseFetchSpinner.stop("No third-party integrations configured in portal")
                 }
-
-                const jwtData: any = await jwtResponse.json()
-                const jwtToken = jwtData.token
-
-                // Configure enterprise MCP server with validated credentials
-                await addEnterpriseMcpServer({
-                  licenseKey: jwtToken,
-                  serverUrl: "https://enterprise.snow-flow.dev",
-                  credentials: {
-                    atlassian: enterpriseAtlassianEmail && enterpriseAtlassianApiToken
-                      ? { email: enterpriseAtlassianEmail, apiToken: enterpriseAtlassianApiToken }
-                      : undefined,
-                    jira: enterpriseJiraBaseUrl
-                      ? { host: enterpriseJiraBaseUrl }
-                      : undefined,
-                  },
-                })
-
-                // Update documentation with enterprise features
-                // Determine which services are enabled based on provided credentials
-                const enabledServices2: string[] = []
-                if (enterpriseJiraBaseUrl && enterpriseAtlassianEmail && enterpriseAtlassianApiToken) enabledServices2.push('jira')
-                // Note: Azure DevOps and Confluence not available in this flow
-
-                // For stakeholders, replace documentation with read-only version BEFORE adding enterprise features
-                await replaceDocumentationForStakeholder(enterpriseRole)
-                await updateDocumentationWithEnterprise(enabledServices2)
+              } else {
+                enterpriseFetchSpinner.stop("Could not fetch credentials")
+                if (enterprisePortalCredentials.error) {
+                  prompts.log.warn(`Reason: ${enterprisePortalCredentials.error}`)
+                }
               }
+            }
+
+            // Configure MCP server
+            try {
+              const globalSnowCodeDirEnterprise = path.join(os.homedir(), ".snowcode")
+              const configPathEnterprise = path.join(globalSnowCodeDirEnterprise, "config.json")
+              await Bun.write(path.join(globalSnowCodeDirEnterprise, ".keep"), "")
+
+              const fileEnterprise = Bun.file(configPathEnterprise)
+              var configEnterprise: any = {}
+              if (await fileEnterprise.exists()) {
+                configEnterprise = JSON.parse(await fileEnterprise.text())
+              }
+              if (!configEnterprise.mcp) configEnterprise.mcp = {}
+
+              const enterpriseProxyPathLLM = await findEnterpriseProxyPath()
+              configEnterprise.mcp["snow-flow-enterprise"] = {
+                command: enterpriseProxyPathLLM === "npx" ? "npx" : "node",
+                args: enterpriseProxyPathLLM === "npx" ? ["snow-flow-enterprise-proxy"] : [enterpriseProxyPathLLM],
+                env: {
+                  SNOW_LICENSE_KEY: enterpriseLicenseKey,
+                  SNOW_ENTERPRISE_URL: enterpriseMcpUrl,
+                },
+              }
+
+              await Bun.write(configPathEnterprise, JSON.stringify(configEnterprise, null, 2))
+              prompts.log.info("Added snow-flow-enterprise MCP server to config")
             } catch (error: any) {
-              prompts.log.warn(`Enterprise setup warning: ${error.message}`)
-              prompts.log.info("Local configuration saved, but enterprise validation skipped")
+              prompts.log.warn(`Failed to configure MCP server: ${error.message}`)
             }
 
             prompts.log.message("")
-            prompts.log.success("✅ Authentication complete!")
+            prompts.log.success("✅ Enterprise authentication complete!")
             prompts.log.message("")
             prompts.log.info("Next steps:")
             prompts.log.message("")
+            prompts.log.message('  • Run: snow-code init to configure Claude Code')
             prompts.log.message('  • Run: snow-flow agent "<objective>" to start developing')
-            prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
             prompts.outro("Done")
             await Instance.dispose()
             process.exit(0)
@@ -3514,307 +3083,253 @@ export const AuthLoginCommand = cmd({
 
         // After ServiceNow setup, ask about Snow-Flow License (optional)
         prompts.log.message("")
-        const configureEnterprise = await prompts.confirm({
+        const configureEnterpriseFinal = await prompts.confirm({
           message: "Configure Snow-Flow License? (optional - enables Jira, Azure DevOps, Confluence)",
           initialValue: false,
         })
 
-        if (!prompts.isCancel(configureEnterprise) && configureEnterprise) {
+        if (!prompts.isCancel(configureEnterpriseFinal) && configureEnterpriseFinal) {
+          // User wants Snow-Flow License, ask which type (same as standalone)
           prompts.log.message("")
-          prompts.log.step("Snow-Flow License Setup")
 
-          const licenseKey = (await prompts.password({
-            message: "Enterprise License Key (format: SNOW-ENT-*-* or SNOW-SI-*-*)",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "License key is required"
-              if (!value.startsWith("SNOW-ENT-") && !value.startsWith("SNOW-SI-")) {
-                return "Invalid license key format (should start with SNOW-ENT- or SNOW-SI-)"
-              }
-            },
-          })) as string
+          const accountTypeFinal = await prompts.select({
+            message: "Select your account type",
+            options: [
+              {
+                value: "portal",
+                label: "Individual / Teams",
+                hint: "email-based login (€99/mo or €79/seat)",
+              },
+              {
+                value: "enterprise",
+                label: "Enterprise",
+                hint: "license key login (custom pricing)",
+              },
+            ],
+          })
 
-          if (!prompts.isCancel(licenseKey)) {
-            // Enterprise portal URL is fixed
-            const enterpriseUrl = "https://portal.snow-flow.dev"
+          if (prompts.isCancel(accountTypeFinal)) throw new UI.CancelledError()
 
-            // External integrations configuration
-            const configureExternal = await prompts.confirm({
-              message: "Configure external integrations? (optional)",
-              initialValue: false,
+          if (accountTypeFinal === "portal") {
+            // Portal authentication (Individual/Teams) - same as standalone
+            const authMethodFinal = await prompts.select({
+              message: "How would you like to authenticate?",
+              options: [
+                {
+                  value: "browser",
+                  label: "Browser",
+                  hint: "recommended - opens browser for approval",
+                },
+                {
+                  value: "email",
+                  label: "Email & Password",
+                  hint: "direct login",
+                },
+                {
+                  value: "magic-link",
+                  label: "Magic Link",
+                  hint: "passwordless via email",
+                },
+              ],
             })
 
-            let jiraBaseUrl, confluenceUrl, atlassianEmail, atlassianApiToken
-            let azureOrg, azureProject, azurePat
+            if (prompts.isCancel(authMethodFinal)) throw new UI.CancelledError()
 
-            if (!prompts.isCancel(configureExternal) && configureExternal) {
-              const integrations = await prompts.multiselect({
-                message: "Select integrations to configure",
-                options: [
-                  { value: "jira", label: "Jira" },
-                  { value: "azure", label: "Azure DevOps" },
-                  { value: "confluence", label: "Confluence" },
-                ],
-              }) as string[]
+            // Import and run portal auth flow
+            const {
+              AuthPortalLoginCommand
+            } = await import("./auth-portal.js")
 
-              if (!prompts.isCancel(integrations)) {
-                // Atlassian credentials (shared by Jira and Confluence)
-                const needsAtlassian = integrations.includes("jira") || integrations.includes("confluence")
-                if (needsAtlassian) {
-                  atlassianEmail = (await prompts.text({
-                    message: "Atlassian Email (used for both Jira and Confluence)",
-                    placeholder: "admin@company.com",
-                  })) as string
+            prompts.outro("Starting portal authentication...")
 
-                  if (!prompts.isCancel(atlassianEmail)) {
-                    atlassianApiToken = (await prompts.password({
-                      message: "Atlassian API Token (get from https://id.atlassian.com/manage-profile/security/api-tokens)",
-                    })) as string
-                  }
-                }
+            // Execute the appropriate auth flow based on method
+            const portalArgsFinal = { method: authMethodFinal }
+            await AuthPortalLoginCommand.handler(portalArgsFinal as any)
 
-                // Jira configuration (only base URL)
-                if (integrations.includes("jira") && atlassianApiToken) {
-                  jiraBaseUrl = (await prompts.text({
-                    message: "Jira Base URL",
-                    placeholder: "https://company.atlassian.net",
-                  })) as string
-                }
-
-                // Confluence configuration (only base URL)
-                if (integrations.includes("confluence") && atlassianApiToken) {
-                  confluenceUrl = (await prompts.text({
-                    message: "Confluence Base URL",
-                    placeholder: "https://company.atlassian.net/wiki",
-                  })) as string
-                }
-
-                // Azure DevOps configuration
-                if (integrations.includes("azure")) {
-                  azureOrg = (await prompts.text({
-                    message: "Azure DevOps Organization",
-                    placeholder: "mycompany",
-                  })) as string
-
-                  if (!prompts.isCancel(azureOrg) && azureOrg) {
-                    azureProject = (await prompts.text({
-                      message: "Azure DevOps Project",
-                      placeholder: "MyProject",
-                    })) as string
-
-                    if (!prompts.isCancel(azureProject)) {
-                      azurePat = (await prompts.password({
-                        message: "Azure Personal Access Token (PAT)",
-                      })) as string
-                    }
-                  }
-                }
-              }
-            }
-
-            // Merge integration credentials with existing auth data
-            const existingRegAuth = await Auth.get("enterprise")
-            await Auth.set("enterprise", {
-              ...existingRegAuth, // Preserve token, sessionToken, username, email, role, machineId
-              type: "enterprise",
-              licenseKey,
-              enterpriseUrl: enterpriseUrl || undefined,
-              jiraBaseUrl: jiraBaseUrl || undefined,
-              confluenceUrl: confluenceUrl || undefined,
-              atlassianEmail: atlassianEmail || undefined,
-              atlassianApiToken: atlassianApiToken || undefined,
-              azureOrg: azureOrg || undefined,
-              azureProject: azureProject || undefined,
-              azurePat: azurePat || undefined,
-            })
-
-            // Write to .env file
-            const envUpdates: Array<{ key: string; value: string }> = [
-              { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: licenseKey },
-            ]
-            if (enterpriseUrl) envUpdates.push({ key: "SNOW_ENTERPRISE_URL", value: enterpriseUrl })
-            if (jiraBaseUrl) envUpdates.push({ key: "SNOW_JIRA_BASE_URL", value: jiraBaseUrl })
-            if (confluenceUrl) envUpdates.push({ key: "SNOW_CONFLUENCE_URL", value: confluenceUrl })
-            if (atlassianEmail) envUpdates.push({ key: "SNOW_ATLASSIAN_EMAIL", value: atlassianEmail })
-            if (atlassianApiToken) envUpdates.push({ key: "SNOW_ATLASSIAN_API_TOKEN", value: atlassianApiToken })
-            if (azureOrg) envUpdates.push({ key: "SNOW_AZURE_ORG", value: azureOrg })
-            if (azureProject) envUpdates.push({ key: "SNOW_AZURE_PROJECT", value: azureProject })
-            if (azurePat) envUpdates.push({ key: "SNOW_AZURE_PAT", value: azurePat })
-            await updateEnvFile(envUpdates)
-
-            // Sync credentials to enterprise backend dashboard
-            if (existingRegAuth && existingRegAuth.type === "enterprise" && existingRegAuth.token) {
-              try {
-                const syncSpinner = prompts.spinner()
-                syncSpinner.start("Syncing credentials to enterprise dashboard...")
-
-                const credentialPromises = []
-
-                // Sync Jira credentials
-                if (jiraBaseUrl && atlassianApiToken) {
-                  credentialPromises.push(
-                    fetch(`https://enterprise.snow-flow.dev/mcp/auth/credentials`, {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json"
-                      },
-                      body: JSON.stringify({
-                        licenseKey,
-                        service: "jira",
-                        baseUrl: jiraBaseUrl,
-                        email: atlassianEmail,
-                        apiToken: atlassianApiToken
-                      }),
-                      signal: AbortSignal.timeout(10000)
-                    })
-                  )
-                }
-
-                // Sync Azure DevOps credentials
-                if (azureOrg && azurePat) {
-                  credentialPromises.push(
-                    fetch(`https://enterprise.snow-flow.dev/mcp/auth/credentials`, {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json"
-                      },
-                      body: JSON.stringify({
-                        licenseKey,
-                        service: "azure-devops",
-                        baseUrl: `https://dev.azure.com/${azureOrg}`,
-                        email: azureOrg,
-                        apiToken: azurePat
-                      }),
-                      signal: AbortSignal.timeout(10000)
-                    })
-                  )
-                }
-
-                // Sync Confluence credentials
-                if (confluenceUrl && atlassianApiToken) {
-                  credentialPromises.push(
-                    fetch(`https://enterprise.snow-flow.dev/mcp/auth/credentials`, {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json"
-                      },
-                      body: JSON.stringify({
-                        licenseKey,
-                        service: "confluence",
-                        baseUrl: confluenceUrl,
-                        email: atlassianEmail,
-                        apiToken: atlassianApiToken
-                      }),
-                      signal: AbortSignal.timeout(10000)
-                    })
-                  )
-                }
-
-                // Wait for all syncs to complete
-                const results = await Promise.allSettled(credentialPromises)
-                const failed = results.filter(r => r.status === "rejected").length
-
-                if (failed === 0 && results.length > 0) {
-                  syncSpinner.stop("✅ Credentials synced to dashboard")
-                } else if (failed > 0) {
-                  syncSpinner.stop("⚠️  Some credentials failed to sync", 1)
-                  prompts.log.info("Credentials saved locally, but not all synced to dashboard")
-                } else {
-                  syncSpinner.stop()
-                }
-              } catch (error: any) {
-                prompts.log.warn(`Failed to sync credentials: ${error.message}`)
-                prompts.log.info("Credentials saved locally, but not synced to dashboard")
-              }
-            }
-
-            // Validate license key with enterprise server
-            try {
-              const validationSpinner = prompts.spinner()
-              validationSpinner.start("Validating enterprise license...")
-
-              // Validate license key (no auth token needed - license key validates itself)
-              // Uses portal server (enterpriseUrl)
-              const validation = await validateLicenseKey(licenseKey, enterpriseUrl)
-
-              if (!validation.valid) {
-                validationSpinner.stop("⚠️  License validation failed", 1)
-                prompts.log.warn(`License validation failed: ${validation.error}`)
-                prompts.log.info("Continuing with local configuration only")
-              } else {
-                validationSpinner.stop("License validated")
-
-                // Generate JWT token for MCP authentication
-                const crypto = await import("crypto")
-                const machineId = crypto.createHash("sha256").update(os.hostname()).digest("hex")
-
-                const jwtResponse = await fetch(`${enterpriseUrl}/api/auth/mcp/login`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    licenseKey,
-                    machineId,
-                    role: "developer",
-                  }),
-                })
-
-                if (!jwtResponse.ok) {
-                  throw new Error(`Failed to generate JWT: ${jwtResponse.statusText}`)
-                }
-
-                const jwtData: any = await jwtResponse.json()
-                const jwtToken = jwtData.token
-
-                // Configure enterprise MCP server with validated credentials
-                await addEnterpriseMcpServer({
-                  licenseKey: jwtToken,
-                  serverUrl: "https://enterprise.snow-flow.dev",
-                  credentials: {
-                    atlassian: atlassianEmail && atlassianApiToken
-                      ? { email: atlassianEmail, apiToken: atlassianApiToken }
-                      : undefined,
-                    jira: jiraBaseUrl
-                      ? { host: jiraBaseUrl }
-                      : undefined,
-                    azure: azureOrg && azurePat
-                      ? { organization: azureOrg, project: azureProject, pat: azurePat }
-                      : undefined,
-                    confluence: confluenceUrl
-                      ? { host: confluenceUrl }
-                      : undefined,
-                  },
-                })
-
-                // Update documentation with enterprise features
-                // Determine which services are enabled based on provided credentials
-                const enabledServices3: string[] = []
-                if (jiraBaseUrl && atlassianEmail && atlassianApiToken) enabledServices3.push('jira')
-                if (azureOrg && azurePat) enabledServices3.push('azdo')
-                if (confluenceUrl && atlassianEmail && atlassianApiToken) enabledServices3.push('confluence')
-
-                // For stakeholders, replace documentation with read-only version BEFORE adding enterprise features
-                // Use role from JWT data if available, otherwise default to "developer"
-                const userRole = jwtData?.role || "developer"
-                await replaceDocumentationForStakeholder(userRole)
-                await updateDocumentationWithEnterprise(enabledServices3)
-              }
-            } catch (error: any) {
-              prompts.log.warn(`Enterprise setup warning: ${error.message}`)
-              prompts.log.info("Local configuration saved, but enterprise validation skipped")
-            }
-
-            // Show completion and exit
-            prompts.log.message("")
-            prompts.log.success("✅ Authentication complete!")
-            prompts.log.message("")
-            prompts.log.info("Next steps:")
-            prompts.log.message("")
-            prompts.log.message('  • Run: snow-flow agent "<objective>" to start developing')
-            prompts.log.message("  • Run: snow-flow auth list to see configured credentials")
-            prompts.outro("Done")
             await Instance.dispose()
             process.exit(0)
           }
+
+          // Enterprise - simple username/password login (admin creates users)
+          prompts.log.step("Snow-Flow Enterprise Login")
+          prompts.log.info("Login with the credentials provided by your admin")
+          prompts.log.message("")
+
+          // Enterprise portal URL is fixed
+          const enterprisePortalUrlFinal = "https://portal.snow-flow.dev"
+          const enterpriseMcpUrlFinal = "https://enterprise.snow-flow.dev"
+
+          let enterpriseUserFinal: string = ""
+          let enterprisePassFinal: string
+          let enterpriseAuthResultFinal: any
+          const enterpriseMachineIdFinal = generateMachineId()
+
+          // Login flow
+          let enterpriseLoginSuccessFinal = false
+
+          while (!enterpriseLoginSuccessFinal) {
+            enterpriseUserFinal = (await prompts.text({
+              message: "Username",
+              placeholder: "john.doe",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Username is required"
+              },
+            })) as string
+
+            if (prompts.isCancel(enterpriseUserFinal)) throw new UI.CancelledError()
+
+            enterprisePassFinal = (await prompts.password({
+              message: "Password",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Password is required"
+              },
+            })) as string
+
+            if (prompts.isCancel(enterprisePassFinal)) throw new UI.CancelledError()
+
+            prompts.log.message("")
+            const enterpriseSpinnerFinal = prompts.spinner()
+            enterpriseSpinnerFinal.start("Authenticating...")
+
+            try {
+              const response = await fetch(`${enterprisePortalUrlFinal}/api/user-auth/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username: enterpriseUserFinal, password: enterprisePassFinal }),
+              })
+
+              enterpriseAuthResultFinal = await response.json()
+
+              if (!response.ok || !enterpriseAuthResultFinal.success) {
+                enterpriseSpinnerFinal.stop("Authentication failed", 1)
+                prompts.log.error(enterpriseAuthResultFinal.error || "Invalid username or password")
+
+                const tryAgainFinal = await prompts.confirm({
+                  message: "Would you like to try again?",
+                  initialValue: true,
+                })
+                if (prompts.isCancel(tryAgainFinal) || !tryAgainFinal) {
+                  prompts.outro("Login cancelled")
+                  await Instance.dispose()
+                  process.exit(1)
+                }
+                continue
+              }
+
+              enterpriseSpinnerFinal.stop("Authentication successful!")
+              enterpriseLoginSuccessFinal = true
+            } catch (error: any) {
+              enterpriseSpinnerFinal.stop("Connection error", 1)
+              prompts.log.error(`Connection error: ${error.message}`)
+              prompts.outro("Login cancelled")
+              await Instance.dispose()
+              process.exit(1)
+            }
+          }
+
+          const enterpriseRoleFinal = enterpriseAuthResultFinal.user?.role || "developer"
+          const enterpriseEmailFinal = enterpriseAuthResultFinal.user?.email
+          const enterpriseLicenseKeyFinal = enterpriseAuthResultFinal.customer?.licenseKey || ""
+
+          // Store enterprise auth
+          await Auth.set("enterprise", {
+            type: "enterprise",
+            licenseKey: enterpriseLicenseKeyFinal,
+            enterpriseUrl: enterprisePortalUrlFinal,
+            token: enterpriseAuthResultFinal.token,
+            sessionToken: enterpriseAuthResultFinal.sessionToken,
+            username: enterpriseUserFinal,
+            email: enterpriseEmailFinal,
+            role: enterpriseAuthResultFinal.user?.role || enterpriseRoleFinal,
+            machineId: enterpriseMachineIdFinal,
+          })
+
+          // Write to .env file
+          const enterpriseEnvUpdatesFinal: Array<{ key: string; value: string }> = [
+            { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: enterpriseLicenseKeyFinal },
+            { key: "SNOW_ENTERPRISE_URL", value: enterprisePortalUrlFinal },
+          ]
+          await updateEnvFile(enterpriseEnvUpdatesFinal)
+
+          prompts.log.success(`Welcome, ${enterpriseUserFinal}!`)
+          prompts.log.info(`Role: ${enterpriseAuthResultFinal.user?.role || enterpriseRoleFinal}`)
+          if (enterpriseAuthResultFinal.customer?.company) {
+            prompts.log.info(`Company: ${enterpriseAuthResultFinal.customer.company}`)
+          }
+
+          // Fetch third-party tool credentials from portal (optional)
+          prompts.log.message("")
+          const enterpriseFetchSpinnerFinal = prompts.spinner()
+          enterpriseFetchSpinnerFinal.start("Checking third-party tool integrations...")
+
+          // Check if we have a license key to fetch credentials
+          if (!enterpriseLicenseKeyFinal) {
+            enterpriseFetchSpinnerFinal.stop("Could not fetch credentials (no license key)")
+            prompts.log.warn("Your customer account may not have a license key configured")
+          } else {
+            const enterprisePortalCredentialsFinal = await PortalSync.pullFromPortal(enterpriseLicenseKeyFinal, enterprisePortalUrlFinal)
+
+            if (enterprisePortalCredentialsFinal.success && enterprisePortalCredentialsFinal.credentials) {
+              const creds = enterprisePortalCredentialsFinal.credentials
+              const credCount = (creds.jira ? 1 : 0) + (creds.azureDevOps ? 1 : 0) + (creds.confluence ? 1 : 0)
+
+              if (credCount > 0) {
+                enterpriseFetchSpinnerFinal.stop(`Found ${credCount} integration(s)`)
+                if (creds.jira) prompts.log.message(`  • Jira: ${creds.jira.baseUrl}`)
+                if (creds.azureDevOps) prompts.log.message(`  • Azure DevOps: ${creds.azureDevOps.org}`)
+                if (creds.confluence) prompts.log.message(`  • Confluence: ${creds.confluence.baseUrl}`)
+              } else {
+                enterpriseFetchSpinnerFinal.stop("No third-party integrations configured in portal")
+              }
+            } else {
+              enterpriseFetchSpinnerFinal.stop("Could not fetch credentials")
+              if (enterprisePortalCredentialsFinal.error) {
+                prompts.log.warn(`Reason: ${enterprisePortalCredentialsFinal.error}`)
+              }
+            }
+          }
+
+          // Configure MCP server
+          try {
+            const globalSnowCodeDirFinal = path.join(os.homedir(), ".snowcode")
+            const configPathFinal = path.join(globalSnowCodeDirFinal, "config.json")
+            await Bun.write(path.join(globalSnowCodeDirFinal, ".keep"), "")
+
+            const fileFinal = Bun.file(configPathFinal)
+            var configFinal: any = {}
+            if (await fileFinal.exists()) {
+              configFinal = JSON.parse(await fileFinal.text())
+            }
+            if (!configFinal.mcp) configFinal.mcp = {}
+
+            const enterpriseProxyPathFinal = await findEnterpriseProxyPath()
+            configFinal.mcp["snow-flow-enterprise"] = {
+              command: enterpriseProxyPathFinal === "npx" ? "npx" : "node",
+              args: enterpriseProxyPathFinal === "npx" ? ["snow-flow-enterprise-proxy"] : [enterpriseProxyPathFinal],
+              env: {
+                SNOW_LICENSE_KEY: enterpriseLicenseKeyFinal,
+                SNOW_ENTERPRISE_URL: enterpriseMcpUrlFinal,
+              },
+            }
+
+            await Bun.write(configPathFinal, JSON.stringify(configFinal, null, 2))
+            prompts.log.info("Added snow-flow-enterprise MCP server to config")
+          } catch (error: any) {
+            prompts.log.warn(`Failed to configure MCP server: ${error.message}`)
+          }
+
+          prompts.log.message("")
+          prompts.log.success("✅ Enterprise authentication complete!")
+          prompts.log.message("")
+          prompts.log.info("Next steps:")
+          prompts.log.message("")
+          prompts.log.message('  • Run: snow-code init to configure Claude Code')
+          prompts.log.message('  • Run: snow-flow agent "<objective>" to start developing')
+          prompts.outro("Done")
+          await Instance.dispose()
+          process.exit(0)
         }
+
 
         // If enterprise was not configured, show completion here
         prompts.log.message("")
