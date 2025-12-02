@@ -769,12 +769,8 @@ export const AuthLoginCommand = cmd({
             machineId,
           })
 
-          // Write to .env file
-          const envUpdates: Array<{ key: string; value: string }> = [
-            { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: licenseKey },
-            { key: "SNOW_ENTERPRISE_URL", value: portalUrl },
-          ]
-          await updateEnvFile(envUpdates)
+          // NOTE: .env writes removed - credentials are fetched from Portal API by enterprise MCP server
+          // JWT token is stored in MCP config, no need to store license key in .env
 
           prompts.log.success(`Welcome, ${username}!`)
           prompts.log.info(`Role: ${authData.user?.role || role}`)
@@ -1239,12 +1235,8 @@ export const AuthLoginCommand = cmd({
             machineId,
           })
 
-          // Write to .env file
-          const envUpdates: Array<{ key: string; value: string }> = [
-            { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: licenseKey },
-            { key: "SNOW_ENTERPRISE_URL", value: portalUrl },
-          ]
-          await updateEnvFile(envUpdates)
+          // NOTE: .env writes removed - credentials are fetched from Portal API by enterprise MCP server
+          // JWT token is stored in MCP config, no need to store license key in .env
 
           prompts.log.success(`Welcome, ${username}!`)
           prompts.log.info(`Role: ${authData.user?.role || role}`)
@@ -1902,12 +1894,8 @@ export const AuthLoginCommand = cmd({
               machineId: enterpriseMachineId,
             })
 
-            // Write to .env file
-            const enterpriseEnvUpdates: Array<{ key: string; value: string }> = [
-              { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: enterpriseLicenseKey },
-              { key: "SNOW_ENTERPRISE_URL", value: enterprisePortalUrl },
-            ]
-            await updateEnvFile(enterpriseEnvUpdates)
+            // NOTE: .env writes removed - credentials are fetched from Portal API by enterprise MCP server
+            // JWT token is stored in MCP config, no need to store license key in .env
 
             prompts.log.success(`Welcome, ${enterpriseUser}!`)
             prompts.log.info(`Role: ${enterpriseAuthResult.user?.role || enterpriseRole}`)
@@ -2409,12 +2397,8 @@ export const AuthLoginCommand = cmd({
             machineId: enterpriseMachineIdFinal,
           })
 
-          // Write to .env file
-          const enterpriseEnvUpdatesFinal: Array<{ key: string; value: string }> = [
-            { key: "SNOW_ENTERPRISE_LICENSE_KEY", value: enterpriseLicenseKeyFinal },
-            { key: "SNOW_ENTERPRISE_URL", value: enterprisePortalUrlFinal },
-          ]
-          await updateEnvFile(enterpriseEnvUpdatesFinal)
+          // NOTE: .env writes removed - credentials are fetched from Portal API by enterprise MCP server
+          // JWT token is stored in MCP config, no need to store license key in .env
 
           prompts.log.success(`Welcome, ${enterpriseUserFinal}!`)
           prompts.log.info(`Role: ${enterpriseAuthResultFinal.user?.role || enterpriseRoleFinal}`)
