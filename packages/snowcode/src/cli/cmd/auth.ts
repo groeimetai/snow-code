@@ -1062,8 +1062,68 @@ export const AuthLoginCommand = cmd({
             process.exit(0)
           }
 
-          // User wants Enterprise, set provider and fall through
+          // User wants Snow-Flow License, ask which type (same as standalone)
           prompts.log.message("")
+
+          const accountType = await prompts.select({
+            message: "Select your account type",
+            options: [
+              {
+                value: "portal",
+                label: "Individual / Teams",
+                hint: "email-based login (€99/mo or €79/seat)",
+              },
+              {
+                value: "enterprise",
+                label: "Enterprise",
+                hint: "license key login (custom pricing)",
+              },
+            ],
+          })
+
+          if (prompts.isCancel(accountType)) throw new UI.CancelledError()
+
+          if (accountType === "portal") {
+            // Portal authentication (Individual/Teams) - same as standalone
+            const authMethod = await prompts.select({
+              message: "How would you like to authenticate?",
+              options: [
+                {
+                  value: "browser",
+                  label: "Browser",
+                  hint: "recommended - opens browser for approval",
+                },
+                {
+                  value: "email",
+                  label: "Email & Password",
+                  hint: "direct login",
+                },
+                {
+                  value: "magic-link",
+                  label: "Magic Link",
+                  hint: "passwordless via email",
+                },
+              ],
+            })
+
+            if (prompts.isCancel(authMethod)) throw new UI.CancelledError()
+
+            // Import and run portal auth flow
+            const {
+              AuthPortalLoginCommand
+            } = await import("./auth-portal.js")
+
+            prompts.outro("Starting portal authentication...")
+
+            // Execute the appropriate auth flow based on method
+            const portalArgs = { method: authMethod }
+            await AuthPortalLoginCommand.handler(portalArgs as any)
+
+            await Instance.dispose()
+            process.exit(0)
+          }
+
+          // Enterprise - set provider and fall through
           provider = "enterprise"
           // Fall through to Enterprise handler below
         }
