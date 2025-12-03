@@ -126,7 +126,7 @@ func main() {
 	}()
 
 	// Create main context for the application
-	app_, err := app.New(ctx, version, project, path, agents, httpClient, model, prompt, agent, sessionID)
+	app_, err := app.New(ctx, version, project, path, agents, httpClient, url, model, prompt, agent, sessionID)
 	if err != nil {
 		panic(err)
 	}

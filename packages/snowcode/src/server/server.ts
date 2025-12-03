@@ -37,6 +37,7 @@ import { Storage } from "../storage/storage"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 import { Snapshot } from "@/snapshot"
 import { SessionSummary } from "@/session/summary"
+import { TokenDebug } from "../util/token-debug"
 
 const ERRORS = {
   400: {
@@ -1558,6 +1559,140 @@ export namespace Server {
               })
             })
           })
+        },
+      )
+      // Debug endpoints for token tracking
+      .get(
+        "/debug/tokens",
+        describeRoute({
+          description: "Get token debug status",
+          operationId: "debug.tokens.status",
+          responses: {
+            200: {
+              description: "Debug status",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.object({
+                      enabled: z.boolean(),
+                      logPath: z.string().optional(),
+                      sessionFilter: z.string().optional(),
+                    }),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          return c.json(TokenDebug.status())
+        },
+      )
+      .post(
+        "/debug/tokens/toggle",
+        describeRoute({
+          description: "Toggle token debug mode",
+          operationId: "debug.tokens.toggle",
+          responses: {
+            200: {
+              description: "Debug toggled",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.object({
+                      enabled: z.boolean(),
+                      logPath: z.string().optional(),
+                    }),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          const result = await TokenDebug.toggle()
+          return c.json(result)
+        },
+      )
+      .post(
+        "/debug/tokens/enable",
+        describeRoute({
+          description: "Enable token debug mode",
+          operationId: "debug.tokens.enable",
+          responses: {
+            200: {
+              description: "Debug enabled",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.object({
+                      enabled: z.literal(true),
+                      logPath: z.string(),
+                    }),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        validator(
+          "json",
+          z
+            .object({
+              sessionID: z.string().optional(),
+            })
+            .optional(),
+        ),
+        async (c) => {
+          const body = c.req.valid("json")
+          const logPath = await TokenDebug.enable({ sessionID: body?.sessionID })
+          return c.json({ enabled: true, logPath })
+        },
+      )
+      .post(
+        "/debug/tokens/disable",
+        describeRoute({
+          description: "Disable token debug mode",
+          operationId: "debug.tokens.disable",
+          responses: {
+            200: {
+              description: "Debug disabled",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.object({
+                      enabled: z.literal(false),
+                    }),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          TokenDebug.disable()
+          return c.json({ enabled: false })
+        },
+      )
+      .get(
+        "/debug/tokens/report",
+        describeRoute({
+          description: "Get token debug report",
+          operationId: "debug.tokens.report",
+          responses: {
+            200: {
+              description: "Debug report",
+              content: {
+                "text/plain": {
+                  schema: resolver(z.string()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          const report = await TokenDebug.generateReport()
+          return c.text(report)
         },
       ),
   )

@@ -467,6 +467,16 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case app.SessionClearedMsg:
 		a.app.Session = &opencode.Session{}
 		a.app.Messages = []app.Message{}
+	case app.DebugTokensToggledMsg:
+		if msg.Enabled {
+			message := "Token debug enabled"
+			if msg.LogPath != "" {
+				message = "Token debug enabled: " + msg.LogPath
+			}
+			cmds = append(cmds, toast.NewSuccessToast(message))
+		} else {
+			cmds = append(cmds, toast.NewInfoToast("Token debug disabled"))
+		}
 	case dialog.CompletionDialogCloseMsg:
 		a.showCompletionDialog = false
 	case opencode.EventListResponseEventInstallationUpdated:
@@ -1557,6 +1567,8 @@ func (a Model) executeCommand(command commands.Command) (tea.Model, tea.Cmd) {
 		updated, cmd := a.messages.RedoLastMessage()
 		a.messages = updated.(chat.MessagesComponent)
 		cmds = append(cmds, cmd)
+	case commands.DebugTokensCommand:
+		cmds = append(cmds, a.app.ToggleDebugTokens(context.Background()))
 	case commands.AppExitCommand:
 		return a, tea.Quit
 	}

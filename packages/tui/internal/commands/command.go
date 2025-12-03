@@ -160,6 +160,7 @@ const (
 	MessagesUndoCommand             CommandName = "messages_undo"
 	MessagesRedoCommand             CommandName = "messages_redo"
 	AppExitCommand                  CommandName = "app_exit"
+	DebugTokensCommand              CommandName = "debug_tokens"
 )
 
 func (k Command) Matches(msg tea.KeyPressMsg, leader bool) bool {
@@ -390,6 +391,12 @@ func LoadFromConfig(config *opencode.Config, customCommands []opencode.Command) 
 			Description: "exit the app",
 			Keybindings: parseBindings("ctrl+c", "<leader>q"),
 			Trigger:     []string{"exit", "quit", "q"},
+		},
+		{
+			Name:        DebugTokensCommand,
+			Description: "toggle token debug mode",
+			Keybindings: parseBindings(),
+			Trigger:     []string{"debug", "debug-tokens"},
 		},
 	}
 	registry := make(CommandRegistry)

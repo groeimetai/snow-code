@@ -50,6 +50,7 @@ import { Command } from "../command"
 import { $, fileURLToPath } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
 import { SessionSummary } from "./summary"
+import { TokenDebug } from "../util/token-debug"
 
 export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
@@ -292,6 +293,30 @@ export namespace SessionPrompt {
       await using _ = defer(async () => {
         await processor.end()
       })
+
+      // Debug: Log request with full token breakdown
+      const requestStartTime = Date.now()
+      const requestID = userMsg.info.id
+      await TokenDebug.logRequest({
+        sessionID: input.sessionID,
+        requestID,
+        providerID: model.providerID,
+        modelID: model.info.id,
+        contextLimit: model.info.limit.context,
+        outputLimit: model.info.limit.output,
+        systemPrompts: system,
+        messages: msgs.map((m) => ({
+          info: { id: m.info.id, role: m.info.role as "user" | "assistant" },
+          parts: m.parts,
+        })),
+        tools: Object.fromEntries(
+          Object.entries(tools).map(([id, t]) => [
+            id,
+            { description: (t as any).description, inputSchema: (t as any).inputSchema },
+          ]),
+        ),
+      })
+
       const doStream = () =>
         streamText({
           onError(error) {
@@ -432,6 +457,16 @@ export namespace SessionPrompt {
         }
       }
       await processor.end()
+
+      // Debug: Log response with actual token usage
+      await TokenDebug.logResponse({
+        sessionID: input.sessionID,
+        requestID,
+        tokens: result.info.tokens,
+        cost: result.info.cost,
+        finishReason: (await stream.finishReason) || "unknown",
+        startTime: requestStartTime,
+      })
 
       const queued = state().queued.get(input.sessionID) ?? []
 

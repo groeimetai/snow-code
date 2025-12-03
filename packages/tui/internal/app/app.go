@@ -1,8 +1,11 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -35,6 +38,7 @@ type App struct {
 	StatePath         string
 	Config            *opencode.Config
 	Client            *opencode.Client
+	BaseURL           string // Base URL for API calls
 	State             *State
 	AgentIndex        int
 	Provider          *opencode.Provider
@@ -81,6 +85,10 @@ type AgentSelectedMsg struct {
 
 type SessionClearedMsg struct{}
 type CompactSessionMsg struct{}
+type DebugTokensToggledMsg struct {
+	Enabled bool
+	LogPath string
+}
 type SendPrompt = Prompt
 type SendShell = struct {
 	Command string
@@ -106,6 +114,7 @@ func New(
 	path *opencode.Path,
 	agents []opencode.Agent,
 	httpClient *opencode.Client,
+	baseURL string,
 	initialModel *string,
 	initialPrompt *string,
 	initialAgent *string,
@@ -202,6 +211,7 @@ func New(
 		Config:         configInfo,
 		State:          appState,
 		Client:         httpClient,
+		BaseURL:        baseURL,
 		AgentIndex:     agentIndex,
 		Session:        &opencode.Session{},
 		Messages:       []Message{},
@@ -961,3 +971,39 @@ func (a *App) ListProviders(ctx context.Context) ([]opencode.Provider, error) {
 // func (a *App) loadCustomKeybinds() {
 //
 // }
+
+// ToggleDebugTokens toggles token debug mode via the API
+func (a *App) ToggleDebugTokens(ctx context.Context) tea.Cmd {
+	return func() tea.Msg {
+		url := a.BaseURL + "/debug/tokens/toggle"
+
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer([]byte("{}")))
+		if err != nil {
+			slog.Error("Failed to create debug toggle request", "error", err)
+			return DebugTokensToggledMsg{Enabled: false}
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			slog.Error("Failed to toggle debug tokens", "error", err)
+			return DebugTokensToggledMsg{Enabled: false}
+		}
+		defer resp.Body.Close()
+
+		var result struct {
+			Enabled bool   `json:"enabled"`
+			LogPath string `json:"logPath,omitempty"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			slog.Error("Failed to decode debug toggle response", "error", err)
+			return DebugTokensToggledMsg{Enabled: false}
+		}
+
+		return DebugTokensToggledMsg{
+			Enabled: result.Enabled,
+			LogPath: result.LogPath,
+		}
+	}
+}

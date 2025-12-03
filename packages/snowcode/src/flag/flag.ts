@@ -17,6 +17,9 @@ export namespace Flag {
   export const SNOWCODE_EXPERIMENTAL_TURN_SUMMARY = truthy("SNOWCODE_EXPERIMENTAL_TURN_SUMMARY") || truthy("OPENCODE_EXPERIMENTAL_TURN_SUMMARY")
   export const SNOWCODE_EXPERIMENTAL_NO_BOOTSTRAP = truthy("SNOWCODE_EXPERIMENTAL_NO_BOOTSTRAP") || truthy("OPENCODE_EXPERIMENTAL_NO_BOOTSTRAP")
 
+  // Debug features
+  export const SNOWCODE_DEBUG_TOKENS = truthy("SNOWCODE_DEBUG_TOKENS") || truthy("OPENCODE_DEBUG_TOKENS")
+
   // Legacy aliases for backwards compatibility (deprecated - map to SNOWCODE_)
   export const OPENCODE_AUTO_SHARE = SNOWCODE_AUTO_SHARE
   export const OPENCODE_CONFIG = SNOWCODE_CONFIG
