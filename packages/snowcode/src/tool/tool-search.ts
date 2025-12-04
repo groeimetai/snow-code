@@ -1,7 +1,9 @@
 import z from "zod/v4"
+import { zodToJsonSchema } from "zod-to-json-schema"
 import { Tool } from "./tool"
 import { Log } from "../util/log"
 import { Instance } from "../project/instance"
+import { MCP } from "../mcp"
 
 const log = Log.create({ service: "tool-search" })
 
@@ -212,6 +214,59 @@ export namespace ToolSearch {
 }
 
 /**
+ * Format parameters from a tool's schema for display
+ */
+function formatToolParameters(tool: any): string {
+  if (!tool) return ""
+
+  try {
+    // Get the parameters schema (could be Zod or JSON Schema)
+    let schema: any = null
+
+    // AI SDK tools have a 'parameters' property (Zod schema)
+    if (tool.parameters) {
+      // Check if it's a Zod schema
+      if (typeof tool.parameters === "object" && tool.parameters._def) {
+        // Convert Zod to JSON Schema
+        schema = zodToJsonSchema(tool.parameters)
+      } else if (typeof tool.parameters === "object") {
+        // Already a JSON Schema-like object
+        schema = tool.parameters
+      }
+    }
+
+    if (!schema) return ""
+
+    // Extract properties and required fields
+    const properties = schema.properties || {}
+    const required = schema.required || []
+
+    if (Object.keys(properties).length === 0) {
+      return "\n   Parameters: none"
+    }
+
+    const paramLines: string[] = ["\n   Parameters:"]
+
+    for (const [name, prop] of Object.entries<any>(properties)) {
+      const isRequired = required.includes(name)
+      const type = prop.type || "any"
+      const desc = prop.description ? ` - ${prop.description}` : ""
+      const marker = isRequired ? "*" : ""
+      paramLines.push(`     ${marker}${name} (${type})${desc}`)
+    }
+
+    if (required.length > 0) {
+      paramLines.push(`   (* = required)`)
+    }
+
+    return paramLines.join("\n")
+  } catch (e) {
+    log.debug("Failed to format tool parameters", { error: String(e) })
+    return ""
+  }
+}
+
+/**
  * The Tool Search Tool definition
  */
 export const ToolSearchTool = Tool.define("tool_search", {
@@ -270,11 +325,16 @@ Example workflow:
       await ToolSearch.enableTools(ctx.sessionID, toolIDs)
     }
 
-    // Format results
+    // Get MCP tools to extract parameter schemas
+    const mcpTools = await MCP.tools().catch(() => ({}))
+
+    // Format results with parameters
     const formatted = results
       .map((tool, i) => {
-        const status = tool.deferred ? (args.enable ? "[NOW ENABLED]" : "[DEFERRED]") : "[ALWAYS AVAILABLE]"
-        return `${i + 1}. **${tool.id}** ${status}\n   ${tool.description}\n   Category: ${tool.category}`
+        const status = tool.deferred ? (args.enable ? "[ENABLED]" : "[DEFERRED]") : "[AVAILABLE]"
+        const mcpTool = mcpTools[tool.id]
+        const paramsInfo = formatToolParameters(mcpTool)
+        return `${i + 1}. ${tool.id} ${status}\n   ${tool.description}\n   Category: ${tool.category}${paramsInfo}`
       })
       .join("\n\n")
 
