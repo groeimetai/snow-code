@@ -828,6 +828,18 @@ func isSemanticFailure(output string) bool {
 	if output == "" {
 		return false
 	}
+
+	// Check for plain text failure indicators (from deferred_tool_executor)
+	// These appear at the start of formatted output
+	if strings.HasPrefix(output, "✗") {
+		return true
+	}
+	// Also check for "- Failed" pattern in first line (legacy format)
+	firstLine := strings.Split(output, "\n")[0]
+	if strings.Contains(firstLine, "- Failed") || strings.Contains(firstLine, "Failed") && strings.Contains(firstLine, "✗") {
+		return true
+	}
+
 	// Try to parse as JSON and check for success: false
 	var result map[string]any
 	if err := json.Unmarshal([]byte(output), &result); err != nil {
