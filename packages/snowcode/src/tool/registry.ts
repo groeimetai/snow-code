@@ -10,15 +10,19 @@ import { TodoWriteTool, TodoReadTool } from "./todo"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
+import { ToolSearchTool, ToolSearch, type ToolIndexEntry } from "./tool-search"
 import type { Agent } from "../agent/agent"
 import { Tool } from "./tool"
 import { Instance } from "../project/instance"
 import { Config } from "../config/config"
+import { Log } from "../util/log"
 import path from "path"
 // @ts-expect-error - workspace package resolved at runtime by Bun
 import { type ToolDefinition } from "@groeimetai/snow-code-plugin"
 import z from "zod/v4"
 import { Plugin } from "../plugin"
+
+const log = Log.create({ service: "tool-registry" })
 
 export namespace ToolRegistry {
   export const state = Instance.state(async () => {
@@ -73,24 +77,73 @@ export namespace ToolRegistry {
     custom.push(tool)
   }
 
+  // Core tools that are ALWAYS loaded (never deferred)
+  const CORE_TOOLS: Tool.Info[] = [
+    InvalidTool,
+    BashTool,
+    EditTool,
+    WebFetchTool,
+    GlobTool,
+    GrepTool,
+    ListTool,
+    PatchTool,
+    ReadTool,
+    WriteTool,
+    TodoWriteTool,
+    TodoReadTool,
+    TaskTool,
+    ToolSearchTool, // Meta-tool for discovering deferred tools
+  ]
+
   async function all(): Promise<Tool.Info[]> {
     const custom = await state().then((x) => x.custom)
-    return [
-      InvalidTool,
-      BashTool,
-      EditTool,
-      WebFetchTool,
-      GlobTool,
-      GrepTool,
-      ListTool,
-      PatchTool,
-      ReadTool,
-      WriteTool,
-      TodoWriteTool,
-      TodoReadTool,
-      TaskTool,
-      ...custom,
-    ]
+    return [...CORE_TOOLS, ...custom]
+  }
+
+  /**
+   * Get only immediately available tools (not deferred)
+   * This significantly reduces token usage at startup
+   */
+  export async function immediateTools(): Promise<Tool.Info[]> {
+    const allTools = await all()
+    return allTools.filter((t) => !t.deferred)
+  }
+
+  /**
+   * Get only deferred tools
+   */
+  export async function deferredTools(): Promise<Tool.Info[]> {
+    const allTools = await all()
+    return allTools.filter((t) => t.deferred)
+  }
+
+  /**
+   * Register all tools with the search index
+   * This should be called during initialization
+   */
+  export async function buildSearchIndex(): Promise<void> {
+    const allTools = await all()
+    const entries: ToolIndexEntry[] = []
+
+    for (const tool of allTools) {
+      const initialized = await tool.init().catch(() => null)
+      if (!initialized) continue
+
+      entries.push({
+        id: tool.id,
+        description: initialized.description.substring(0, 200), // Truncate for index
+        category: tool.category ?? "general",
+        keywords: tool.keywords ?? [],
+        deferred: tool.deferred ?? false,
+      })
+    }
+
+    await ToolSearch.registerTools(entries)
+    log.info("Built tool search index", {
+      total: entries.length,
+      deferred: entries.filter((e) => e.deferred).length,
+      immediate: entries.filter((e) => !e.deferred).length,
+    })
   }
 
   export async function ids() {

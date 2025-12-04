@@ -17,6 +17,22 @@ export namespace Tool {
   }
   export interface Info<Parameters extends z.ZodType = z.ZodType, M extends Metadata = Metadata> {
     id: string
+    /**
+     * If true, this tool will not be loaded into the context by default.
+     * Users must first discover it via tool_search, after which it becomes available.
+     * This reduces token usage significantly for large tool libraries.
+     *
+     * @see https://www.anthropic.com/engineering/advanced-tool-use
+     */
+    deferred?: boolean
+    /**
+     * Category for grouping in tool search results
+     */
+    category?: string
+    /**
+     * Keywords for improved search matching
+     */
+    keywords?: string[]
     init: () => Promise<{
       description: string
       parameters: Parameters

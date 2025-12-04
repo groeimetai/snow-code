@@ -35,6 +35,7 @@ import { ModelsDev } from "../provider/models"
 import { defer } from "../util/defer"
 import { mergeDeep, pipe } from "remeda"
 import { ToolRegistry } from "../tool/registry"
+import { ToolSearch } from "../tool/tool-search"
 import { Wildcard } from "../util/wildcard"
 import { MCP } from "../mcp"
 import { LSP } from "../lsp"
@@ -588,41 +589,60 @@ export namespace SessionPrompt {
       mergeDeep(await ToolRegistry.enabled(input.providerID, input.modelID, input.agent)),
       mergeDeep(input.tools ?? {}),
     )
-    log.info(`✨ Enabled tools resolved, starting tool loop...`)
-    for (const item of await ToolRegistry.tools(input.providerID, input.modelID)) {
-      if (Wildcard.all(item.id, enabledTools) === false) continue
 
-      log.debug(`Processing tool: ${item.id}`)
+    // Get session-enabled deferred tools (tools discovered via tool_search)
+    const sessionEnabledTools = await ToolSearch.getEnabledTools(input.sessionID)
+    log.info(`✨ Session has ${sessionEnabledTools.size} enabled deferred tools`)
+
+    // Load only immediate (non-deferred) tools by default
+    // This implements the "Tool Search Tool" pattern from Anthropic's advanced tool use guide
+    // See: https://www.anthropic.com/engineering/advanced-tool-use
+    const immediateTools = await ToolRegistry.immediateTools()
+    const deferredTools = await ToolRegistry.deferredTools()
+
+    // Combine immediate tools with session-enabled deferred tools
+    const toolsToLoad = [
+      ...immediateTools,
+      ...deferredTools.filter((t) => sessionEnabledTools.has(t.id)),
+    ]
+
+    log.info(`✨ Loading ${toolsToLoad.length} built-in tools (${immediateTools.length} immediate + ${deferredTools.filter((t) => sessionEnabledTools.has(t.id)).length} enabled deferred)`)
+
+    for (const toolInfo of toolsToLoad) {
+      const item = await toolInfo.init()
+      if (Wildcard.all(toolInfo.id, enabledTools) === false) continue
+
+      log.debug(`Processing tool: ${toolInfo.id}`)
 
       // Skip tools with invalid parameters
       if (!item.parameters) {
-        log.warn(`Tool ${item.id} has no parameters, skipping`)
+        log.warn(`Tool ${toolInfo.id} has no parameters, skipping`)
         continue
       }
 
-      log.debug(`Tool ${item.id} has parameters, converting to JSON schema...`)
+      log.debug(`Tool ${toolInfo.id} has parameters, converting to JSON schema...`)
 
       let schema
       try {
         schema = ProviderTransform.schema(input.providerID, input.modelID, z.toJSONSchema(item.parameters))
-        log.debug(`Tool ${item.id} JSON schema generated successfully`)
+        log.debug(`Tool ${toolInfo.id} JSON schema generated successfully`)
       } catch (error: any) {
-        log.error(`Failed to generate JSON schema for tool ${item.id}: ${error?.message || String(error)}`)
+        log.error(`Failed to generate JSON schema for tool ${toolInfo.id}: ${error?.message || String(error)}`)
         log.error(`Error stack: ${error?.stack}`)
-        log.debug(`Tool ${item.id} parameters type: ${typeof item.parameters}`)
-        log.debug(`Tool ${item.id} parameters constructor: ${item.parameters?.constructor?.name}`)
+        log.debug(`Tool ${toolInfo.id} parameters type: ${typeof item.parameters}`)
+        log.debug(`Tool ${toolInfo.id} parameters constructor: ${item.parameters?.constructor?.name}`)
         continue
       }
 
-      tools[item.id] = tool({
-        id: item.id as any,
+      tools[toolInfo.id] = tool({
+        id: toolInfo.id as any,
         description: item.description,
         inputSchema: jsonSchema(schema as any),
         async execute(args, options) {
           await Plugin.trigger(
             "tool.execute.before",
             {
-              tool: item.id,
+              tool: toolInfo.id,
               sessionID: input.sessionID,
               callID: options.toolCallId,
             },
@@ -662,7 +682,7 @@ export namespace SessionPrompt {
           await Plugin.trigger(
             "tool.execute.after",
             {
-              tool: item.id,
+              tool: toolInfo.id,
               sessionID: input.sessionID,
               callID: options.toolCallId,
             },
@@ -679,7 +699,27 @@ export namespace SessionPrompt {
       })
     }
 
-    for (const [key, item] of Object.entries(await MCP.tools())) {
+    // MCP tools are treated as deferred by default (they cause major token bloat)
+    // Only load MCP tools that have been explicitly enabled via tool_search
+    const mcpTools = await MCP.tools()
+    const mcpToolEntries = Object.entries(mcpTools)
+    const enabledMcpTools = mcpToolEntries.filter(([key]) => sessionEnabledTools.has(key))
+
+    log.info(`✨ Loading ${enabledMcpTools.length} MCP tools (${mcpToolEntries.length} total available, deferred by default)`)
+
+    // Register all MCP tools in the search index if not already done
+    // This allows tool_search to discover them
+    for (const [key, item] of mcpToolEntries) {
+      await ToolSearch.registerTool({
+        id: key,
+        description: ((item as any).description || "MCP tool").substring(0, 200),
+        category: key.includes("_") ? key.split("_")[0] : "mcp",
+        keywords: key.split(/[-_]/).filter((w) => w.length > 2),
+        deferred: true,
+      })
+    }
+
+    for (const [key, item] of enabledMcpTools) {
       if (Wildcard.all(key, enabledTools) === false) continue
       const execute = item.execute
       if (!execute) continue
