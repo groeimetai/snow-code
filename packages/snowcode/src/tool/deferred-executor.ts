@@ -75,61 +75,59 @@ function extractMCPContent(result: any): any {
 }
 
 /**
- * Format widget result nicely
+ * Format widget result nicely (plain text, no markdown)
  */
 function formatWidgetResult(data: any): string {
   const lines: string[] = []
   const widget = data.widget || data
 
-  lines.push("## Widget Created Successfully")
+  lines.push("Widget Created Successfully")
   lines.push("")
 
-  if (widget.sys_id) lines.push(`**sys_id:** \`${widget.sys_id}\``)
-  if (widget.name) lines.push(`**Name:** ${widget.name}`)
-  if (widget.id) lines.push(`**ID:** ${widget.id}`)
-  if (widget.sys_class_name) lines.push(`**Type:** ${widget.sys_class_name}`)
-  if (widget.sys_updated_on) lines.push(`**Updated:** ${widget.sys_updated_on}`)
-  if (widget.sys_updated_by) lines.push(`**By:** ${widget.sys_updated_by}`)
+  if (widget.sys_id) lines.push(`  sys_id:   ${widget.sys_id}`)
+  if (widget.name) lines.push(`  Name:     ${widget.name}`)
+  if (widget.id) lines.push(`  ID:       ${widget.id}`)
+  if (widget.sys_class_name) lines.push(`  Type:     ${widget.sys_class_name}`)
+  if (widget.sys_updated_on) lines.push(`  Updated:  ${widget.sys_updated_on}`)
+  if (widget.sys_updated_by) lines.push(`  By:       ${widget.sys_updated_by}`)
 
-  lines.push("")
-  lines.push("### Components")
-
+  const components: string[] = []
   if (widget.template) {
     const templateLines = widget.template.split("\n").length
-    lines.push(`- **Template:** ${templateLines} lines of HTML`)
+    components.push(`Template (${templateLines} lines)`)
   }
   if (widget.css) {
     const cssLines = widget.css.split("\n").length
-    lines.push(`- **CSS:** ${cssLines} lines`)
+    components.push(`CSS (${cssLines} lines)`)
   }
-  if (widget.client_script) {
-    lines.push(`- **Client Script:** Present`)
-  }
-  if (widget.server_script) {
-    lines.push(`- **Server Script:** Present`)
-  }
-  if (widget.link) {
-    lines.push(`- **Link Function:** Present`)
+  if (widget.client_script) components.push("Client Script")
+  if (widget.server_script) components.push("Server Script")
+  if (widget.link) components.push("Link Function")
+
+  if (components.length > 0) {
+    lines.push("")
+    lines.push(`  Components: ${components.join(", ")}`)
   }
 
   return lines.join("\n")
 }
 
 /**
- * Format incident/record result
+ * Format incident/record result (plain text, no markdown)
  */
 function formatRecordResult(data: any, recordType: string): string {
   const lines: string[] = []
   const records = Array.isArray(data) ? data : data.records || data.result || [data]
 
   if (Array.isArray(records) && records.length > 0) {
-    lines.push(`## Found ${records.length} ${recordType}(s)`)
+    lines.push(`Found ${records.length} ${recordType}(s)`)
     lines.push("")
 
-    // Show first few records in a table-like format
+    // Show first few records
     const displayRecords = records.slice(0, 10)
     for (const record of displayRecords) {
-      lines.push(`### ${record.number || record.name || record.sys_id || "Record"}`)
+      const title = record.number || record.name || record.sys_id || "Record"
+      lines.push(`  ${title}`)
 
       // Show key fields
       const keyFields = ["short_description", "description", "state", "priority", "assigned_to", "category", "sys_created_on", "sys_updated_on"]
@@ -139,17 +137,17 @@ function formatRecordResult(data: any, recordType: string): string {
           const value = typeof record[field] === "string" && record[field].length > 100
             ? truncateString(record[field], 100)
             : record[field]
-          lines.push(`- **${label}:** ${value}`)
+          lines.push(`    ${label}: ${value}`)
         }
       }
       lines.push("")
     }
 
     if (records.length > 10) {
-      lines.push(`_...and ${records.length - 10} more records_`)
+      lines.push(`  ...and ${records.length - 10} more records`)
     }
   } else {
-    lines.push(`## ${recordType} Result`)
+    lines.push(`${recordType} Result`)
     lines.push("")
     lines.push(JSON.stringify(data, null, 2))
   }
@@ -158,25 +156,25 @@ function formatRecordResult(data: any, recordType: string): string {
 }
 
 /**
- * Format instance info result
+ * Format instance info result (plain text, no markdown)
  */
 function formatInstanceInfo(data: any): string {
   const lines: string[] = []
 
-  lines.push("## ServiceNow Instance Information")
+  lines.push("ServiceNow Instance Information")
   lines.push("")
 
-  if (data.instance_url) lines.push(`**URL:** ${data.instance_url}`)
-  if (data.instance_name) lines.push(`**Instance:** ${data.instance_name}`)
-  if (data.version) lines.push(`**Version:** ${data.version}`)
-  if (data.build_tag) lines.push(`**Build:** ${data.build_tag}`)
-  if (data.user) lines.push(`**User:** ${data.user}`)
+  if (data.instance_url) lines.push(`  URL:      ${data.instance_url}`)
+  if (data.instance_name) lines.push(`  Instance: ${data.instance_name}`)
+  if (data.version) lines.push(`  Version:  ${data.version}`)
+  if (data.build_tag) lines.push(`  Build:    ${data.build_tag}`)
+  if (data.user) lines.push(`  User:     ${data.user}`)
 
   return lines.join("\n")
 }
 
 /**
- * Format generic success result
+ * Format generic success result (plain text, no markdown)
  */
 function formatGenericResult(data: any, toolName: string): string {
   const lines: string[] = []
@@ -186,40 +184,38 @@ function formatGenericResult(data: any, toolName: string): string {
   const statusIcon = success ? "✓" : "✗"
   const statusText = success ? "Success" : "Failed"
 
-  lines.push(`## ${statusIcon} ${formatToolName(toolName)} - ${statusText}`)
+  lines.push(`${statusIcon} ${formatToolName(toolName)} - ${statusText}`)
   lines.push("")
 
   // Show error if present
   if (data.error) {
-    lines.push(`**Error:** ${data.error}`)
+    lines.push(`  Error: ${data.error}`)
     lines.push("")
   }
 
   // Show message if present
   if (data.message) {
-    lines.push(data.message)
+    lines.push(`  ${data.message}`)
     lines.push("")
   }
 
   // Show data summary
   if (data.data && typeof data.data === "object") {
-    lines.push("### Result Data")
     const entries = Object.entries(data.data)
     for (const [key, value] of entries.slice(0, 15)) {
       const label = key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
-      lines.push(`- **${label}:** ${formatValue(value)}`)
+      lines.push(`  ${label}: ${formatValue(value)}`)
     }
     if (entries.length > 15) {
-      lines.push(`_...and ${entries.length - 15} more fields_`)
+      lines.push(`  ...and ${entries.length - 15} more fields`)
     }
   } else if (typeof data === "object" && !Array.isArray(data)) {
     // Direct object result
     const entries = Object.entries(data).filter(([k]) => !["success", "error", "message"].includes(k))
     if (entries.length > 0) {
-      lines.push("### Details")
       for (const [key, value] of entries.slice(0, 15)) {
         const label = key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
-        lines.push(`- **${label}:** ${formatValue(value)}`)
+        lines.push(`  ${label}: ${formatValue(value)}`)
       }
     }
   }
@@ -370,12 +366,12 @@ Example: tool_search({query: "${tool_name.split("_").slice(-1)[0]}"})`,
       log.error("Deferred tool execution failed", { tool_name, error: errorMsg })
       return {
         title: `${formatToolName(tool_name)} - Error`,
-        output: `## ✗ Execution Failed
+        output: `✗ Execution Failed
 
-**Tool:** ${tool_name}
-**Error:** ${errorMsg}
+  Tool:  ${tool_name}
+  Error: ${errorMsg}
 
-Please check the tool arguments and try again.`,
+  Please check the tool arguments and try again.`,
         metadata: { tool_name, success: false, error: errorMsg },
       }
     }
