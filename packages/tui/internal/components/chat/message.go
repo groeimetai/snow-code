@@ -934,6 +934,26 @@ func renderToolTitle(
 		if actualTool, ok := toolArgsMap["tool"].(string); ok {
 			title = renderToolName(actualTool)
 		}
+	case "deferred_tool_executor":
+		// Show the actual tool being executed, not "Deferred_tool_executor"
+		if toolName, ok := toolArgsMap["tool_name"].(string); ok {
+			// Extract a readable name from the tool name
+			title = renderToolName(toolName)
+			// If there are arguments, show first meaningful one
+			if args, ok := toolArgsMap["arguments"].(map[string]any); ok && len(args) > 0 {
+				keys := make([]string, 0, len(args))
+				for key := range args {
+					keys = append(keys, key)
+				}
+				slices.Sort(keys)
+				for _, key := range keys {
+					if value, ok := args[key].(string); ok && value != "" && len(value) < 80 {
+						title = fmt.Sprintf("%s(%s)", title, value)
+						break
+					}
+				}
+			}
+		}
 	default:
 		// For MCP tools and other tools, use compact format with first meaningful parameter
 		keys := make([]string, 0, len(toolArgsMap))
