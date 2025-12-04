@@ -184,11 +184,10 @@ export namespace ToolRegistry {
       result["webfetch"] = false
     }
 
-    // Debug-only tools: tool_search and deferred_tool_executor
-    // Only visible when debug mode is enabled via /debug or SNOWCODE_DEBUG_TOKENS=true
+    // Debug-only tool: tool_search is hidden unless debug mode is enabled
+    // deferred_tool_executor remains visible as it's the main tool users interact with
     if (!TokenDebug.isEnabled()) {
       result["tool_search"] = false
-      result["deferred_tool_executor"] = false
     }
 
     return result
