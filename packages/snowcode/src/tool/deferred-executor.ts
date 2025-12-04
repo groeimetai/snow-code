@@ -113,38 +113,162 @@ function formatWidgetResult(data: any): string {
 }
 
 /**
- * Format incident/record result (plain text, no markdown)
+ * Dynamically format any record/item (works for any integration)
+ */
+function formatDynamicItem(item: any, indent: string = "  "): string[] {
+  const lines: string[] = []
+
+  // Try to find a good title/identifier from common field names
+  const titleFields = ["key", "number", "id", "name", "title", "sys_id", "summary", "subject", "displayName"]
+  let title = ""
+  for (const field of titleFields) {
+    if (item[field] && typeof item[field] === "string") {
+      title = item[field]
+      break
+    }
+    // Also check nested fields (like Jira's fields.summary)
+    if (item.fields?.[field]) {
+      title = item.fields[field]
+      break
+    }
+  }
+  if (!title) title = "Item"
+
+  // Get a subtitle/description if available
+  const subtitleFields = ["summary", "description", "short_description", "subject", "body"]
+  let subtitle = ""
+  for (const field of subtitleFields) {
+    const val = item[field] || item.fields?.[field]
+    if (val && typeof val === "string" && val !== title) {
+      subtitle = truncateString(val, 80)
+      break
+    }
+  }
+
+  // Format title line
+  if (subtitle && title !== subtitle) {
+    lines.push(`${indent}${title}: ${subtitle}`)
+  } else {
+    lines.push(`${indent}${title}`)
+  }
+
+  // Common fields to display (works across integrations)
+  const displayFields = [
+    // Status/State
+    { keys: ["status", "state"], label: "Status", nested: ["fields.status.name", "fields.state"] },
+    // Priority
+    { keys: ["priority"], label: "Priority", nested: ["fields.priority.name"] },
+    // Type
+    { keys: ["type", "issuetype", "issueType", "sys_class_name"], label: "Type", nested: ["fields.issuetype.name"] },
+    // Assignee/Owner
+    { keys: ["assignee", "assigned_to", "owner"], label: "Assignee", nested: ["fields.assignee.displayName"] },
+    // Reporter/Created by
+    { keys: ["reporter", "created_by", "author"], label: "Reporter", nested: ["fields.reporter.displayName"] },
+    // Dates
+    { keys: ["created", "sys_created_on", "createdDate"], label: "Created" },
+    { keys: ["updated", "sys_updated_on", "updatedDate"], label: "Updated" },
+    // Project/Space
+    { keys: ["project", "projectKey", "space"], label: "Project", nested: ["fields.project.key", "fields.project.name"] },
+  ]
+
+  for (const fieldDef of displayFields) {
+    let value: any = null
+
+    // Check direct keys
+    for (const key of fieldDef.keys) {
+      if (item[key] !== undefined && item[key] !== null) {
+        value = item[key]
+        break
+      }
+    }
+
+    // Check nested paths if no direct match
+    if (!value && fieldDef.nested) {
+      for (const path of fieldDef.nested) {
+        const parts = path.split(".")
+        let current = item
+        for (const part of parts) {
+          current = current?.[part]
+        }
+        if (current !== undefined && current !== null) {
+          value = current
+          break
+        }
+      }
+    }
+
+    // Format and display
+    if (value !== null && value !== undefined) {
+      const displayValue = typeof value === "object" ? (value.name || value.displayName || JSON.stringify(value)) : String(value)
+      if (displayValue && displayValue.length > 0) {
+        lines.push(`${indent}  ${fieldDef.label}: ${truncateString(displayValue, 60)}`)
+      }
+    }
+  }
+
+  return lines
+}
+
+/**
+ * Extract array of items from various response structures
+ */
+function extractItems(data: any): any[] {
+  // Common wrapper keys used by different APIs
+  const arrayKeys = ["issues", "records", "result", "data", "items", "values", "results", "workItems", "pages", "content"]
+
+  // Direct array
+  if (Array.isArray(data)) {
+    return data
+  }
+
+  // Check wrapper keys
+  for (const key of arrayKeys) {
+    if (data[key] && Array.isArray(data[key])) {
+      return data[key]
+    }
+  }
+
+  // Single object that looks like a record
+  if (typeof data === "object" && data !== null && !data.success && !data.error) {
+    return [data]
+  }
+
+  return []
+}
+
+/**
+ * Format record/item results dynamically (works for any integration)
  */
 function formatRecordResult(data: any, recordType: string): string {
   const lines: string[] = []
-  const records = Array.isArray(data) ? data : data.records || data.result || [data]
+  const items = extractItems(data)
 
-  if (Array.isArray(records) && records.length > 0) {
-    lines.push(`Found ${records.length} ${recordType}(s)`)
+  if (items.length > 0) {
+    lines.push(`Found ${items.length} ${recordType}(s)`)
     lines.push("")
 
-    // Show first few records
-    const displayRecords = records.slice(0, 10)
-    for (const record of displayRecords) {
-      const title = record.number || record.name || record.sys_id || "Record"
-      lines.push(`  ${title}`)
-
-      // Show key fields
-      const keyFields = ["short_description", "description", "state", "priority", "assigned_to", "category", "sys_created_on", "sys_updated_on"]
-      for (const field of keyFields) {
-        if (record[field]) {
-          const label = field.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
-          const value = typeof record[field] === "string" && record[field].length > 100
-            ? truncateString(record[field], 100)
-            : record[field]
-          lines.push(`    ${label}: ${value}`)
-        }
-      }
+    // Show first few items
+    const displayItems = items.slice(0, 10)
+    for (const item of displayItems) {
+      lines.push(...formatDynamicItem(item))
       lines.push("")
     }
 
-    if (records.length > 10) {
-      lines.push(`  ...and ${records.length - 10} more records`)
+    if (items.length > 10) {
+      lines.push(`  ...and ${items.length - 10} more items`)
+    }
+  } else if (typeof data === "object" && data !== null) {
+    // Single object result - show all fields
+    lines.push(`${recordType} Result`)
+    lines.push("")
+
+    const entries = Object.entries(data).filter(([k]) => !["success", "error", "message"].includes(k))
+    for (const [key, value] of entries.slice(0, 15)) {
+      const label = key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
+      lines.push(`  ${label}: ${formatValue(value)}`)
+    }
+    if (entries.length > 15) {
+      lines.push(`  ...and ${entries.length - 15} more fields`)
     }
   } else {
     lines.push(`${recordType} Result`)

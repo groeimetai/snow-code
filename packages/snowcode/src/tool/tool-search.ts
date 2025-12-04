@@ -220,12 +220,16 @@ function formatToolParameters(tool: any): string {
   if (!tool) return ""
 
   try {
-    // Get the parameters schema (could be Zod or JSON Schema)
+    // Get the parameters schema - check multiple possible locations
     let schema: any = null
 
-    // AI SDK tools have a 'parameters' property (Zod schema)
-    if (tool.parameters) {
-      // Check if it's a Zod schema
+    // MCP tools from remote servers use 'inputSchema' (JSON Schema)
+    if (tool.inputSchema && typeof tool.inputSchema === "object") {
+      schema = tool.inputSchema
+    }
+    // AI SDK tools have a 'parameters' property (could be Zod or JSON Schema)
+    else if (tool.parameters) {
+      // Check if it's a Zod schema (has _def property)
       if (typeof tool.parameters === "object" && tool.parameters._def) {
         // Convert Zod to JSON Schema
         schema = zodToJsonSchema(tool.parameters)
@@ -234,8 +238,15 @@ function formatToolParameters(tool: any): string {
         schema = tool.parameters
       }
     }
+    // Some tools wrap schema in 'schema' property
+    else if (tool.schema && typeof tool.schema === "object") {
+      schema = tool.schema
+    }
 
-    if (!schema) return ""
+    if (!schema) {
+      log.debug("No schema found for tool", { toolKeys: Object.keys(tool || {}) })
+      return ""
+    }
 
     // Extract properties and required fields
     const properties = schema.properties || {}
