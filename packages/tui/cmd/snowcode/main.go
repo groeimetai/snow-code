@@ -40,6 +40,7 @@ func main() {
 	if url == "" {
 		url = os.Getenv("OPENCODE_SERVER")
 	}
+	// If still empty, will be set after server starts (see app.BaseURL usage)
 
 	stat, err := os.Stdin.Stat()
 	if err != nil {

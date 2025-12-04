@@ -475,7 +475,12 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			cmds = append(cmds, toast.NewSuccessToast(message))
 		} else {
-			cmds = append(cmds, toast.NewInfoToast("Token debug disabled"))
+			// Check if LogPath contains an error message
+			if msg.LogPath != "" && strings.HasPrefix(msg.LogPath, "Error:") {
+				cmds = append(cmds, toast.NewErrorToast(msg.LogPath))
+			} else {
+				cmds = append(cmds, toast.NewInfoToast("Token debug disabled"))
+			}
 		}
 	case dialog.CompletionDialogCloseMsg:
 		a.showCompletionDialog = false

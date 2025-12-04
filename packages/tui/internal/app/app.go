@@ -975,22 +975,45 @@ func (a *App) ListProviders(ctx context.Context) ([]opencode.Provider, error) {
 // ToggleDebugTokens toggles token debug mode via the API
 func (a *App) ToggleDebugTokens(ctx context.Context) tea.Cmd {
 	return func() tea.Msg {
-		url := a.BaseURL + "/debug/tokens/toggle"
+		baseURL := a.BaseURL
+		// Fallback to environment variables if BaseURL is empty
+		if baseURL == "" {
+			baseURL = os.Getenv("SNOWCODE_SERVER")
+			if baseURL == "" {
+				baseURL = os.Getenv("OPENCODE_SERVER")
+			}
+		}
+
+		if baseURL == "" {
+			slog.Error("Cannot toggle debug tokens: no server URL available",
+				"BaseURL", a.BaseURL,
+				"SNOWCODE_SERVER", os.Getenv("SNOWCODE_SERVER"),
+				"OPENCODE_SERVER", os.Getenv("OPENCODE_SERVER"))
+			return DebugTokensToggledMsg{Enabled: false, LogPath: "Error: No server URL configured"}
+		}
+
+		url := baseURL + "/debug/tokens/toggle"
+		slog.Debug("Toggling debug tokens", "url", url)
 
 		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer([]byte("{}")))
 		if err != nil {
-			slog.Error("Failed to create debug toggle request", "error", err)
-			return DebugTokensToggledMsg{Enabled: false}
+			slog.Error("Failed to create debug toggle request", "error", err, "url", url)
+			return DebugTokensToggledMsg{Enabled: false, LogPath: "Error: " + err.Error()}
 		}
 		req.Header.Set("Content-Type", "application/json")
 
 		client := &http.Client{Timeout: 10 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
-			slog.Error("Failed to toggle debug tokens", "error", err)
-			return DebugTokensToggledMsg{Enabled: false}
+			slog.Error("Failed to toggle debug tokens", "error", err, "url", url)
+			return DebugTokensToggledMsg{Enabled: false, LogPath: "Error: " + err.Error()}
 		}
 		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			slog.Error("Debug toggle returned non-200 status", "status", resp.StatusCode, "url", url)
+			return DebugTokensToggledMsg{Enabled: false, LogPath: "Error: HTTP " + resp.Status}
+		}
 
 		var result struct {
 			Enabled bool   `json:"enabled"`
@@ -998,9 +1021,10 @@ func (a *App) ToggleDebugTokens(ctx context.Context) tea.Cmd {
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 			slog.Error("Failed to decode debug toggle response", "error", err)
-			return DebugTokensToggledMsg{Enabled: false}
+			return DebugTokensToggledMsg{Enabled: false, LogPath: "Error: " + err.Error()}
 		}
 
+		slog.Info("Debug tokens toggled", "enabled", result.Enabled, "logPath", result.LogPath)
 		return DebugTokensToggledMsg{
 			Enabled: result.Enabled,
 			LogPath: result.LogPath,
