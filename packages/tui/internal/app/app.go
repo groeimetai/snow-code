@@ -992,6 +992,9 @@ func (a *App) ToggleDebugTokens(ctx context.Context) tea.Cmd {
 			return DebugTokensToggledMsg{Enabled: false, LogPath: "Error: No server URL configured"}
 		}
 
+		// Strip trailing slash to avoid double-slash in URL path
+		baseURL = strings.TrimSuffix(baseURL, "/")
+
 		url := baseURL + "/debug/tokens/toggle"
 		slog.Debug("Toggling debug tokens", "url", url)
 
