@@ -113,167 +113,229 @@ function formatWidgetResult(data: any): string {
 }
 
 /**
- * Dynamically format any record/item (works for any integration)
+ * Smart value formatter - handles any type intelligently
  */
-function formatDynamicItem(item: any, indent: string = "  "): string[] {
+function smartFormat(value: any, maxLen: number = 80): string {
+  if (value === null || value === undefined) return "(none)"
+  if (typeof value === "boolean") return value ? "Yes" : "No"
+  if (typeof value === "number") return String(value)
+  if (typeof value === "string") {
+    if (value.length > maxLen || value.includes("\n")) {
+      const lines = value.split("\n").length
+      return `[${value.length} chars${lines > 1 ? `, ${lines} lines` : ""}]`
+    }
+    return value
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "(empty)"
+    // Try to show simple arrays inline
+    if (value.every((v) => typeof v === "string" || typeof v === "number")) {
+      const joined = value.slice(0, 3).join(", ")
+      return value.length > 3 ? `${joined}, ...+${value.length - 3}` : joined
+    }
+    return `[${value.length} items]`
+  }
+  if (typeof value === "object") {
+    // Extract display value from nested objects
+    const display = value.name || value.displayName || value.title || value.key || value.id || value.value
+    if (display && typeof display === "string") return display
+    return `{${Object.keys(value).length} fields}`
+  }
+  return String(value)
+}
+
+/**
+ * Format key to readable label (camelCase/snake_case -> Title Case)
+ */
+function toLabel(key: string): string {
+  return key
+    .replace(/([a-z])([A-Z])/g, "$1 $2") // camelCase
+    .replace(/[_-]/g, " ") // snake_case, kebab-case
+    .replace(/\b\w/g, (l) => l.toUpperCase()) // Title Case
+}
+
+/**
+ * Recursively format any data structure - fully dynamic, no hardcoded fields
+ */
+function formatData(data: any, depth: number = 0, maxDepth: number = 2): string[] {
+  const indent = "  ".repeat(depth)
   const lines: string[] = []
 
-  // Try to find a good title/identifier from common field names
-  const titleFields = ["key", "number", "id", "name", "title", "sys_id", "summary", "subject", "displayName"]
-  let title = ""
-  for (const field of titleFields) {
-    if (item[field] && typeof item[field] === "string") {
-      title = item[field]
-      break
-    }
-    // Also check nested fields (like Jira's fields.summary)
-    if (item.fields?.[field]) {
-      title = item.fields[field]
-      break
-    }
-  }
-  if (!title) title = "Item"
+  if (data === null || data === undefined) return [`${indent}(none)`]
+  if (typeof data !== "object") return [`${indent}${smartFormat(data)}`]
 
-  // Get a subtitle/description if available
-  const subtitleFields = ["summary", "description", "short_description", "subject", "body"]
-  let subtitle = ""
-  for (const field of subtitleFields) {
-    const val = item[field] || item.fields?.[field]
-    if (val && typeof val === "string" && val !== title) {
-      subtitle = truncateString(val, 80)
-      break
-    }
-  }
+  // Handle arrays
+  if (Array.isArray(data)) {
+    if (data.length === 0) return [`${indent}(empty list)`]
 
-  // Format title line
-  if (subtitle && title !== subtitle) {
-    lines.push(`${indent}${title}: ${subtitle}`)
-  } else {
-    lines.push(`${indent}${title}`)
-  }
+    const maxItems = 8
+    for (let i = 0; i < Math.min(data.length, maxItems); i++) {
+      const item = data[i]
+      if (typeof item === "object" && item !== null) {
+        // Find best identifier for this item
+        const id = findIdentifier(item)
+        lines.push(`${indent}${i + 1}. ${id}`)
 
-  // Common fields to display (works across integrations)
-  const displayFields = [
-    // Status/State
-    { keys: ["status", "state"], label: "Status", nested: ["fields.status.name", "fields.state"] },
-    // Priority
-    { keys: ["priority"], label: "Priority", nested: ["fields.priority.name"] },
-    // Type
-    { keys: ["type", "issuetype", "issueType", "sys_class_name"], label: "Type", nested: ["fields.issuetype.name"] },
-    // Assignee/Owner
-    { keys: ["assignee", "assigned_to", "owner"], label: "Assignee", nested: ["fields.assignee.displayName"] },
-    // Reporter/Created by
-    { keys: ["reporter", "created_by", "author"], label: "Reporter", nested: ["fields.reporter.displayName"] },
-    // Dates
-    { keys: ["created", "sys_created_on", "createdDate"], label: "Created" },
-    { keys: ["updated", "sys_updated_on", "updatedDate"], label: "Updated" },
-    // Project/Space
-    { keys: ["project", "projectKey", "space"], label: "Project", nested: ["fields.project.key", "fields.project.name"] },
-  ]
-
-  for (const fieldDef of displayFields) {
-    let value: any = null
-
-    // Check direct keys
-    for (const key of fieldDef.keys) {
-      if (item[key] !== undefined && item[key] !== null) {
-        value = item[key]
-        break
-      }
-    }
-
-    // Check nested paths if no direct match
-    if (!value && fieldDef.nested) {
-      for (const path of fieldDef.nested) {
-        const parts = path.split(".")
-        let current = item
-        for (const part of parts) {
-          current = current?.[part]
+        // Show nested fields if not too deep
+        if (depth < maxDepth) {
+          lines.push(...formatObject(item, depth + 1, maxDepth, 6))
         }
-        if (current !== undefined && current !== null) {
-          value = current
-          break
-        }
+      } else {
+        lines.push(`${indent}${i + 1}. ${smartFormat(item)}`)
       }
+      if (i < Math.min(data.length, maxItems) - 1) lines.push("") // spacing between items
     }
 
-    // Format and display
-    if (value !== null && value !== undefined) {
-      const displayValue = typeof value === "object" ? (value.name || value.displayName || JSON.stringify(value)) : String(value)
-      if (displayValue && displayValue.length > 0) {
-        lines.push(`${indent}  ${fieldDef.label}: ${truncateString(displayValue, 60)}`)
-      }
+    if (data.length > maxItems) {
+      lines.push(`${indent}...+${data.length - maxItems} more`)
     }
+    return lines
+  }
+
+  // Handle objects
+  return formatObject(data, depth, maxDepth)
+}
+
+/**
+ * Format object fields - shows ALL fields, sorted by value type
+ */
+function formatObject(obj: any, depth: number = 0, maxDepth: number = 2, maxFields: number = 12): string[] {
+  const indent = "  ".repeat(depth)
+  const lines: string[] = []
+
+  // Get all non-null entries
+  const entries = Object.entries(obj).filter(
+    ([k, v]) => v !== null && v !== undefined && k !== "self" && !k.startsWith("_")
+  )
+
+  if (entries.length === 0) return [`${indent}(empty)`]
+
+  // Sort: primitives first (more likely to be useful), then arrays, then objects
+  entries.sort(([, a], [, b]) => {
+    const aScore = typeof a === "object" ? (Array.isArray(a) ? 2 : 3) : 1
+    const bScore = typeof b === "object" ? (Array.isArray(b) ? 2 : 3) : 1
+    return aScore - bScore
+  })
+
+  for (const [key, value] of entries.slice(0, maxFields)) {
+    const label = toLabel(key)
+
+    // For nested objects/arrays, decide whether to expand or summarize
+    if (typeof value === "object" && value !== null && depth < maxDepth) {
+      if (Array.isArray(value)) {
+        if (value.length === 0) {
+          lines.push(`${indent}${label}: (empty)`)
+        } else if (value.length <= 3 && value.every((v) => typeof v !== "object")) {
+          lines.push(`${indent}${label}: ${smartFormat(value)}`)
+        } else {
+          lines.push(`${indent}${label}: [${value.length} items]`)
+        }
+      } else {
+        // Nested object - show inline if simple
+        const nested = Object.entries(value).filter(([, v]) => v != null)
+        if (nested.length <= 2 && nested.every(([, v]) => typeof v !== "object")) {
+          const inline = nested.map(([k, v]) => `${toLabel(k)}: ${smartFormat(v)}`).join(", ")
+          lines.push(`${indent}${label}: ${inline}`)
+        } else {
+          lines.push(`${indent}${label}: ${smartFormat(value)}`)
+        }
+      }
+    } else {
+      lines.push(`${indent}${label}: ${smartFormat(value)}`)
+    }
+  }
+
+  if (entries.length > maxFields) {
+    lines.push(`${indent}...+${entries.length - maxFields} more fields`)
   }
 
   return lines
 }
 
 /**
- * Extract array of items from various response structures
+ * Find the best identifier/title for an object - checks ALL string fields
  */
-function extractItems(data: any): any[] {
-  // Common wrapper keys used by different APIs
-  const arrayKeys = ["issues", "records", "result", "data", "items", "values", "results", "workItems", "pages", "content"]
+function findIdentifier(obj: any): string {
+  if (!obj || typeof obj !== "object") return "Item"
 
-  // Direct array
-  if (Array.isArray(data)) {
-    return data
-  }
+  // Check direct fields and nested 'fields' (common in Jira)
+  const sources = [obj, obj.fields].filter(Boolean)
 
-  // Check wrapper keys
-  for (const key of arrayKeys) {
-    if (data[key] && Array.isArray(data[key])) {
-      return data[key]
+  // First pass: look for short strings that look like identifiers
+  for (const source of sources) {
+    for (const [key, value] of Object.entries(source)) {
+      if (typeof value === "string" && value.length > 0 && value.length < 100) {
+        // Prioritize fields that look like identifiers by name pattern
+        const keyLower = key.toLowerCase()
+        if (keyLower === "key" || keyLower === "id" || keyLower === "number") {
+          // Check if there's also a title/summary to combine
+          const title =
+            source.summary || source.title || source.name || source.short_description || obj.fields?.summary
+          if (title && typeof title === "string" && title !== value) {
+            return `${value}: ${truncateString(title, 60)}`
+          }
+          return value
+        }
+      }
     }
   }
 
-  // Single object that looks like a record
-  if (typeof data === "object" && data !== null && !data.success && !data.error) {
-    return [data]
+  // Second pass: return first reasonable string (name, title, summary, etc.)
+  for (const source of sources) {
+    for (const value of Object.values(source)) {
+      if (typeof value === "string" && value.length > 0 && value.length < 80) {
+        return truncateString(value, 70)
+      }
+    }
   }
 
-  return []
+  return "Item"
 }
 
 /**
- * Format record/item results dynamically (works for any integration)
+ * Find array data in any response structure - checks ALL array properties
  */
-function formatRecordResult(data: any, recordType: string): string {
+function findArrayData(data: any): any[] | null {
+  if (Array.isArray(data)) return data
+
+  if (typeof data !== "object" || data === null) return null
+
+  // Find the first non-empty array property
+  for (const value of Object.values(data)) {
+    if (Array.isArray(value) && value.length > 0) {
+      return value
+    }
+  }
+
+  return null
+}
+
+/**
+ * Universal result formatter - fully dynamic, works for ANY data structure
+ */
+function formatRecordResult(data: any, _recordType: string): string {
   const lines: string[] = []
-  const items = extractItems(data)
 
-  if (items.length > 0) {
-    lines.push(`Found ${items.length} ${recordType}(s)`)
+  // Try to find array data
+  const items = findArrayData(data)
+
+  if (items && items.length > 0) {
+    lines.push(`Found ${items.length} item(s)`)
     lines.push("")
-
-    // Show first few items
-    const displayItems = items.slice(0, 10)
-    for (const item of displayItems) {
-      lines.push(...formatDynamicItem(item))
-      lines.push("")
-    }
-
-    if (items.length > 10) {
-      lines.push(`  ...and ${items.length - 10} more items`)
-    }
+    lines.push(...formatData(items, 0, 2))
   } else if (typeof data === "object" && data !== null) {
-    // Single object result - show all fields
-    lines.push(`${recordType} Result`)
-    lines.push("")
+    // Single object or object without array
+    const hasMetaOnly = Object.keys(data).every((k) => ["success", "message", "error", "total", "count"].includes(k))
 
-    const entries = Object.entries(data).filter(([k]) => !["success", "error", "message"].includes(k))
-    for (const [key, value] of entries.slice(0, 15)) {
-      const label = key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
-      lines.push(`  ${label}: ${formatValue(value)}`)
-    }
-    if (entries.length > 15) {
-      lines.push(`  ...and ${entries.length - 15} more fields`)
+    if (hasMetaOnly) {
+      // Just metadata, show it
+      lines.push(...formatObject(data, 0, 2, 10))
+    } else {
+      // Real data object
+      lines.push(...formatData(data, 0, 2))
     }
   } else {
-    lines.push(`${recordType} Result`)
-    lines.push("")
-    lines.push(JSON.stringify(data, null, 2))
+    lines.push(String(data))
   }
 
   return lines.join("\n")
