@@ -17,6 +17,7 @@ import { Tool } from "./tool"
 import { Instance } from "../project/instance"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
+import { TokenDebug } from "../util/token-debug"
 import path from "path"
 // @ts-expect-error - workspace package resolved at runtime by Bun
 import { type ToolDefinition } from "@groeimetai/snow-code-plugin"
@@ -181,6 +182,13 @@ export namespace ToolRegistry {
     }
     if (agent.permission.webfetch === "deny") {
       result["webfetch"] = false
+    }
+
+    // Debug-only tools: tool_search and deferred_tool_executor
+    // Only visible when debug mode is enabled via /debug or SNOWCODE_DEBUG_TOKENS=true
+    if (!TokenDebug.isEnabled()) {
+      result["tool_search"] = false
+      result["deferred_tool_executor"] = false
     }
 
     return result
