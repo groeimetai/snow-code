@@ -1,6 +1,5 @@
 import path from "path"
 import fs from "fs/promises"
-import { Global } from "../global"
 import { Token } from "./token"
 import { Log } from "./log"
 import { Instance } from "../project/instance"
@@ -141,15 +140,17 @@ export namespace TokenDebug {
     state.enabled = true
     state.sessionFilter = options?.sessionID
 
-    // Create debug log directory
-    const debugDir = path.join(Global.Path.log, "token-debug")
+    // Create debug log directory in project folder (current working directory)
+    // This makes it easy to find and access the debug logs for each project
+    const projectDir = process.cwd()
+    const debugDir = path.join(projectDir, ".snow-code", "token-debug")
     await fs.mkdir(debugDir, { recursive: true })
 
     // Create timestamped log file
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
     state.logPath = path.join(debugDir, `debug-${timestamp}.jsonl`)
 
-    log.info("Token debug enabled", { logPath: state.logPath })
+    log.info("Token debug enabled", { logPath: state.logPath, projectDir })
 
     Bus.publish(Event.Toggled, {
       enabled: true,
@@ -481,8 +482,9 @@ View full details: ${state.logPath}
 
   async function writeEntry(entry: APIRequestLog | APIResponseLog): Promise<void> {
     if (!state.logPath) {
-      // Create default log path if not set
-      const debugDir = path.join(Global.Path.log, "token-debug")
+      // Create default log path in project directory if not set
+      const projectDir = process.cwd()
+      const debugDir = path.join(projectDir, ".snow-code", "token-debug")
       await fs.mkdir(debugDir, { recursive: true })
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
       state.logPath = path.join(debugDir, `debug-${timestamp}.jsonl`)
