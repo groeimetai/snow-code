@@ -232,7 +232,14 @@ Use this when you need to:
 - Discover what operations are available
 - Look up tool names by functionality
 
-After finding tools, they will be automatically enabled for use in this session.`,
+After finding tools, use the deferred_tool_executor to execute them.
+
+IMPORTANT: Do NOT try to call the found tools directly - they are not in your available tools list.
+Instead, use deferred_tool_executor with the tool name and arguments.
+
+Example workflow:
+1. tool_search({query: "incident"}) → finds "servicenow-unified_snow_query_incidents"
+2. deferred_tool_executor({tool_name: "servicenow-unified_snow_query_incidents", arguments: {limit: 10}})`,
   parameters: z.object({
     query: z
       .string()
@@ -272,7 +279,10 @@ After finding tools, they will be automatically enabled for use in this session.
       .join("\n\n")
 
     const enabledMsg = args.enable
-      ? `\n\n${results.length} tool(s) have been enabled for this session. You can now use them directly.`
+      ? `\n\n${results.length} tool(s) have been enabled for this session.
+
+To use these tools, call deferred_tool_executor with the tool name and arguments.
+Example: deferred_tool_executor({tool_name: "${results[0]?.id || "tool_name"}", arguments: {...}})`
       : ""
 
     return {

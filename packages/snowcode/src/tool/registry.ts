@@ -11,6 +11,7 @@ import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { ToolSearchTool, ToolSearch, type ToolIndexEntry } from "./tool-search"
+import { DeferredToolExecutor } from "./deferred-executor"
 import type { Agent } from "../agent/agent"
 import { Tool } from "./tool"
 import { Instance } from "../project/instance"
@@ -93,6 +94,7 @@ export namespace ToolRegistry {
     TodoReadTool,
     TaskTool,
     ToolSearchTool, // Meta-tool for discovering deferred tools
+    DeferredToolExecutor, // Proxy tool for executing enabled deferred tools
   ]
 
   async function all(): Promise<Tool.Info[]> {
