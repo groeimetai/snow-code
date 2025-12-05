@@ -496,12 +496,17 @@ function formatResult(result: any, toolName: string): string {
  * 3. This proxy validates the tool is enabled and executes it
  */
 export const DeferredToolExecutor = Tool.define("deferred_tool_executor", {
-  description: `Execute a deferred tool that was enabled via tool_search.
+  description: `Execute a deferred ServiceNow tool that was enabled via tool_search.
 
-IMPORTANT: After using tool_search to find and enable tools, you MUST use this executor to call those tools.
-Do NOT try to call the tools directly - they are not in your available tools list.
+IMPORTANT: This executor is ONLY for ServiceNow tools found via tool_search.
 
-Usage:
+DO NOT use this for enterprise tools (snow-flow-enterprise_*) like Jira, Azure DevOps, or Confluence!
+Enterprise tools are ALWAYS available and should be called DIRECTLY:
+- snow-flow-enterprise_jira_get_issue({issueKey: "SNOW-123"})
+- snow-flow-enterprise_jira_search_issues({jql: "project = SNOW"})
+- snow-flow-enterprise_azure_devops_get_work_item({workItemId: 123})
+
+Usage for ServiceNow deferred tools:
 1. First use tool_search to find tools (e.g., tool_search({query: "incident"}))
 2. Note the tool names from the results (e.g., "servicenow-unified_snow_query_incidents")
 3. Call this executor with the tool name and arguments
@@ -522,15 +527,22 @@ deferred_tool_executor({
     const { tool_name, arguments: toolArgs } = args
     log.info("Executing deferred tool", { tool_name, sessionID: ctx.sessionID })
 
-    // Check if tool is enabled for this session
-    const isEnabled = await ToolSearch.isToolEnabled(ctx.sessionID, tool_name)
-    if (!isEnabled) {
-      return {
-        title: "Tool Not Enabled",
-        output: `The tool "${tool_name}" is not enabled for this session. Please use tool_search first to find and enable tools.
+    // Enterprise tools (snow-flow-enterprise_*) are always available - no need to enable
+    const isEnterpriseTool = tool_name.startsWith("snow-flow-enterprise_")
 
-Example: tool_search({query: "${tool_name.split("_").slice(-1)[0]}"})`,
-        metadata: { tool_name, success: false, error: "tool_not_enabled" },
+    // Check if tool is enabled for this session (skip for enterprise tools)
+    if (!isEnterpriseTool) {
+      const isEnabled = await ToolSearch.isToolEnabled(ctx.sessionID, tool_name)
+      if (!isEnabled) {
+        return {
+          title: "Tool Not Enabled",
+          output: `The tool "${tool_name}" is not enabled for this session. Please use tool_search first to find and enable tools.
+
+Example: tool_search({query: "${tool_name.split("_").slice(-1)[0]}"})
+
+NOTE: If this is an enterprise tool (snow-flow-enterprise_*), you can call it directly without using deferred_tool_executor.`,
+          metadata: { tool_name, success: false, error: "tool_not_enabled" },
+        }
       }
     }
 
