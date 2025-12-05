@@ -575,6 +575,18 @@ export namespace SessionPrompt {
 
     // Get session-enabled deferred tools (tools discovered via tool_search)
     const sessionEnabledTools = await ToolSearch.getEnabledTools(input.sessionID)
+
+    // Auto-enable activity tracking tools - these must ALWAYS be available
+    // Without these, the agent cannot track activities before using tool_search
+    const mcpToolsForAutoEnable = await MCP.tools()
+    const activityToolPatterns = ["activity_start", "activity_complete", "activity_update", "activity_add_artifact"]
+    for (const [toolName] of Object.entries(mcpToolsForAutoEnable)) {
+      if (activityToolPatterns.some(pattern => toolName.includes(pattern))) {
+        sessionEnabledTools.add(toolName)
+        log.debug(`Auto-enabled activity tool: ${toolName}`)
+      }
+    }
+
     log.info(`✨ Session has ${sessionEnabledTools.size} enabled deferred tools`)
 
     // Load only immediate (non-deferred) tools by default
@@ -692,13 +704,16 @@ export namespace SessionPrompt {
 
     // Register all MCP tools in the search index if not already done
     // This allows tool_search to discover them
+    // Activity tools are marked as NOT deferred since they're always available
+    const alwaysAvailablePatterns = ["activity_start", "activity_complete", "activity_update", "activity_add_artifact"]
     for (const [key, item] of mcpToolEntries) {
+      const isAlwaysAvailable = alwaysAvailablePatterns.some(pattern => key.includes(pattern))
       await ToolSearch.registerTool({
         id: key,
         description: ((item as any).description || "MCP tool").substring(0, 200),
         category: key.includes("_") ? key.split("_")[0] : "mcp",
         keywords: key.split(/[-_]/).filter((w) => w.length > 2),
-        deferred: true,
+        deferred: !isAlwaysAvailable,  // Activity tools are NOT deferred
       })
     }
 
