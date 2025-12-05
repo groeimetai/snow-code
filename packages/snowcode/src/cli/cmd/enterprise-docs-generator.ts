@@ -642,117 +642,175 @@ const issue = await snow-flow-enterprise_jira_get_issue({
  * These instruct the agent to report activity to the enterprise dashboard using MCP tools
  */
 function generateActivityTrackingInstructions(): string {
-  return `## 📊 ACTIVITY DASHBOARD TRACKING (MANDATORY!)
+  return `## 🚨 ACTIVITY TRACKING - MANDATORY FOR ALL INTERACTIONS!
 
-### CRITICAL: Report All Story/Request Work to Dashboard
+### ⚠️ CRITICAL: EVERY USER INTERACTION MUST BE TRACKED!
 
-**Every story or request you work on MUST be tracked** in the Snow-Flow Enterprise dashboard. This provides visibility for stakeholders and non-technical users who want to see what the agent is accomplishing.
+**This is NON-NEGOTIABLE.** Every single thing you do for the user MUST be tracked in the Snow-Flow Enterprise dashboard. This provides visibility for stakeholders and enables usage analytics.
+
+**Track EVERYTHING:**
+- ✅ User asks a question → Track as \`query\`
+- ✅ User wants data/reports → Track as \`query\`
+- ✅ User requests development → Track as \`story\`, \`task\`, or \`feature\`
+- ✅ User reports a bug → Track as \`bug\`
+- ✅ User asks for help → Track as \`request\`
 
 **You have 4 MCP tools for activity tracking:**
-- \`activity_start\` - Start tracking when beginning work
+- \`activity_start\` - **ALWAYS call this FIRST before doing ANYTHING**
 - \`activity_update\` - Update progress during work
 - \`activity_complete\` - Mark as completed with summary
 - \`activity_add_artifact\` - Record artifacts you create
 
 ---
 
-### 🚀 WHEN STARTING WORK
+## 🎯 ACTIVITY TYPES
 
-**Before you begin ANY story, task, or request** from Jira, Azure DevOps, or a user request, you MUST call \`activity_start\`:
+| Type | When to Use | Examples |
+|------|-------------|----------|
+| \`query\` | **Information retrieval, data lookup, questions** | "Show me open incidents", "How many P1s this week?", "What's the status of..." |
+| \`request\` | General help or assistance | "Help me understand...", "Can you explain..." |
+| \`story\` | Feature implementation from backlog | Jira story, Azure DevOps work item |
+| \`task\` | Specific development task | "Create a business rule for...", "Add a widget that..." |
+| \`feature\` | New functionality request | "I need a dashboard that...", "Build me a portal for..." |
+| \`bug\` | Bug fix or issue resolution | "Fix the login error", "This widget is broken" |
+
+---
+
+## 🚀 WORKFLOW: ALWAYS START WITH activity_start!
+
+### For QUERIES (data retrieval, questions, lookups):
 
 \`\`\`javascript
-// Start tracking activity
-const result = await activity_start({
-  source: 'jira',  // 'jira', 'azure-devops', 'confluence', 'manual', or 'request'
-  storyId: 'PROJ-123',  // External story ID (optional for manual requests)
-  storyTitle: 'Implement feature X',  // Always provide a clear title
-  storyUrl: 'https://jira.company.com/browse/PROJ-123',  // Link to source (optional)
-  storyType: 'story'  // 'story', 'bug', 'task', 'feature', 'request', or 'other'
+// User asks: "Show me all P1 incidents from this week"
+
+// STEP 1: IMMEDIATELY start tracking BEFORE doing anything!
+const activity = await activity_start({
+  source: 'request',
+  storyTitle: 'Query: P1 incidents from this week',
+  storyType: 'query'  // Use 'query' for data retrieval!
+});
+const activityId = activity.activityId;
+
+// STEP 2: Now do the actual work
+const incidents = await snow_query_incidents({
+  filters: { priority: 1, active: true },
+  include_metrics: true
 });
 
-// IMPORTANT: Store the activityId for later use!
-const activityId = result.activityId;
-\`\`\`
-
-### ✅ WHEN COMPLETING WORK
-
-**When you finish a story/request successfully**, call \`activity_complete\`:
-
-\`\`\`javascript
-// Report successful completion
+// STEP 3: Complete the activity
 await activity_complete({
-  activityId: activityId,  // The ID from activity_start
-  summary: 'Created Business Rule for auto-assignment. Created Script Include for validation. All 5 acceptance criteria met.',
+  activityId: activityId,
+  summary: \`Found \${incidents.length} P1 incidents. Oldest: 3 days. Most affected service: Email.\`,
   metadata: {
-    updateSetName: 'Feature: Auto-Assignment',
-    artifactsCreated: 3,
-    acceptanceCriteria: { total: 5, passed: 5 },
-    testResults: 'All tests passed'
+    resultCount: incidents.length,
+    queryType: 'incident_search'
   }
 });
 \`\`\`
 
-**If work fails**, call \`activity_update\` with failed status:
+### For DEVELOPMENT (creating artifacts):
 
 \`\`\`javascript
-// Report failure
-await activity_update({
+// User asks: "Create a business rule for auto-assignment"
+
+// STEP 1: IMMEDIATELY start tracking!
+const activity = await activity_start({
+  source: 'request',
+  storyTitle: 'Create auto-assignment business rule',
+  storyType: 'task'  // Use 'task' for development work
+});
+const activityId = activity.activityId;
+
+// STEP 2: Create Update Set
+const updateSet = await snow_update_set_manage({
+  action: 'create',
+  name: 'Feature: Auto-Assignment'
+});
+
+// STEP 3: Create the artifact
+const br = await snow_create_business_rule({ /* config */ });
+
+// STEP 4: Log the artifact
+await activity_add_artifact({
   activityId: activityId,
-  status: 'failed',
-  errorMessage: 'Could not complete: Missing access to cmdb_ci table',
-  summary: 'Failed during CMDB integration step'
+  artifactType: 'business_rule',
+  artifactName: br.name,
+  artifactSysId: br.sys_id
+});
+
+// STEP 5: Complete the activity
+await activity_complete({
+  activityId: activityId,
+  summary: 'Created Business Rule for auto-assignment. Update Set: Feature: Auto-Assignment.',
+  metadata: {
+    updateSetName: 'Feature: Auto-Assignment',
+    artifactsCreated: 1
+  }
 });
 \`\`\`
 
-### 🔧 REPORTING ARTIFACTS
-
-**When you create artifacts** (business rules, widgets, scripts, etc.), report each one:
+### For JIRA/AZURE DEVOPS stories:
 
 \`\`\`javascript
-// Report each artifact created
-await activity_add_artifact({
-  activityId: activityId,
-  artifactType: 'business_rule',  // 'business_rule', 'script_include', 'widget', 'client_script', 'ui_action', 'update_set', etc.
-  artifactName: 'Auto Assign Incident',
-  artifactSysId: 'br_sys_id_123',  // Optional ServiceNow sys_id
-  artifactUrl: 'https://dev12345.service-now.com/sys_script.do?sys_id=br_sys_id_123'  // Optional direct link
+// Working on Jira story PROJ-123
+
+const activity = await activity_start({
+  source: 'jira',  // or 'azure-devops'
+  storyId: 'PROJ-123',
+  storyTitle: 'Implement incident auto-routing',
+  storyUrl: 'https://jira.company.com/browse/PROJ-123',
+  storyType: 'story'
 });
 \`\`\`
 
 ---
 
-### 📋 ACTIVITY TRACKING CHECKLIST
+## 📋 QUICK REFERENCE
 
-| When | MCP Tool | Required Fields |
-|------|----------|-----------------|
-| **Start of work** | \`activity_start\` | source, storyTitle |
-| **After each artifact** | \`activity_add_artifact\` | activityId, artifactType, artifactName |
-| **Progress update** | \`activity_update\` | activityId, (status, summary) |
-| **Successful completion** | \`activity_complete\` | activityId, summary |
-| **Failure** | \`activity_update\` | activityId, status='failed', errorMessage |
+| User Says | storyType | Example storyTitle |
+|-----------|-----------|-------------------|
+| "Show me incidents" | \`query\` | "Query: Active incidents" |
+| "How many changes this week?" | \`query\` | "Query: Weekly change count" |
+| "What's the status of server X?" | \`query\` | "Query: Server X status" |
+| "Create a widget for..." | \`task\` | "Create dashboard widget" |
+| "Build me a portal" | \`feature\` | "Build HR self-service portal" |
+| "Fix this bug" | \`bug\` | "Fix login timeout error" |
+| "Help me understand..." | \`request\` | "Explain CMDB relationships" |
 
-### ⚠️ IMPORTANT RULES
+---
 
-1. **ALWAYS generate a UUID** at the start and use it throughout
-2. **ALWAYS report start** before doing any work
-3. **ALWAYS report completion** when done (success or failure)
-4. **Include meaningful summaries** - stakeholders read these!
-5. **Include metadata** when available (update sets, artifacts, test results)
-6. **Use correct source** - 'jira', 'azure-devops', 'manual' (user typed request), or 'request'
+## ⚠️ CRITICAL RULES
 
-### 💡 SOURCE TYPES
+1. **ALWAYS call activity_start FIRST** - Before ANY tool call!
+2. **ALWAYS call activity_complete** - Even for simple queries!
+3. **Use storyType: 'query'** - For all data retrieval and questions!
+4. **Include meaningful summaries** - Stakeholders read these!
+5. **Track artifacts** - Use activity_add_artifact for anything you create
+
+### 🚫 FAILURE TO TRACK = INVISIBLE WORK!
+
+If you don't track activities:
+- ❌ Stakeholders can't see what you're doing
+- ❌ Usage analytics are incomplete
+- ❌ Value delivered is not measurable
+- ❌ Enterprise dashboard shows nothing
+
+---
+
+## 💡 SOURCE TYPES
 
 | Source | When to Use |
 |--------|-------------|
 | \`jira\` | Story from Jira integration |
 | \`azure-devops\` | Work item from Azure DevOps |
+| \`github\` | Issue from GitHub |
+| \`gitlab\` | Issue from GitLab |
 | \`confluence\` | Documentation task from Confluence |
-| \`manual\` | User typed a specific request in chat |
-| \`request\` | User asked for help/feature without formal story |
+| \`request\` | User typed a request in chat (DEFAULT) |
 
 ---
 
-**Remember: This tracking makes your work VISIBLE to the entire organization. Non-technical stakeholders can see what's being accomplished without needing to understand the code!**
+**REMEMBER: Track EVERYTHING. Queries, questions, development, bugs - ALL OF IT. This is how your work becomes visible to the organization!**
 
 `;
 }
