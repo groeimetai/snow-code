@@ -399,7 +399,7 @@ func renderText(
 		info = author + timestamp
 	}
 	// Hidden tools that should not appear in the UI
-	hiddenTools := []string{"todoread", "tool_search", "deferred_tool_executor"}
+	hiddenTools := []string{"todoread", "tool_search"}
 	if !showToolDetails && toolCalls != nil && len(toolCalls) > 0 {
 		for i, toolCall := range toolCalls {
 			// Skip hidden tools
@@ -484,7 +484,7 @@ func renderToolDetails(
 	measure := util.Measure("chat.renderToolDetails")
 	defer measure("tool", toolCall.Tool)
 	// Tools that should be hidden from the UI (internal tools that still execute)
-	ignoredTools := []string{"todoread", "tool_search", "deferred_tool_executor"}
+	ignoredTools := []string{"todoread", "tool_search"}
 	if slices.Contains(ignoredTools, toolCall.Tool) {
 		return ""
 	}
