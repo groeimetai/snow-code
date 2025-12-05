@@ -197,7 +197,7 @@ function formatData(data: any, depth: number = 0, maxDepth: number = 2): string[
 }
 
 /**
- * Format object fields - shows ALL fields, sorted by value type
+ * Format object fields - shows ALL fields, sorted by importance and type
  */
 function formatObject(obj: any, depth: number = 0, maxDepth: number = 2, maxFields: number = 12): string[] {
   const indent = "  ".repeat(depth)
@@ -210,8 +210,28 @@ function formatObject(obj: any, depth: number = 0, maxDepth: number = 2, maxFiel
 
   if (entries.length === 0) return [`${indent}(empty)`]
 
-  // Sort: primitives first (more likely to be useful), then arrays, then objects
-  entries.sort(([, a], [, b]) => {
+  // Priority fields that should always appear first (most important for users)
+  const priorityFields = [
+    "key", "number", "sys_id",  // Identifiers
+    "summary", "short_description", "title", "name",  // Titles
+    "status", "state", "priority", "severity",  // Status fields
+    "assignee", "assigned_to", "reporter", "created_by",  // People
+    "project", "projectKey", "category",  // Organization
+    "created", "updated", "sys_created_on", "sys_updated_on"  // Dates
+  ]
+
+  // Sort: priority fields first, then primitives, then arrays, then objects
+  entries.sort(([keyA, a], [keyB, b]) => {
+    const aIndex = priorityFields.indexOf(keyA)
+    const bIndex = priorityFields.indexOf(keyB)
+
+    // If both are priority fields, sort by priority order
+    if (aIndex >= 0 && bIndex >= 0) return aIndex - bIndex
+    // Priority fields come first
+    if (aIndex >= 0) return -1
+    if (bIndex >= 0) return 1
+
+    // Then sort by type: primitives first, then arrays, then objects
     const aScore = typeof a === "object" ? (Array.isArray(a) ? 2 : 3) : 1
     const bScore = typeof b === "object" ? (Array.isArray(b) ? 2 : 3) : 1
     return aScore - bScore
@@ -254,6 +274,10 @@ function formatObject(obj: any, depth: number = 0, maxDepth: number = 2, maxFiel
 
 /**
  * Find the best identifier/title for an object - checks ALL string fields
+ * Priority order for identifiers:
+ * 1. 'key' field (e.g., Jira issue key like "SNOW-307")
+ * 2. 'number' field (e.g., ServiceNow number like "INC0001234")
+ * 3. 'id' field (last resort - often internal IDs)
  */
 function findIdentifier(obj: any): string {
   if (!obj || typeof obj !== "object") return "Item"
@@ -261,21 +285,23 @@ function findIdentifier(obj: any): string {
   // Check direct fields and nested 'fields' (common in Jira)
   const sources = [obj, obj.fields].filter(Boolean)
 
-  // First pass: look for short strings that look like identifiers
-  for (const source of sources) {
-    for (const [key, value] of Object.entries(source)) {
+  // Priority list for identifier fields - 'key' MUST come before 'id'!
+  // Jira uses 'key' (SNOW-307), ServiceNow uses 'number' (INC0001234)
+  // 'id' is usually an internal numeric ID and less useful for users
+  const identifierPriority = ["key", "number", "sys_id", "id"]
+
+  // First pass: look for fields by priority
+  for (const fieldName of identifierPriority) {
+    for (const source of sources) {
+      const value = source[fieldName]
       if (typeof value === "string" && value.length > 0 && value.length < 100) {
-        // Prioritize fields that look like identifiers by name pattern
-        const keyLower = key.toLowerCase()
-        if (keyLower === "key" || keyLower === "id" || keyLower === "number") {
-          // Check if there's also a title/summary to combine
-          const title =
-            source.summary || source.title || source.name || source.short_description || obj.fields?.summary
-          if (title && typeof title === "string" && title !== value) {
-            return `${value}: ${truncateString(title, 60)}`
-          }
-          return value
+        // Check if there's also a title/summary to combine
+        const title =
+          source.summary || source.title || source.name || source.short_description || obj.fields?.summary
+        if (title && typeof title === "string" && title !== value) {
+          return `${value}: ${truncateString(title, 60)}`
         }
+        return value
       }
     }
   }
