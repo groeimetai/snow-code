@@ -17,6 +17,23 @@ import { EOL } from "os"
 import { Permission } from "@/permission"
 import { select } from "@clack/prompts"
 
+/**
+ * Tools that should be hidden from visual display in the TUI
+ * These are internal/meta tools that work in the background
+ * Set SNOWCODE_DEBUG_TOOLS=true to show them
+ */
+const HIDDEN_TOOLS = ["tool_search"]
+
+/**
+ * Check if a tool should be hidden from visual display
+ * Hidden tools still execute, they're just not shown to the user
+ */
+function shouldHideToolDisplay(toolName: string): boolean {
+  // Show all tools in debug mode
+  if (Flag.SNOWCODE_DEBUG_TOOLS) return false
+  return HIDDEN_TOOLS.includes(toolName)
+}
+
 const TOOL: Record<string, [string, string]> = {
   todowrite: ["Todo", UI.Style.TEXT_WARNING_BOLD],
   todoread: ["Todo", UI.Style.TEXT_WARNING_BOLD],
@@ -252,6 +269,9 @@ export const RunCommand = cmd({
 
         // Handle tool running state - show streaming output like Claude Code
         if (part.type === "tool" && part.state.status === "running") {
+          // Skip hidden tools (like tool_search) - they still execute, just not displayed
+          if (shouldHideToolDisplay(part.tool)) return
+
           const [tool, color] = TOOL[part.tool] ?? [part.tool, UI.Style.TEXT_INFO_BOLD]
 
           // Only print the event header once when the tool starts
@@ -295,6 +315,9 @@ export const RunCommand = cmd({
         }
 
         if (part.type === "tool" && part.state.status === "completed") {
+          // Skip hidden tools (like tool_search) - they still execute, just not displayed
+          if (shouldHideToolDisplay(part.tool)) return
+
           if (outputJsonEvent("tool_use", { part })) return
 
           const [tool, color] = TOOL[part.tool] ?? [part.tool, UI.Style.TEXT_INFO_BOLD]

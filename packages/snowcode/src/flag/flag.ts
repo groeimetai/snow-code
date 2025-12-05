@@ -19,6 +19,7 @@ export namespace Flag {
 
   // Debug features
   export const SNOWCODE_DEBUG_TOKENS = truthy("SNOWCODE_DEBUG_TOKENS") || truthy("OPENCODE_DEBUG_TOKENS")
+  export const SNOWCODE_DEBUG_TOOLS = truthy("SNOWCODE_DEBUG_TOOLS") || truthy("OPENCODE_DEBUG_TOOLS")
 
   // Legacy aliases for backwards compatibility (deprecated - map to SNOWCODE_)
   export const OPENCODE_AUTO_SHARE = SNOWCODE_AUTO_SHARE
