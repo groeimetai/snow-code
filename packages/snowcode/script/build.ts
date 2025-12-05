@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import path from "path"
 import { fileURLToPath } from "url"
+import fs from "fs"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -9,7 +10,11 @@ const dir = path.resolve(__dirname, "..")
 process.chdir(dir)
 import { $ } from "bun"
 
-import pkg from "../package.json"
+// Read package.json dynamically to avoid cached imports
+const pkgPath = path.join(dir, "package.json")
+const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
+console.log(`Building with version: ${pkg.version}`)
+
 import { Script } from "@groeimetai/snow-code-script"
 
 const GOARCH: Record<string, string> = {
