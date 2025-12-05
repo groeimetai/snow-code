@@ -575,91 +575,62 @@ export function generateEnterpriseInstructions(enabledServices: string[]): strin
 }
 
 /**
- * Generate CRITICAL instructions about calling enterprise tools DIRECTLY
- * This prevents the agent from incorrectly using deferred_tool_executor for enterprise tools
+ * Generate instructions about discovering and calling tools via tool_search
+ * All specialized tools (ServiceNow, Jira, Azure DevOps, etc.) must be discovered first
  */
 function generateDirectToolCallInstructions(): string {
-  return `## 🚨 CRITICAL: ENTERPRISE TOOLS - DIRECT CALL ONLY!
+  return `## 🚨 HOW TO USE TOOLS
 
-### ⚠️ DO NOT USE deferred_tool_executor FOR ENTERPRISE TOOLS!
+### ✅ Tool Discovery with tool_search
 
-**All enterprise tools (snow-flow-enterprise_*) are ALWAYS available and MUST be called DIRECTLY.**
+**To save tokens, specialized tools are not loaded by default.**
+Use \`tool_search\` to discover and enable tools, then call them directly.
 
-The \`deferred_tool_executor\` tool is ONLY for ServiceNow tools discovered via \`tool_search\`. Enterprise tools are NOT deferred - they are immediately available and should be called by their actual tool name.
+**After tool_search returns, discovered tools become IMMEDIATELY AVAILABLE for direct calls.**
 
 ---
 
-### ✅ CORRECT: Call Enterprise Tools DIRECTLY
+### 📋 Workflow: Discover → Call Directly
 
 \`\`\`javascript
-// ✅ CORRECT - Call the tool directly by name
+// Step 1: Search for the tools you need
+await tool_search({ query: "jira" });
+// Output: Found snow-flow-enterprise_jira_get_issue, snow-flow-enterprise_jira_search_issues, etc.
+
+// Step 2: Call the discovered tool DIRECTLY by its exact name
 const issue = await snow-flow-enterprise_jira_get_issue({
   issueKey: "PROJ-123"
 });
-
-const workItem = await snow-flow-enterprise_azure_devops_get_work_item({
-  workItemId: 456,
-  project: "MyProject"
-});
-
-const page = await snow-flow-enterprise_confluence_get_page({
-  pageId: "12345"
-});
-
-const ghIssue = await snow-flow-enterprise_github_get_issue({
-  owner: "org",
-  repo: "repo",
-  issueNumber: 789
-});
-
-const glIssue = await snow-flow-enterprise_gitlab_get_issue({
-  projectId: "group/project",
-  issueIid: 101
-});
-\`\`\`
-
-### ❌ WRONG: Do NOT use deferred_tool_executor for enterprise tools
-
-\`\`\`javascript
-// ❌ WRONG - This will cause issues!
-await deferred_tool_executor({
-  tool_name: "snow-flow-enterprise_jira_get_issue",
-  arguments: { issueKey: "PROJ-123" }
-});
-// This returns compressed/summarized output instead of full JSON!
-
-// ❌ WRONG - Also incorrect
-await tool_search({ query: "jira" });  // Enterprise tools don't need discovery!
 \`\`\`
 
 ---
 
-### 📋 Quick Reference: When to Use What
+### 🔍 Example Searches
 
-| Tool Type | How to Call | Example |
-|-----------|-------------|---------|
-| **Enterprise tools** (Jira, Azure DevOps, Confluence, GitHub, GitLab) | **DIRECT CALL** by tool name | \`snow-flow-enterprise_jira_get_issue({...})\` |
-| **ServiceNow deferred tools** | First \`tool_search\`, then \`deferred_tool_executor\` | \`deferred_tool_executor({tool_name: "snow_create_widget", ...})\` |
-| **Core ServiceNow tools** | **DIRECT CALL** by tool name | \`snow_query_table({...})\` |
+| Need | Search Query | Example Tool Found |
+|------|--------------|-------------------|
+| Jira issues | \`tool_search({query: "jira"})\` | \`snow-flow-enterprise_jira_search_issues\` |
+| Azure DevOps | \`tool_search({query: "azure devops"})\` | \`snow-flow-enterprise_azure_devops_get_work_item\` |
+| Confluence | \`tool_search({query: "confluence"})\` | \`snow-flow-enterprise_confluence_get_page\` |
+| ServiceNow incidents | \`tool_search({query: "incident"})\` | \`servicenow-unified_snow_query_incidents\` |
+| ServiceNow widgets | \`tool_search({query: "widget"})\` | \`servicenow-unified_snow_create_widget\` |
 
-### 🔑 Why Direct Calls Matter
+---
 
-1. **Full JSON Response**: Direct calls return the complete API response with all fields
-2. **No Compression**: \`deferred_tool_executor\` may summarize/compress output - you lose data!
-3. **Always Available**: Enterprise tools don't need \`tool_search\` discovery - they're always enabled
-4. **Better Performance**: Direct calls are faster with no proxy overhead
+### 📋 Tool Categories
 
-### 📜 Enterprise Tool Prefixes
+| Category | Prefix | How to Find |
+|----------|--------|-------------|
+| **Core tools** | \`bash\`, \`read\`, \`edit\`, etc. | Always available |
+| **Enterprise tools** | \`snow-flow-enterprise_*\` | \`tool_search({query: "jira/azure/confluence"})\` |
+| **ServiceNow tools** | \`servicenow-unified_*\` | \`tool_search({query: "incident/widget/cmdb"})\` |
 
-All enterprise tools start with \`snow-flow-enterprise_\` followed by the service:
-- \`snow-flow-enterprise_jira_*\` - Jira tools
-- \`snow-flow-enterprise_azure_devops_*\` - Azure DevOps tools
-- \`snow-flow-enterprise_confluence_*\` - Confluence tools
-- \`snow-flow-enterprise_github_*\` - GitHub tools
-- \`snow-flow-enterprise_gitlab_*\` - GitLab tools
-- \`snow-flow-enterprise_activity_*\` - Activity tracking tools
+### 🔑 Benefits
 
-**REMEMBER: When you see \`snow-flow-enterprise_*\` in a tool name, ALWAYS call it directly!**
+1. **Token Efficient**: Only load tools when needed (saves ~85% tokens)
+2. **Full JSON Response**: Direct calls return complete API responses
+3. **No Data Loss**: No formatting or compression applied
+4. **Fast Discovery**: tool_search finds tools instantly
 
 ---
 

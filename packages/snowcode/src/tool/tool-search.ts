@@ -291,21 +291,20 @@ This tool searches through ALL available tools including:
 - Flow Designer and automation
 - Security and compliance tools
 - Machine learning and analytics
+- Jira, Azure DevOps, Confluence (enterprise)
 - And many more specialized tools
 
 Use this when you need to:
-- Find tools for a specific ServiceNow task
+- Find tools for a specific task
 - Discover what operations are available
 - Look up tool names by functionality
 
-After finding tools, use the deferred_tool_executor to execute them.
-
-IMPORTANT: Do NOT try to call the found tools directly - they are not in your available tools list.
-Instead, use deferred_tool_executor with the tool name and arguments.
+IMPORTANT: After this tool returns, the found tools become IMMEDIATELY AVAILABLE.
+You can call them directly by their exact tool name in your next action.
 
 Example workflow:
-1. tool_search({query: "incident"}) → finds "servicenow-unified_snow_query_incidents"
-2. deferred_tool_executor({tool_name: "servicenow-unified_snow_query_incidents", arguments: {limit: 10}})`,
+1. tool_search({query: "jira"}) → finds "snow-flow-enterprise_jira_search_issues"
+2. snow-flow-enterprise_jira_search_issues({jql: "project = SNOW"}) → call it directly!`,
   parameters: z.object({
     query: z
       .string()
@@ -337,7 +336,7 @@ Example workflow:
     }
 
     // Get MCP tools to extract parameter schemas
-    const mcpTools = await MCP.tools().catch(() => ({}))
+    const mcpTools = await MCP.tools().catch(() => ({} as Record<string, any>))
 
     // Format results with parameters
     const formatted = results
@@ -350,10 +349,10 @@ Example workflow:
       .join("\n\n")
 
     const enabledMsg = args.enable
-      ? `\n\n${results.length} tool(s) have been enabled for this session.
+      ? `\n\n✓ ${results.length} tool(s) are now AVAILABLE for direct use.
 
-To use these tools, call deferred_tool_executor with the tool name and arguments.
-Example: deferred_tool_executor({tool_name: "${results[0]?.id || "tool_name"}", arguments: {...}})`
+Call them directly by name. Example:
+${results[0]?.id || "tool_name"}({...arguments})`
       : ""
 
     return {

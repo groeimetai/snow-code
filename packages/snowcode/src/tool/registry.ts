@@ -11,7 +11,7 @@ import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { ToolSearchTool, ToolSearch, type ToolIndexEntry } from "./tool-search"
-import { DeferredToolExecutor } from "./deferred-executor"
+// DeferredToolExecutor is no longer needed - tools are now dynamically loaded after tool_search
 import type { Agent } from "../agent/agent"
 import { Tool } from "./tool"
 import { Instance } from "../project/instance"
@@ -79,6 +79,8 @@ export namespace ToolRegistry {
   }
 
   // Core tools that are ALWAYS loaded (never deferred)
+  // Tool discovery works via tool_search, which enables tools that become
+  // available in the next loop iteration (dynamic tool loading)
   const CORE_TOOLS: Tool.Info[] = [
     InvalidTool,
     BashTool,
@@ -93,8 +95,7 @@ export namespace ToolRegistry {
     TodoWriteTool,
     TodoReadTool,
     TaskTool,
-    ToolSearchTool, // Meta-tool for discovering deferred tools
-    DeferredToolExecutor, // Proxy tool for executing enabled deferred tools
+    ToolSearchTool, // Meta-tool for discovering and enabling tools dynamically
   ]
 
   async function all(): Promise<Tool.Info[]> {

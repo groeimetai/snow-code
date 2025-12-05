@@ -180,36 +180,8 @@ export namespace SessionPrompt {
       abort: abort.signal,
     })
 
-    const tools = await resolveTools({
-      agent,
-      sessionID: input.sessionID,
-      modelID: model.modelID,
-      providerID: model.providerID,
-      tools: input.tools,
-      processor,
-    })
-
-    // const permUnsub = (() => {
-    //   const handled = new Set<string>()
-    //   const options = [
-    //     { optionId: "allow_once", kind: "allow_once", name: "Allow once" },
-    //     { optionId: "allow_always", kind: "allow_always", name: "Always allow" },
-    //     { optionId: "reject_once", kind: "reject_once", name: "Reject" },
-    //   ]
-    //   return Bus.subscribe(Permission.Event.Updated, async (event) => {
-    //     const info = event.properties
-    //     if (info.sessionID !== input.sessionID) return
-    //     if (handled.has(info.id)) return
-    //     handled.add(info.id)
-    //     const toolCallId = info.callID ?? info.id
-    //     const metadata = info.metadata ?? {}
-    //     // TODO: emit permission event to bus for ACP to handle
-    //     Permission.respond({ sessionID: info.sessionID, permissionID: info.id, response: "reject" })
-    //   })
-    // })()
-    // await using _permSub = defer(() => {
-    //   permUnsub?.()
-    // })
+    // Tools are now resolved inside the loop to support dynamic tool loading
+    // via tool_search - when tools are enabled, they become available in the next iteration
 
     const params = await Plugin.trigger(
       "chat.params",
@@ -234,6 +206,17 @@ export namespace SessionPrompt {
     let step = 0
     let compactionAttempted = false
     while (true) {
+      // Re-resolve tools at each iteration to pick up newly enabled tools from tool_search
+      // This enables dynamic tool loading: tool_search enables tools, next iteration loads them
+      const tools = await resolveTools({
+        agent,
+        sessionID: input.sessionID,
+        modelID: model.modelID,
+        providerID: model.providerID,
+        tools: input.tools,
+        processor,
+      })
+
       const msgs: MessageV2.WithParts[] = pipe(
         await getMessages({
           sessionID: input.sessionID,
