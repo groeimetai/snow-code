@@ -209,7 +209,7 @@
     },
     "packages/snowcode": {
       "name": "@groeimetai/snow-code",
-      "version": "1.0.137",
+      "version": "1.0.138",
       "bin": {
         "snow-code": "./bin/snow-code",
         "snowcode": "./bin/snowcode",
