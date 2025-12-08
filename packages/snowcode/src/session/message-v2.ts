@@ -612,6 +612,26 @@ export namespace MessageV2 {
                     callProviderMetadata: part.metadata,
                   },
                 ]
+              // Handle pending and running states to prevent crashes during auto-compaction
+              if (part.state.status === "pending")
+                return [
+                  {
+                    type: ("tool-" + part.tool) as `tool-${string}`,
+                    state: "input-streaming",
+                    toolCallId: part.callID,
+                    input: undefined,
+                  },
+                ]
+              if (part.state.status === "running")
+                return [
+                  {
+                    type: ("tool-" + part.tool) as `tool-${string}`,
+                    state: "input-available",
+                    toolCallId: part.callID,
+                    input: part.state.input ?? {},
+                    callProviderMetadata: part.metadata,
+                  },
+                ]
             }
             if (part.type === "reasoning") {
               return [
