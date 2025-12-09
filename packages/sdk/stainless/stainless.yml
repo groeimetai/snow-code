@@ -35,6 +35,7 @@ resources:
       unknownError: UnknownError
       providerAuthError: ProviderAuthError
       messageAbortedError: MessageAbortedError
+      apiError: APIError
 
   event:
     methods:

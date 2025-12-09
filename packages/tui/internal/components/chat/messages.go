@@ -699,6 +699,17 @@ func (m *messagesComponent) renderView() tea.Cmd {
 					error = "Request was aborted"
 				case opencode.UnknownError:
 					error = err.Data.Message
+				case opencode.APIError:
+					// Handle API errors with user-friendly messages
+					msg := err.Data.Message
+					// Check for token limit errors and provide helpful guidance
+					if strings.Contains(msg, "prompt is too long") || strings.Contains(msg, "too many tokens") || strings.Contains(msg, "context length") || strings.Contains(msg, "maximum") {
+						error = "⚠️ Context limit exceeded: " + msg + "\n\nTry: Use smaller file chunks, summarize content, or start a new session."
+					} else if err.Data.IsRetryable {
+						error = "API Error (retryable): " + msg
+					} else {
+						error = "API Error: " + msg
+					}
 				}
 
 				if !hasContent && error == "" && !reverted && casted.Time.Completed == 0 {

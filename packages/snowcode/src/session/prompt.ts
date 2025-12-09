@@ -1382,7 +1382,62 @@ export namespace SessionPrompt {
             error: e,
           })
           const error = MessageV2.fromError(e, { providerID: input.providerID })
-          if (retries.count < retries.max && MessageV2.APIError.isInstance(error) && error.data.isRetryable) {
+
+          // Check if this is a token overflow error that can be recovered via compaction
+          const isTokenOverflow = MessageV2.APIError.isInstance(error) &&
+            (error.data.message.includes("prompt is too long") ||
+             error.data.message.includes("too many tokens") ||
+             error.data.message.includes("context length") ||
+             error.data.message.includes("maximum context") ||
+             error.data.message.includes("exceeds the model"))
+
+          if (isTokenOverflow && retries.count < 2) {
+            // Try to recover by running compaction
+            log.info("token overflow detected, attempting compaction recovery", {
+              message: error.data.message,
+              attempt: retries.count + 1,
+            })
+            try {
+              await SessionCompaction.run({
+                sessionID: assistantMsg.sessionID,
+                providerID: input.providerID,
+                modelID: input.model.id,
+                signal: input.abort,
+              })
+              shouldRetry = true
+              await Session.updatePart({
+                id: Identifier.ascending("part"),
+                messageID: assistantMsg.id,
+                sessionID: assistantMsg.sessionID,
+                type: "retry",
+                attempt: retries.count + 1,
+                time: {
+                  created: Date.now(),
+                },
+                error: {
+                  ...error,
+                  data: {
+                    ...error.data,
+                    message: error.data.message + " (attempting automatic compaction...)",
+                  },
+                },
+              })
+            } catch (compactionError) {
+              log.error("compaction recovery failed", { error: compactionError })
+              // Add helpful guidance to the error message
+              assistantMsg.error = {
+                ...error,
+                data: {
+                  ...error.data,
+                  message: error.data.message + "\n\n💡 Tip: The context is too large. Try starting a new session, or ask me to summarize previous content.",
+                },
+              }
+              Bus.publish(Session.Event.Error, {
+                sessionID: assistantMsg.sessionID,
+                error: assistantMsg.error,
+              })
+            }
+          } else if (retries.count < retries.max && MessageV2.APIError.isInstance(error) && error.data.isRetryable) {
             shouldRetry = true
             await Session.updatePart({
               id: Identifier.ascending("part"),
@@ -1396,7 +1451,18 @@ export namespace SessionPrompt {
               error,
             })
           } else {
-            assistantMsg.error = error
+            // For token overflow errors that couldn't be recovered, add helpful guidance
+            if (isTokenOverflow) {
+              assistantMsg.error = {
+                ...error,
+                data: {
+                  ...error.data,
+                  message: error.data.message + "\n\n💡 Tip: The context is too large even after compaction. Please start a new session or fork from an earlier point.",
+                },
+              }
+            } else {
+              assistantMsg.error = error
+            }
             Bus.publish(Session.Event.Error, {
               sessionID: assistantMsg.sessionID,
               error: assistantMsg.error,

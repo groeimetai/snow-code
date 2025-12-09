@@ -192,3 +192,71 @@ func (r UnknownErrorName) IsKnown() bool {
 	}
 	return false
 }
+
+type APIError struct {
+	Data APIErrorData `json:"data,required"`
+	Name APIErrorName `json:"name,required"`
+	JSON apiErrorJSON `json:"-"`
+}
+
+// apiErrorJSON contains the JSON metadata for the struct [APIError]
+type apiErrorJSON struct {
+	Data        apijson.Field
+	Name        apijson.Field
+	raw         string
+	ExtraFields map[string]apijson.Field
+}
+
+func (r *APIError) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+
+func (r apiErrorJSON) RawJSON() string {
+	return r.raw
+}
+
+func (r APIError) ImplementsEventListResponseEventSessionErrorPropertiesError() {}
+
+func (r APIError) ImplementsAssistantMessageError() {}
+
+type APIErrorData struct {
+	Message         string            `json:"message,required"`
+	StatusCode      int64             `json:"statusCode"`
+	IsRetryable     bool              `json:"isRetryable,required"`
+	ResponseHeaders map[string]string `json:"responseHeaders"`
+	ResponseBody    string            `json:"responseBody"`
+	JSON            apiErrorDataJSON  `json:"-"`
+}
+
+// apiErrorDataJSON contains the JSON metadata for the struct [APIErrorData]
+type apiErrorDataJSON struct {
+	Message         apijson.Field
+	StatusCode      apijson.Field
+	IsRetryable     apijson.Field
+	ResponseHeaders apijson.Field
+	ResponseBody    apijson.Field
+	raw             string
+	ExtraFields     map[string]apijson.Field
+}
+
+func (r *APIErrorData) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+
+func (r apiErrorDataJSON) RawJSON() string {
+	return r.raw
+}
+
+type APIErrorName string
+
+const (
+	APIErrorNameAPIError APIErrorName = "APIError"
+)
+
+func (r APIErrorName) IsKnown() bool {
+	switch r {
+	case APIErrorNameAPIError:
+		return true
+	}
+	return false
+}
