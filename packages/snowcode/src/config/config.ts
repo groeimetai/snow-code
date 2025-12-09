@@ -189,16 +189,22 @@ export namespace Config {
         ["node_modules", "package.json", "bun.lock", ".gitignore"].join("\n"),
       )
 
-    await BunProc.run(
-      [
-        "add",
-        "@groeimetai/snow-code-plugin@" + (Installation.isLocal() ? "latest" : Installation.VERSION),
-        "--exact",
-      ],
-      {
-        cwd: dir,
-      },
-    )
+    // Try to install plugin, but don't fail if it's not available on npm
+    try {
+      await BunProc.run(
+        [
+          "add",
+          "@groeimetai/snow-code-plugin@" + (Installation.isLocal() ? "latest" : Installation.VERSION),
+          "--exact",
+        ],
+        {
+          cwd: dir,
+        },
+      )
+    } catch {
+      // Plugin not available on npm - this is expected for now
+      // The plugin types are bundled in the main package
+    }
   }
 
   const COMMAND_GLOB = new Bun.Glob("command/**/*.md")
