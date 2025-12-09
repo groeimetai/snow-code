@@ -52,6 +52,7 @@ import { $, fileURLToPath } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
 import { SessionSummary } from "./summary"
 import { TokenDebug } from "../util/token-debug"
+import { LargeOutputHandler } from "../util/large-output-handler"
 
 export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
@@ -1229,13 +1230,37 @@ export namespace SessionPrompt {
               case "tool-result": {
                 const match = toolcalls[value.toolCallId]
                 if (match && match.state.status === "running") {
+                  // Process large outputs - save to file if too big for context
+                  const processedOutput = await LargeOutputHandler.processOutput({
+                    toolName: match.tool,
+                    output: value.output.output,
+                    callId: value.toolCallId,
+                  })
+
+                  if (processedOutput.wasTruncated) {
+                    log.info("large tool output saved to file", {
+                      tool: match.tool,
+                      originalTokens: processedOutput.originalTokens,
+                      filePath: processedOutput.filePath,
+                    })
+                  }
+
                   await Session.updatePart({
                     ...match,
                     state: {
                       status: "completed",
                       input: value.input,
-                      output: value.output.output,
-                      metadata: value.output.metadata,
+                      output: processedOutput.contextOutput,
+                      metadata: {
+                        ...value.output.metadata,
+                        // Store original size info in metadata
+                        ...(processedOutput.wasTruncated && {
+                          largeOutput: {
+                            originalTokens: processedOutput.originalTokens,
+                            filePath: processedOutput.filePath,
+                          },
+                        }),
+                      },
                       title: value.output.title,
                       time: {
                         start: match.state.time.start,
