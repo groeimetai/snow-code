@@ -65,7 +65,11 @@ export namespace BunProc {
       await Bun.write(pkgjson.name!, JSON.stringify(result, null, 2))
       return result
     })
-    if (parsed.dependencies[pkg] === version) return mod
+    if (parsed.dependencies[pkg] === version) {
+      // Even on cache hit, ensure patches are applied (they may have been reverted)
+      await patchSubpathImports(pkg, mod)
+      return mod
+    }
 
     // Build command arguments
     const args = ["add", "--force", "--exact", "--cwd", Global.Path.cache, pkg + "@" + version]
@@ -88,6 +92,67 @@ export namespace BunProc {
     })
     parsed.dependencies[pkg] = version
     await Bun.write(pkgjson.name!, JSON.stringify(parsed, null, 2))
+
+    // Patch plugins that use subpath imports (Bun doesn't support them in dynamic imports)
+    // See: https://github.com/oven-sh/bun/issues/7611
+    await patchSubpathImports(pkg, mod)
+
     return mod
+  }
+
+  /**
+   * Patches plugin files to resolve subpath imports that Bun's dynamic import doesn't support.
+   * Rewrites imports like `@openauthjs/openauth/pkce` to absolute file paths.
+   */
+  async function patchSubpathImports(pkg: string, modPath: string) {
+    // Only patch known plugins that have subpath import issues
+    if (!pkg.startsWith("opencode-") || !pkg.includes("-auth")) return
+
+    const cacheNodeModules = path.join(Global.Path.cache, "node_modules")
+    const indexFile = Bun.file(path.join(modPath, "index.mjs"))
+    if (!(await indexFile.exists())) return
+
+    let content = await indexFile.text()
+    let modified = false
+
+    // Pattern: import { X } from "@openauthjs/openauth/pkce"
+    // or: import { X } from "@openauthjs/openauth/dist/esm/pkce.js"
+    // Replace with absolute file path
+    const subpathPattern = /"@openauthjs\/openauth\/([^"]+)"/g
+    content = content.replace(subpathPattern, (_match, subpath) => {
+      // Skip if already an absolute path
+      if (subpath.startsWith("/")) {
+        return _match
+      }
+
+      modified = true
+      let absolutePath: string
+
+      // Handle different subpath formats
+      if (subpath.startsWith("dist/esm/")) {
+        // Already has dist/esm, just make absolute
+        absolutePath = path.join(cacheNodeModules, "@openauthjs/openauth", subpath)
+        if (!absolutePath.endsWith(".js")) {
+          absolutePath += ".js"
+        }
+      } else if (subpath.startsWith("dist/")) {
+        // Has dist but not esm
+        absolutePath = path.join(cacheNodeModules, "@openauthjs/openauth", subpath)
+        if (!absolutePath.endsWith(".js")) {
+          absolutePath += ".js"
+        }
+      } else {
+        // Short subpath like "pkce" - add dist/esm and .js
+        absolutePath = path.join(cacheNodeModules, "@openauthjs/openauth/dist/esm", `${subpath}.js`)
+      }
+
+      log.info("patching subpath import", { pkg, original: _match, subpath, absolutePath })
+      return `"${absolutePath}"`
+    })
+
+    if (modified) {
+      await Bun.write(indexFile.name!, content)
+      log.info("patched plugin subpath imports", { pkg })
+    }
   }
 }
