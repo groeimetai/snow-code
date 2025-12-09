@@ -69,7 +69,7 @@
     "@modelcontextprotocol/sdk": "1.15.1",
     "@octokit/graphql": "9.0.2",
     "@octokit/rest": "22.0.0",
-    "@openauthjs/openauth": "0.0.0-20250322224806",
+    "@openauthjs/openauth": "^0.4.3",
     "@parcel/watcher": "2.5.1",
     "@pierre/precision-diffs": "0.0.2-alpha.1-1",
     "@standard-community/standard-json": "0.3.1",
