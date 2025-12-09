@@ -1301,6 +1301,80 @@ export namespace Server {
           return c.json(await MCP.status())
         },
       )
+      .get(
+        "/mcp/state",
+        describeRoute({
+          description: "Get detailed MCP connection states",
+          operationId: "mcp.connectionStates",
+          responses: {
+            200: {
+              description: "Detailed connection states for all MCP servers",
+              content: {
+                "application/json": {
+                  schema: resolver(z.any()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          return c.json(await MCP.connectionStates())
+        },
+      )
+      .post(
+        "/mcp/:name/reconnect",
+        describeRoute({
+          description: "Reconnect a specific MCP server",
+          operationId: "mcp.reconnect",
+          responses: {
+            200: {
+              description: "Reconnection result",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.object({
+                      success: z.boolean(),
+                      name: z.string(),
+                    }),
+                  ),
+                },
+              },
+            },
+            ...errors(400),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            name: z.string().meta({ description: "MCP server name" }),
+          }),
+        ),
+        async (c) => {
+          const name = c.req.valid("param").name
+          const success = await MCP.reconnect(name)
+          return c.json({ success, name })
+        },
+      )
+      .post(
+        "/mcp/reconnect-all",
+        describeRoute({
+          description: "Reconnect all disconnected MCP servers",
+          operationId: "mcp.reconnectAll",
+          responses: {
+            200: {
+              description: "Reconnection results for all servers",
+              content: {
+                "application/json": {
+                  schema: resolver(z.record(z.string(), z.boolean())),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          return c.json(await MCP.reconnectAll())
+        },
+      )
       .post(
         "/tui/append-prompt",
         describeRoute({

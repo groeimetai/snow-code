@@ -330,6 +330,52 @@ export namespace Config {
     return plugins
   }
 
+  export const McpRetryOptions = z
+    .object({
+      maxRetries: z
+        .number()
+        .int()
+        .min(0)
+        .max(10)
+        .optional()
+        .describe("Maximum number of retry attempts on connection failure. Default: 3"),
+      initialDelay: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Initial delay in milliseconds before first retry. Default: 1000"),
+      maxDelay: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Maximum delay in milliseconds between retries. Default: 30000"),
+      backoffFactor: z
+        .number()
+        .positive()
+        .optional()
+        .describe("Multiplier for exponential backoff. Default: 2"),
+      healthCheckInterval: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          "Interval in ms for health checks to detect disconnection. Set to 0 to disable. Default: 30000",
+        ),
+      autoReconnect: z
+        .boolean()
+        .optional()
+        .describe("Automatically reconnect on connection loss. Default: true"),
+    })
+    .strict()
+    .meta({
+      ref: "McpRetryOptions",
+    })
+
+  export type McpRetryOptions = z.infer<typeof McpRetryOptions>
+
   export const McpLocal = z
     .object({
       type: z.literal("local").describe("Type of MCP server connection"),
@@ -347,6 +393,7 @@ export namespace Config {
         .describe(
           "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
         ),
+      retry: McpRetryOptions.optional().describe("Retry and reconnection options for this server"),
     })
     .strict()
     .meta({
@@ -370,6 +417,7 @@ export namespace Config {
         .describe(
           "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
         ),
+      retry: McpRetryOptions.optional().describe("Retry and reconnection options for this server"),
     })
     .strict()
     .meta({
