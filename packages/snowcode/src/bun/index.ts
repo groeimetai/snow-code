@@ -154,5 +154,62 @@ export namespace BunProc {
       await Bun.write(indexFile.name!, content)
       log.info("patched plugin subpath imports", { pkg })
     }
+
+    // Also patch transitive dependencies in @openauthjs/openauth
+    // The pkce.js file imports 'jose' which Bun can't resolve from the cache directory
+    await patchOpenAuthDependencies(cacheNodeModules)
+  }
+
+  /**
+   * Patches @openauthjs/openauth files to resolve their bare module imports
+   * to absolute paths within the cache directory.
+   */
+  async function patchOpenAuthDependencies(cacheNodeModules: string) {
+    const openAuthEsm = path.join(cacheNodeModules, "@openauthjs/openauth/dist/esm")
+
+    // List of files that need patching and their imports
+    const filesToPatch = [
+      { file: "pkce.js", imports: ["jose"] },
+      { file: "index.js", imports: ["jose", "hono", "arctic"] },
+    ]
+
+    for (const { file, imports } of filesToPatch) {
+      const filePath = path.join(openAuthEsm, file)
+      const bunFile = Bun.file(filePath)
+
+      if (!(await bunFile.exists())) continue
+
+      let content = await bunFile.text()
+      let modified = false
+
+      for (const importName of imports) {
+        // Find the actual entry point for this package
+        const pkgPath = path.join(cacheNodeModules, importName)
+        const pkgJsonPath = path.join(pkgPath, "package.json")
+        const pkgJson = Bun.file(pkgJsonPath)
+
+        if (!(await pkgJson.exists())) continue
+
+        const pkg = await pkgJson.json()
+        const entryPoint = pkg.exports?.["."]?.import || pkg.module || pkg.main || "index.js"
+        const absolutePath = path.join(pkgPath, entryPoint)
+
+        // Replace bare import with absolute path
+        // Handles: import { x } from "jose" and import x from "jose"
+        const importPattern = new RegExp(`from\\s+["']${importName}["']`, "g")
+        const newContent = content.replace(importPattern, `from "${absolutePath}"`)
+
+        if (newContent !== content) {
+          content = newContent
+          modified = true
+          log.info("patching transitive dependency", { file, importName, absolutePath })
+        }
+      }
+
+      if (modified) {
+        await Bun.write(filePath, content)
+        log.info("patched openauth file", { file })
+      }
+    }
   }
 }
