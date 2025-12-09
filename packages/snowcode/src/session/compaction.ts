@@ -39,6 +39,88 @@ export namespace SessionCompaction {
     return count > usable
   }
 
+  /**
+   * Estimate total tokens from current conversation messages.
+   * This is used for pre-emptive overflow detection before sending to API.
+   * More accurate than relying on last response's token count since it includes
+   * new tool outputs that haven't been counted yet.
+   */
+  export function estimateConversationTokens(input: {
+    systemPrompts: string[]
+    messages: MessageV2.WithParts[]
+  }): number {
+    let total = 0
+
+    // Estimate system prompts
+    for (const prompt of input.systemPrompts) {
+      total += Token.estimate(prompt)
+    }
+
+    // Estimate messages
+    for (const msg of input.messages) {
+      // Estimate message parts
+      for (const part of msg.parts) {
+        switch (part.type) {
+          case "text":
+            total += Token.estimate(part.text || "")
+            break
+          case "file":
+            // FilePart has url and optional source with text
+            if (part.source?.text?.value) {
+              total += Token.estimate(part.source.text.value)
+            }
+            break
+          case "tool":
+            // Tool state varies - input is only in running/completed/error states
+            if (part.state.status === "running" || part.state.status === "completed" || part.state.status === "error") {
+              total += Token.estimate(JSON.stringify(part.state.input || {}))
+            }
+            // Tool output (this is what was missing!)
+            if (part.state.status === "completed") {
+              total += Token.estimate(part.state.output)
+            }
+            break
+          case "reasoning":
+            total += Token.estimate(part.text || "")
+            break
+        }
+      }
+    }
+
+    return total
+  }
+
+  /**
+   * Check if estimated conversation tokens would overflow context limit.
+   * Use this BEFORE sending to API to catch overflow from new tool outputs.
+   */
+  export function isEstimatedOverflow(input: {
+    systemPrompts: string[]
+    messages: MessageV2.WithParts[]
+    model: ModelsDev.Model
+  }): { overflow: boolean; estimated: number; limit: number } {
+    if (Flag.SNOWCODE_DISABLE_AUTOCOMPACT) return { overflow: false, estimated: 0, limit: 0 }
+
+    const context = input.model.limit.context
+    if (context === 0) return { overflow: false, estimated: 0, limit: 0 }
+
+    const output = Math.min(input.model.limit.output, SessionPrompt.OUTPUT_TOKEN_MAX) || SessionPrompt.OUTPUT_TOKEN_MAX
+    const usable = context - output
+    const estimated = estimateConversationTokens({
+      systemPrompts: input.systemPrompts,
+      messages: input.messages,
+    })
+
+    // Add 10% buffer for safety (estimation isn't perfect)
+    const withBuffer = Math.floor(estimated * 1.1)
+
+    return {
+      overflow: withBuffer > usable,
+      estimated: withBuffer,
+      limit: usable,
+    }
+  }
+
   export const PRUNE_MINIMUM = 20_000
   export const PRUNE_PROTECT = 40_000
   const MAX_RETRIES = 10

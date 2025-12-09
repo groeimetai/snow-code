@@ -229,21 +229,20 @@ export namespace SessionPrompt {
 
       // Check if we would exceed the context limit before sending to API
       // This prevents "prompt too long" errors by auto-compacting proactively
+      // Uses token estimation on CURRENT messages (including new tool outputs)
+      // instead of relying on last response's token count
       if (!compactionAttempted) {
-        const lastAssistant = msgs.findLast((msg) => msg.info.role === "assistant")
-        if (
-          lastAssistant?.info.role === "assistant" &&
-          SessionCompaction.isOverflow({
-            tokens: lastAssistant.info.tokens,
-            model: model.info,
-          })
-        ) {
-          const count = lastAssistant.info.tokens.input + lastAssistant.info.tokens.cache.read + lastAssistant.info.tokens.output
-          const usable = model.info.limit.context - (Math.min(model.info.limit.output, SessionPrompt.OUTPUT_TOKEN_MAX) || SessionPrompt.OUTPUT_TOKEN_MAX)
-          log.info("context limit exceeded, auto-compacting before API call", {
-            tokens: count,
-            limit: usable,
-            percentage: Math.round((count / usable) * 100) + "%",
+        const overflowCheck = SessionCompaction.isEstimatedOverflow({
+          systemPrompts: system,
+          messages: msgs,
+          model: model.info,
+        })
+
+        if (overflowCheck.overflow) {
+          log.info("context limit exceeded (estimated), auto-compacting before API call", {
+            estimatedTokens: overflowCheck.estimated,
+            limit: overflowCheck.limit,
+            percentage: Math.round((overflowCheck.estimated / overflowCheck.limit) * 100) + "%",
           })
 
           // Run compaction synchronously and retry
@@ -481,14 +480,16 @@ export namespace SessionPrompt {
     signal: AbortSignal
   }) {
     let msgs = await Session.messages(input.sessionID).then(MessageV2.filterCompacted)
-    const lastAssistant = msgs.findLast((msg) => msg.info.role === "assistant")
-    if (
-      lastAssistant?.info.role === "assistant" &&
-      SessionCompaction.isOverflow({
-        tokens: lastAssistant.info.tokens,
-        model: input.model,
-      })
-    ) {
+
+    // Check for overflow using token estimation on ALL messages
+    // This catches overflow from tool outputs that haven't been counted yet
+    const overflowCheck = SessionCompaction.isEstimatedOverflow({
+      systemPrompts: [], // System prompts checked separately, buffer handles this
+      messages: msgs as MessageV2.WithParts[],
+      model: input.model,
+    })
+
+    if (overflowCheck.overflow) {
       const summaryMsg = await SessionCompaction.run({
         sessionID: input.sessionID,
         providerID: input.providerID,
