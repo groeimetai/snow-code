@@ -65,7 +65,11 @@ export namespace BunProc {
       await Bun.write(pkgjson.name!, JSON.stringify(result, null, 2))
       return result
     })
-    if (parsed.dependencies[pkg] === version) return mod
+    if (parsed.dependencies[pkg] === version) {
+      // Even on cache hit, ensure patches are applied (they may have been reverted)
+      await patchSubpathImports(pkg, mod)
+      return mod
+    }
 
     // Build command arguments
     const args = ["add", "--force", "--exact", "--cwd", Global.Path.cache, pkg + "@" + version]
@@ -88,6 +92,41 @@ export namespace BunProc {
     })
     parsed.dependencies[pkg] = version
     await Bun.write(pkgjson.name!, JSON.stringify(parsed, null, 2))
+
+    // Patch plugins that use subpath imports (Bun doesn't support them in dynamic imports)
+    // See: https://github.com/oven-sh/bun/issues/7611
+    await patchSubpathImports(pkg, mod)
+
     return mod
+  }
+
+  /**
+   * Patches plugin files to resolve subpath imports that Bun's dynamic import doesn't support.
+   * This rewrites imports like `@openauthjs/openauth/pkce` to direct file paths.
+   */
+  async function patchSubpathImports(pkg: string, modPath: string) {
+    // Only patch known plugins that have subpath import issues
+    if (!pkg.startsWith("opencode-") || !pkg.includes("-auth")) return
+
+    const indexFile = Bun.file(path.join(modPath, "index.mjs"))
+    if (!(await indexFile.exists())) return
+
+    let content = await indexFile.text()
+    let modified = false
+
+    // Pattern: import { X } from "@openauthjs/openauth/pkce"
+    // Replace with: import { X } from "@openauthjs/openauth/dist/esm/pkce.js"
+    const subpathPattern = /"@openauthjs\/openauth\/([^"]+)"/g
+    content = content.replace(subpathPattern, (match, subpath) => {
+      modified = true
+      log.info("patching subpath import", { pkg, original: match, subpath })
+      // Resolve to the actual ESM file path
+      return `"@openauthjs/openauth/dist/esm/${subpath}.js"`
+    })
+
+    if (modified) {
+      await Bun.write(indexFile.name!, content)
+      log.info("patched plugin subpath imports", { pkg })
+    }
   }
 }
