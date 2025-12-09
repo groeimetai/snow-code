@@ -3,6 +3,7 @@ import path from "path"
 import { Instance } from "../project/instance"
 import { Token } from "./token"
 import { Log } from "./log"
+import { Flag } from "../flag/flag"
 
 export namespace LargeOutputHandler {
   const log = Log.create({ service: "large-output-handler" })
@@ -19,6 +20,11 @@ export namespace LargeOutputHandler {
    */
   const OUTPUT_DIR = ".snowcode/tool-outputs"
 
+  /**
+   * Track if cleanup has been run this session
+   */
+  let cleanupRun = false
+
   interface ProcessedOutput {
     /** The output to store in context (either original or summary) */
     contextOutput: string
@@ -32,6 +38,7 @@ export namespace LargeOutputHandler {
 
   /**
    * Process tool output - if too large, save to file and return summary
+   * Can be disabled with SNOWCODE_DISABLE_LARGE_OUTPUT_HANDLER=true
    */
   export async function processOutput(input: {
     toolName: string
@@ -39,6 +46,23 @@ export namespace LargeOutputHandler {
     callId: string
   }): Promise<ProcessedOutput> {
     const tokenEstimate = Token.estimate(input.output)
+
+    // Run cleanup once per session (lazy initialization)
+    if (!cleanupRun) {
+      cleanupRun = true
+      cleanup().catch((err) => {
+        log.debug("cleanup failed", { error: err })
+      })
+    }
+
+    // If disabled via flag, always return as-is
+    if (Flag.SNOWCODE_DISABLE_LARGE_OUTPUT_HANDLER) {
+      return {
+        contextOutput: input.output,
+        wasTruncated: false,
+        originalTokens: tokenEstimate,
+      }
+    }
 
     // If output is small enough, return as-is
     if (tokenEstimate <= MAX_OUTPUT_TOKENS) {
@@ -191,6 +215,10 @@ export namespace LargeOutputHandler {
     // Build the summary
     const relativePath = path.relative(Instance.directory, filePath)
 
+    // Detect if content is JSON for proper formatting
+    const isJson = output.trim().startsWith("{") || output.trim().startsWith("[")
+    const codeBlock = isJson ? "json" : "text"
+
     return `📦 LARGE TOOL OUTPUT - Saved to file for exploration
 
 **Tool:** ${toolName}
@@ -198,7 +226,7 @@ export namespace LargeOutputHandler {
 **Full output:** ${relativePath}
 
 ${analysis ? `## Analysis\n${analysis}\n` : ""}## Preview
-\`\`\`json
+\`\`\`${codeBlock}
 ${preview}
 \`\`\`
 
@@ -206,15 +234,15 @@ ${preview}
 Use these native tools to investigate the saved output:
 
 1. **Read specific lines:**
-   \`Read { file_path: "${filePath}", offset: 0, limit: 100 }\`
+   \`Read { file_path: "${relativePath}", offset: 0, limit: 100 }\`
 
 2. **Search for specific content:**
-   \`Grep { pattern: "your_search_term", path: "${filePath}" }\`
+   \`Grep { pattern: "your_search_term", path: "${relativePath}" }\`
 
-3. **Count occurrences:**
-   \`Bash { command: "wc -l ${filePath}" }\`
+3. **Count lines:**
+   \`Bash { command: "wc -l '${relativePath}'" }\`
 
-The full data is available at: ${filePath}`
+Full path: ${filePath}`
   }
 
   /**

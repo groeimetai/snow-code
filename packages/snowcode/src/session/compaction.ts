@@ -79,10 +79,28 @@ export namespace SessionCompaction {
             if (part.state.status === "completed") {
               total += Token.estimate(part.state.output)
             }
+            // Tool error messages
+            if (part.state.status === "error") {
+              total += Token.estimate(part.state.error || "")
+            }
             break
           case "reasoning":
             total += Token.estimate(part.text || "")
             break
+          case "agent":
+            // Agent parts have content that gets rendered
+            if ("content" in part && typeof part.content === "string") {
+              total += Token.estimate(part.content)
+            }
+            break
+          case "retry":
+            // Retry parts have error info
+            if ("error" in part && part.error) {
+              total += Token.estimate(JSON.stringify(part.error))
+            }
+            break
+          // patch, snapshot, step-start, step-finish are typically small metadata
+          // and don't significantly contribute to token count
         }
       }
     }
