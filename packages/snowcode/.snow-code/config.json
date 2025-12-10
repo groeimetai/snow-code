@@ -1,0 +1,41 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servicenow-unified": {
+      "type": "local",
+      "command": [
+        "node",
+        "/Users/nielsvanderwerf/.nvm/versions/node/v20.19.5/lib/node_modules/snow-flow/dist/mcp/servicenow-mcp-unified/index.js"
+      ],
+      "environment": {
+        "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
+        "SERVICENOW_CLIENT_ID": "your-client-id",
+        "SERVICENOW_CLIENT_SECRET": "your-client-secret"
+      },
+      "enabled": true
+    },
+    "snow-flow-orchestration": {
+      "type": "local",
+      "command": [
+        "node",
+        "/Users/nielsvanderwerf/.nvm/versions/node/v20.19.5/lib/node_modules/snow-flow/dist/mcp/snow-flow-mcp.js"
+      ],
+      "environment": {
+        "SNOW_FLOW_ENV": "development"
+      },
+      "enabled": true
+    },
+    "snow-flow-enterprise": {
+      "type": "local",
+      "command": [
+        "node",
+        "/Users/nielsvanderwerf/.nvm/versions/node/v20.19.5/lib/node_modules/snow-flow/dist/mcp/enterprise-proxy/server.js"
+      ],
+      "environment": {
+        "SNOW_ENTERPRISE_URL": "https://enterprise.snow-flow.dev",
+        "SNOW_LICENSE_KEY": ""
+      },
+      "enabled": false
+    }
+  }
+}

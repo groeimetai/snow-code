@@ -1,0 +1,12 @@
+[2025-12-09T16:26:15.971Z] [INFO] ========================================
+[2025-12-09T16:26:15.972Z] [INFO] Enterprise Proxy Logger Initialized
+[2025-12-09T16:26:15.972Z] [INFO] Log file: /Users/nielsvanderwerf/Snow-Flow-dir/snow-code/logs/enterprise-proxy-2025-12-09T16-26-15.log
+[2025-12-09T16:26:15.972Z] [INFO] ========================================
+[2025-12-09T16:26:15.972Z] [DEBUG] Environment variables at startup
+{
+  "SNOW_INSTANCE": "your-instance.service-now.com",
+  "SNOW_CLIENT_ID": "your-client-id",
+  "SNOW_CLIENT_SECRET": "your-...ret (18 chars)",
+  "SNOW_USERNAME": "your-username",
+  "SNOW_PASSWORD": "your-password"
+}
