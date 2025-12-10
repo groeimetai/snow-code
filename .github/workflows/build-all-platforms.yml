@@ -104,7 +104,7 @@ jobs:
           TARGET_ARCH: ${{ matrix.arch }}
           SNOWCODE_CHANNEL: latest
 
-      - name: Verify build
+      - name: Verify build and set permissions
         shell: bash
         run: |
           cd packages/snowcode
@@ -120,6 +120,8 @@ jobs:
             exit 1
           fi
 
+          # Set executable permissions (important for npm install)
+          chmod +x "$BINARY_PATH"
           ls -lh "$BINARY_PATH"
 
       - name: Upload binary artifact
