@@ -66,8 +66,9 @@ export namespace BunProc {
       return result
     })
 
-    // Install if not already installed with this version
-    if (parsed.dependencies[pkg] !== version) {
+    // Install if not already installed with this version OR if module directory doesn't exist
+    const modExists = await Bun.file(path.join(modDir, "package.json")).exists()
+    if (parsed.dependencies[pkg] !== version || !modExists) {
       // Build command arguments
       const args = ["add", "--force", "--exact", "--cwd", Global.Path.cache, pkg + "@" + version]
 
