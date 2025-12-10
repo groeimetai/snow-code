@@ -59,6 +59,36 @@ export namespace SessionPrompt {
   const MAX_RETRIES = 10
   const DOOM_LOOP_THRESHOLD = 3
 
+  /**
+   * Maximum characters for tool output to prevent token overflow
+   * ~100K chars is approximately 25K tokens
+   */
+  const MAX_TOOL_OUTPUT_CHARS = 100_000
+
+  /**
+   * Truncates tool output if it exceeds the maximum allowed length.
+   * Preserves the beginning and end of the output for context.
+   */
+  function truncateToolOutput(output: string): string {
+    if (output.length <= MAX_TOOL_OUTPUT_CHARS) {
+      return output
+    }
+
+    const half = Math.floor(MAX_TOOL_OUTPUT_CHARS / 2)
+    const truncatedLength = output.length - MAX_TOOL_OUTPUT_CHARS
+    log.warn("truncating large tool output", {
+      originalLength: output.length,
+      truncatedLength,
+      maxAllowed: MAX_TOOL_OUTPUT_CHARS,
+    })
+
+    return (
+      output.substring(0, half) +
+      `\n\n... [TRUNCATED ${truncatedLength.toLocaleString()} characters to prevent token overflow] ...\n\n` +
+      output.substring(output.length - half)
+    )
+  }
+
   export const Event = {
     Idle: Bus.event(
       "session.idle",
@@ -205,6 +235,8 @@ export namespace SessionPrompt {
 
     let step = 0
     let compactionAttempted = false
+    mainLoop: while (true) {
+    try {
     while (true) {
       // Re-resolve tools at each iteration to pick up newly enabled tools from tool_search
       // This enables dynamic tool loading: tool_search enables tools, next iteration loads them
@@ -468,10 +500,65 @@ export namespace SessionPrompt {
         item.callback(result)
       }
       state().queued.delete(input.sessionID)
-      SessionCompaction.prune(input)
+      SessionCompaction.prune({ sessionID: input.sessionID, providerID: model.providerID })
 
       return result
     }
+    } catch (e) {
+      // Check if this is a token overflow error that we can recover from via compaction
+      const isTokenOverflow =
+        e instanceof Error &&
+        (e.message.includes("prompt is too long") ||
+          e.message.includes("maximum context length") ||
+          e.message.includes("context_length_exceeded") ||
+          e.message.includes("max_tokens"))
+
+      if (isTokenOverflow && !compactionAttempted) {
+        log.info("token overflow detected in API response, triggering compaction and retry", {
+          error: e instanceof Error ? e.message : String(e),
+        })
+
+        try {
+          // Run compaction to reduce context size
+          await SessionCompaction.run({
+            sessionID: input.sessionID,
+            providerID: model.providerID,
+            modelID: model.info.id,
+            signal: abort.signal,
+          })
+
+          compactionAttempted = true
+
+          // Reset step counter for retry
+          step = 0
+
+          // Continue the main loop to retry with compacted messages
+          continue mainLoop
+        } catch (compactionError) {
+          log.error("compaction failed during token overflow recovery", { error: compactionError })
+          // Fall through to normal error handling
+        }
+      }
+
+      // Ensure the assistant message is properly completed even if an error occurs
+      // This prevents the TUI from getting stuck in a "busy" state
+      log.error("prompt error - ensuring message completion", { error: e })
+
+      const error = MessageV2.fromError(e, { providerID: model.providerID })
+
+      // Force complete the message with the error
+      await processor.forceCompleteWithError(error)
+
+      // Publish the error event so TUI can show it
+      Bus.publish(Session.Event.Error, {
+        sessionID: input.sessionID,
+        error: error,
+      })
+
+      // Re-throw the error for the caller to handle
+      throw e
+    }
+    } // end mainLoop
   }
 
   async function getMessages(input: {
@@ -1098,6 +1185,19 @@ export namespace SessionPrompt {
         if (!assistantMsg) throw new Error("call next() first before accessing message")
         return assistantMsg
       },
+      /** Safe getter that returns undefined instead of throwing if no message exists */
+      get currentMessage(): MessageV2.Assistant | undefined {
+        return assistantMsg
+      },
+      /** Force complete the current message with an error - used for error recovery */
+      async forceCompleteWithError(error: MessageV2.Assistant["error"]) {
+        if (assistantMsg) {
+          assistantMsg.error = error
+          assistantMsg.time.completed = Date.now()
+          await Session.updateMessage(assistantMsg)
+          assistantMsg = undefined
+        }
+      },
       partFromToolCall(toolCallID: string) {
         return toolcalls[toolCallID]
       },
@@ -1233,7 +1333,8 @@ export namespace SessionPrompt {
                     state: {
                       status: "completed",
                       input: value.input,
-                      output: value.output.output,
+                      // Truncate large tool outputs to prevent token overflow
+                      output: truncateToolOutput(value.output.output),
                       metadata: value.output.metadata,
                       title: value.output.title,
                       time: {
