@@ -660,7 +660,19 @@ func (a *App) IsBusy() bool {
 	}
 	lastMessage := a.Messages[len(a.Messages)-1]
 	if casted, ok := lastMessage.Info.(opencode.AssistantMessage); ok {
-		return casted.Time.Completed == 0
+		if casted.Time.Completed == 0 {
+			// Safety timeout: if the message has been in progress for more than 10 minutes,
+			// force unbusy to prevent permanent UI freeze due to missed events
+			created := time.UnixMilli(int64(casted.Time.Created))
+			if time.Since(created) > 10*time.Minute {
+				slog.Warn("IsBusy timeout - message has been in progress for too long, forcing unbusy",
+					"messageId", casted.ID,
+					"created", created,
+					"elapsed", time.Since(created))
+				return false
+			}
+			return true
+		}
 	}
 	return false
 }

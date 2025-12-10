@@ -677,6 +677,17 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case opencode.EventListResponseEventSessionError:
+		// Refresh messages to ensure we have the updated state (with time.completed set)
+		// This prevents the TUI from getting stuck in a "busy" state after errors
+		if msg.Properties.SessionID == a.app.Session.ID {
+			messages, err := a.app.ListMessages(context.Background(), a.app.Session.ID)
+			if err == nil {
+				a.app.Messages = messages
+			} else {
+				slog.Warn("Failed to refresh messages after session error", "error", err)
+			}
+		}
+
 		switch err := msg.Properties.Error.AsUnion().(type) {
 		case nil:
 			// No error details provided

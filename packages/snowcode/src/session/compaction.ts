@@ -142,17 +142,62 @@ export namespace SessionCompaction {
   export const PRUNE_MINIMUM = 20_000
   export const PRUNE_PROTECT = 40_000
   const MAX_RETRIES = 10
+  const MIN_OUTPUT_FOR_SUMMARY = 1000 // Only summarize outputs longer than this
+  const MAX_OUTPUT_FOR_SUMMARY = 15000 // Truncate very large outputs before summarizing
+
+  /**
+   * Summarizes a tool output using a small model to preserve key information
+   * when compacting old tool results. This prevents complete information loss
+   * and reduces the need to re-run tools.
+   */
+  async function summarizeToolOutput(output: string, providerID: string): Promise<string | undefined> {
+    // Skip small outputs - just keep them as-is in the summary field
+    if (output.length < MIN_OUTPUT_FOR_SUMMARY) {
+      return output
+    }
+
+    // Get a small/fast model for summarization
+    const model = await Provider.getSmallModel(providerID)
+    if (!model) {
+      log.warn("no small model available for summarization, skipping", { providerID })
+      return undefined
+    }
+
+    try {
+      const truncatedOutput = output.substring(0, MAX_OUTPUT_FOR_SUMMARY)
+      const response = await streamText({
+        model: model.language,
+        maxRetries: 0,
+        maxOutputTokens: 300,
+        messages: [
+          {
+            role: "user",
+            content: `Summarize this tool output concisely (2-3 sentences), preserving key facts like file paths, sys_ids, record numbers, error messages, and important values:\n\n${truncatedOutput}`,
+          },
+        ],
+      })
+
+      let summary = ""
+      for await (const chunk of response.fullStream) {
+        if (chunk.type === "text-delta") summary += chunk.text
+      }
+      return `[SUMMARIZED] ${summary.trim()}`
+    } catch (e) {
+      log.error("failed to summarize tool output", { error: e })
+      return undefined
+    }
+  }
 
   // goes backwards through parts until there are 40_000 tokens worth of tool
   // calls. then erases output of previous tool calls. idea is to throw away old
   // tool calls that are no longer relevant.
-  export async function prune(input: { sessionID: string }) {
+  export async function prune(input: { sessionID: string; providerID?: string }) {
     if (Flag.SNOWCODE_DISABLE_PRUNE) return
     log.info("pruning")
     const msgs = await Session.messages(input.sessionID)
     let total = 0
     let pruned = 0
-    const toPrune = []
+    const toPrune: MessageV2.ToolPart[] = []
     let turns = 0
 
     loop: for (let msgIndex = (msgs as MessageV2.WithParts[]).length - 1; msgIndex >= 0; msgIndex--) {
@@ -178,6 +223,13 @@ export namespace SessionCompaction {
     if (pruned > PRUNE_MINIMUM) {
       for (const part of toPrune) {
         if (part.state.status === "completed") {
+          // Summarize the output before compacting if providerID is available
+          if (input.providerID && !part.state.outputSummary) {
+            const summary = await summarizeToolOutput(part.state.output, input.providerID)
+            if (summary) {
+              part.state.outputSummary = summary
+            }
+          }
           part.state.time.compacted = Date.now()
           await Session.updatePart(part)
         }
