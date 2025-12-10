@@ -58,36 +58,70 @@ export namespace BunProc {
   )
 
   export async function install(pkg: string, version = "latest") {
-    const mod = path.join(Global.Path.cache, "node_modules", pkg)
-    const pkgjson = Bun.file(path.join(Global.Path.cache, "package.json"))
-    const parsed = await pkgjson.json().catch(async () => {
+    const modDir = path.join(Global.Path.cache, "node_modules", pkg)
+    const cachePkgJson = Bun.file(path.join(Global.Path.cache, "package.json"))
+    const parsed = await cachePkgJson.json().catch(async () => {
       const result = { dependencies: {} }
-      await Bun.write(pkgjson.name!, JSON.stringify(result, null, 2))
+      await Bun.write(cachePkgJson.name!, JSON.stringify(result, null, 2))
       return result
     })
-    if (parsed.dependencies[pkg] === version) return mod
 
-    // Build command arguments
-    const args = ["add", "--force", "--exact", "--cwd", Global.Path.cache, pkg + "@" + version]
+    // Install if not already installed with this version
+    if (parsed.dependencies[pkg] !== version) {
+      // Build command arguments
+      const args = ["add", "--force", "--exact", "--cwd", Global.Path.cache, pkg + "@" + version]
 
-    // Let Bun handle registry resolution:
-    // - If .npmrc files exist, Bun will use them automatically
-    // - If no .npmrc files exist, Bun will default to https://registry.npmjs.org
-    // - No need to pass --registry flag
-    log.info("installing package using Bun's default registry resolution", { pkg, version })
+      // Let Bun handle registry resolution:
+      // - If .npmrc files exist, Bun will use them automatically
+      // - If no .npmrc files exist, Bun will default to https://registry.npmjs.org
+      // - No need to pass --registry flag
+      log.info("installing package using Bun's default registry resolution", { pkg, version })
 
-    await BunProc.run(args, {
-      cwd: Global.Path.cache,
-    }).catch((e) => {
-      throw new InstallFailedError(
-        { pkg, version },
-        {
-          cause: e,
-        },
-      )
-    })
-    parsed.dependencies[pkg] = version
-    await Bun.write(pkgjson.name!, JSON.stringify(parsed, null, 2))
-    return mod
+      await BunProc.run(args, {
+        cwd: Global.Path.cache,
+      }).catch((e) => {
+        throw new InstallFailedError(
+          { pkg, version },
+          {
+            cause: e,
+          },
+        )
+      })
+      parsed.dependencies[pkg] = version
+      await Bun.write(cachePkgJson.name!, JSON.stringify(parsed, null, 2))
+    }
+
+    // Resolve the actual entry point from the module's package.json
+    const modPkgJsonPath = path.join(modDir, "package.json")
+    const modPkgJson = Bun.file(modPkgJsonPath)
+    const modPkg = (await modPkgJson.json().catch(() => ({}))) as {
+      main?: string
+      exports?: string | Record<string, string | { import?: string; require?: string; default?: string }>
+    }
+
+    // Determine entry point: check exports["."], then main, then default to index.js
+    let entryPoint = "index.js"
+    if (modPkg.exports) {
+      if (typeof modPkg.exports === "string") {
+        // exports: "./index.js"
+        entryPoint = modPkg.exports
+      } else if (modPkg.exports["."]) {
+        const dotExport = modPkg.exports["."]
+        if (typeof dotExport === "string") {
+          // exports: { ".": "./index.js" }
+          entryPoint = dotExport
+        } else if (typeof dotExport === "object") {
+          // exports: { ".": { "import": "./index.mjs", "require": "./index.cjs" } }
+          entryPoint = dotExport.import || dotExport.default || dotExport.require || "index.js"
+        }
+      }
+    } else if (modPkg.main) {
+      entryPoint = modPkg.main
+    }
+
+    // Return the full path to the entry point
+    const resolvedPath = path.join(modDir, entryPoint)
+    log.info("resolved module entry point", { pkg, entryPoint, resolvedPath })
+    return resolvedPath
   }
 }
