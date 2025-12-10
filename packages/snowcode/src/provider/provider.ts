@@ -449,6 +449,12 @@ export namespace Provider {
       s.sdk.set(key, loaded)
       return loaded as SDK
     })().catch((e) => {
+      log.error("SDK init failed", {
+        providerID: provider.id,
+        error: e?.message || String(e),
+        stack: e?.stack,
+        code: e?.code,
+      })
       throw new InitError({ providerID: provider.id }, { cause: e })
     })
   }
