@@ -29,13 +29,26 @@ export namespace Plugin {
     const plugins = [...(config.plugin ?? [])]
     if (!Flag.SNOWCODE_DISABLE_DEFAULT_PLUGINS) {
       plugins.push("opencode-copilot-auth@0.0.3")
-      plugins.push("opencode-anthropic-auth@0.0.2")
+      plugins.push("@groeimetai/opencode-anthropic-auth@0.0.1")
     }
     for (let plugin of plugins) {
       log.info("loading plugin", { path: plugin })
       if (!plugin.startsWith("file://")) {
-        const [pkg, version] = plugin.split("@")
-        plugin = await BunProc.install(pkg, version ?? "latest")
+        // Handle scoped packages like @groeimetai/opencode-anthropic-auth@0.0.1
+        const lastAtIndex = plugin.lastIndexOf("@")
+        const hasVersion = lastAtIndex > 0 && !plugin.substring(0, lastAtIndex).includes("@") === false
+        let pkg: string
+        let version: string
+        if (lastAtIndex > 0 && plugin.charAt(lastAtIndex - 1) !== "/") {
+          // Has version: @scope/pkg@version or pkg@version
+          pkg = plugin.substring(0, lastAtIndex)
+          version = plugin.substring(lastAtIndex + 1)
+        } else {
+          // No version specified
+          pkg = plugin
+          version = "latest"
+        }
+        plugin = await BunProc.install(pkg, version)
       }
       const mod = await import(plugin)
       for (const [_name, fn] of Object.entries<PluginInstance>(mod)) {

@@ -1,0 +1,25 @@
+{
+  "name": "@groeimetai/opencode-anthropic-auth",
+  "version": "0.0.1",
+  "description": "Anthropic OAuth auth plugin for snow-code (standalone, no subpath imports)",
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "exports": {
+    ".": "./dist/index.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --format esm --target bun && mv dist/index.js dist/index.mjs",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "@groeimetai/snow-code-plugin": "workspace:*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/groeimetai/snow-code.git"
+  },
+  "license": "Apache-2.0"
+}
