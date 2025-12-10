@@ -94,15 +94,26 @@ export namespace BunProc {
     // Resolve the actual entry point from the module's package.json
     const modPkgJsonPath = path.join(modDir, "package.json")
     const modPkgJson = Bun.file(modPkgJsonPath)
-    const modPkg = await modPkgJson.json().catch(() => ({})) as { main?: string; exports?: Record<string, string> | string }
+    const modPkg = await modPkgJson.json().catch(() => ({})) as {
+      main?: string
+      exports?: string | Record<string, string | { import?: string; require?: string; default?: string }>
+    }
 
     // Determine entry point: check exports["."], then main, then default to index.js
     let entryPoint = "index.js"
     if (modPkg.exports) {
       if (typeof modPkg.exports === "string") {
+        // exports: "./index.js"
         entryPoint = modPkg.exports
       } else if (modPkg.exports["."]) {
-        entryPoint = modPkg.exports["."]
+        const dotExport = modPkg.exports["."]
+        if (typeof dotExport === "string") {
+          // exports: { ".": "./index.js" }
+          entryPoint = dotExport
+        } else if (typeof dotExport === "object") {
+          // exports: { ".": { "import": "./index.mjs", "require": "./index.cjs" } }
+          entryPoint = dotExport.import || dotExport.default || dotExport.require || "index.js"
+        }
       }
     } else if (modPkg.main) {
       entryPoint = modPkg.main
