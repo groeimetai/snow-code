@@ -293,6 +293,25 @@ jobs:
           cd dist
           npm publish --access public || echo "Plugin may already exist at this version"
 
+      - name: Build and publish Anthropic Auth package
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cd packages/anthropic-auth
+
+          # Update version in package.json
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
+
+          # Build the package
+          bun install
+          bun run build
+
+          echo "Anthropic Auth dist contents:"
+          ls -la dist/
+
+          # Publish from dist directory
+          cd dist
+          npm publish --access public || echo "Anthropic Auth may already exist at this version"
+
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
@@ -310,6 +329,7 @@ jobs:
             - `@groeimetai/snow-code@${{ steps.version.outputs.version }}`
             - `@groeimetai/snow-code-sdk@${{ steps.version.outputs.version }}`
             - `@groeimetai/snow-code-plugin@${{ steps.version.outputs.version }}`
+            - `@groeimetai/opencode-anthropic-auth@${{ steps.version.outputs.version }}`
 
             ## Platform Binaries
 
