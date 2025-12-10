@@ -208,34 +208,89 @@ jobs:
           cd packages/snowcode
           npm publish --access public || echo "Failed to publish main package (may already exist)"
 
-      - name: Publish SDK package
+      - name: Build and publish SDK package
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          cd packages/sdk/js/dist
+          cd packages/sdk/js
 
-          # Update version in dist/package.json
+          # Update version in source package.json
           sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
-          echo "SDK version updated to:"
-          grep '"version"' package.json
 
-          # Publish
+          # Build the SDK with tsc (src/gen/ files are already in repo)
+          bun install
+          bunx tsc
+
+          # Create dist/package.json for publishing
+          cat > dist/package.json << EOF
+          {
+            "name": "@groeimetai/snow-code-sdk",
+            "version": "$VERSION",
+            "type": "module",
+            "exports": {
+              ".": {
+                "import": "./index.js",
+                "types": "./index.d.ts"
+              },
+              "./client": {
+                "import": "./client.js",
+                "types": "./client.d.ts"
+              },
+              "./server": {
+                "import": "./server.js",
+                "types": "./server.d.ts"
+              }
+            },
+            "files": ["*.js", "*.d.ts", "gen"]
+          }
+          EOF
+
+          echo "SDK dist/package.json:"
+          cat dist/package.json
+
+          # Publish from dist directory
+          cd dist
           npm publish --access public || echo "SDK may already exist at this version"
 
-      - name: Publish Plugin package
+      - name: Build and publish Plugin package
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          cd packages/plugin/dist
+          cd packages/plugin
 
-          # Update version in dist/package.json
+          # Update version in source package.json
           sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
 
-          # Also update SDK dependency version
-          sed -i "s/\"@groeimetai\/snow-code-sdk\": \"[^\"]*\"/\"@groeimetai\/snow-code-sdk\": \"^$VERSION\"/" package.json
+          # Build the Plugin (generates dist/)
+          bun install
+          bun run build
 
-          echo "Plugin package.json:"
-          cat package.json
+          # Create dist/package.json for publishing
+          cat > dist/package.json << EOF
+          {
+            "name": "@groeimetai/snow-code-plugin",
+            "version": "$VERSION",
+            "type": "module",
+            "exports": {
+              ".": {
+                "import": "./index.js",
+                "types": "./index.d.ts"
+              },
+              "./tool": {
+                "import": "./tool.js",
+                "types": "./tool.d.ts"
+              }
+            },
+            "dependencies": {
+              "@groeimetai/snow-code-sdk": "^$VERSION",
+              "zod": "^3.24.0"
+            }
+          }
+          EOF
 
-          # Publish
+          echo "Plugin dist/package.json:"
+          cat dist/package.json
+
+          # Publish from dist directory
+          cd dist
           npm publish --access public || echo "Plugin may already exist at this version"
 
       - name: Create GitHub Release
