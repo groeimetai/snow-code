@@ -58,8 +58,26 @@ export namespace Provider {
     openai: async () => {
       return {
         autoload: false,
-        async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
-          return sdk.responses(modelID)
+        async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
+          // Allow users to force chat API via useCompletionUrls option in config
+          // This is useful when Responses API is not available for the API key
+          if (options?.["useCompletionUrls"]) {
+            return sdk.chat(modelID)
+          }
+
+          // Responses API is only available for gpt-5, o3, o4 and newer reasoning models
+          // Fall back to chat API for gpt-4, gpt-3.5, and other models
+          const supportsResponsesAPI =
+            modelID.includes("gpt-5") ||
+            modelID.includes("o3") ||
+            modelID.includes("o4") ||
+            modelID.includes("codex-mini-latest")
+
+          if (supportsResponsesAPI) {
+            return sdk.responses(modelID)
+          }
+          // Use chat API for older models
+          return sdk.chat(modelID)
         },
         options: {},
       }

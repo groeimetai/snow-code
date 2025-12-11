@@ -159,6 +159,396 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
 }
 
 /**
+ * Deploy LLM Gateway to ServiceNow via REST API
+ * Creates Scripted REST API, Script Include, and System Properties
+ */
+async function deployLLMGateway(options: {
+  instanceUrl: string
+  accessToken: string
+  midServerName: string
+  llmEndpoint: string
+  llmType: string
+}): Promise<{ success: boolean; error?: string }> {
+  const { instanceUrl, accessToken, midServerName, llmEndpoint, llmType } = options
+
+  const headers = {
+    "Authorization": `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+  }
+
+  try {
+    // Step 1: Create System Properties for LLM Gateway configuration
+    const properties = [
+      { name: "x_snow_llm.mid_server", value: midServerName, description: "MID Server for LLM requests" },
+      { name: "x_snow_llm.llm_endpoint", value: llmEndpoint, description: "Local LLM endpoint URL" },
+      { name: "x_snow_llm.llm_type", value: llmType, description: "LLM type (ollama, vllm, etc.)" },
+    ]
+
+    for (const prop of properties) {
+      // Check if property exists
+      const checkResponse = await fetch(
+        `${instanceUrl}/api/now/table/sys_properties?sysparm_query=name=${encodeURIComponent(prop.name)}&sysparm_limit=1`,
+        { headers }
+      )
+      const checkData = await checkResponse.json()
+
+      if (checkData.result && checkData.result.length > 0) {
+        // Update existing property
+        await fetch(
+          `${instanceUrl}/api/now/table/sys_properties/${checkData.result[0].sys_id}`,
+          {
+            method: "PATCH",
+            headers,
+            body: JSON.stringify({ value: prop.value }),
+          }
+        )
+      } else {
+        // Create new property
+        await fetch(
+          `${instanceUrl}/api/now/table/sys_properties`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              name: prop.name,
+              value: prop.value,
+              description: prop.description,
+              type: "string",
+            }),
+          }
+        )
+      }
+    }
+
+    // Step 2: Create Script Include for LLM Gateway logic
+    const scriptIncludeScript = `
+var LLMGateway = Class.create();
+LLMGateway.prototype = {
+  initialize: function() {
+    this.midServer = gs.getProperty('x_snow_llm.mid_server');
+    this.llmEndpoint = gs.getProperty('x_snow_llm.llm_endpoint');
+    this.llmType = gs.getProperty('x_snow_llm.llm_type');
+  },
+
+  /**
+   * Send chat completion request through MID Server
+   * @param {Object} requestBody - OpenAI-compatible request body
+   * @returns {Object} Response from LLM
+   */
+  chatCompletion: function(requestBody) {
+    var ecc = new GlideRecord('ecc_queue');
+    ecc.initialize();
+    ecc.agent = this._getMidServerId();
+    ecc.topic = 'RESTProbe';
+    ecc.name = 'LLMChatCompletion';
+    ecc.source = 'LLMGateway';
+    ecc.queue = 'output';
+    ecc.payload = JSON.stringify({
+      url: this.llmEndpoint + '/v1/chat/completions',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+    ecc.insert();
+
+    // Wait for response with timeout
+    return this._waitForResponse(ecc.sys_id, 120);
+  },
+
+  /**
+   * Test connectivity to LLM endpoint via MID Server
+   * @returns {Object} Test result
+   */
+  testConnectivity: function() {
+    var testPayload = {
+      model: 'test',
+      messages: [{ role: 'user', content: 'ping' }],
+      max_tokens: 1
+    };
+
+    try {
+      var result = this.chatCompletion(testPayload);
+      return { success: true, message: 'LLM endpoint is reachable' };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  },
+
+  _getMidServerId: function() {
+    var mid = new GlideRecord('ecc_agent');
+    mid.addQuery('name', this.midServer);
+    mid.addQuery('status', 'Up');
+    mid.query();
+    if (mid.next()) {
+      return mid.sys_id.toString();
+    }
+    throw new Error('MID Server not found or not running: ' + this.midServer);
+  },
+
+  _waitForResponse: function(eccSysId, timeoutSeconds) {
+    var startTime = new Date().getTime();
+    var timeout = timeoutSeconds * 1000;
+
+    while ((new Date().getTime() - startTime) < timeout) {
+      var response = new GlideRecord('ecc_queue');
+      response.addQuery('response_to', eccSysId);
+      response.addQuery('queue', 'input');
+      response.query();
+
+      if (response.next()) {
+        var payload = response.payload.toString();
+        try {
+          return JSON.parse(payload);
+        } catch (e) {
+          return { raw: payload };
+        }
+      }
+
+      gs.sleep(500);
+    }
+
+    throw new Error('Timeout waiting for MID Server response');
+  },
+
+  type: 'LLMGateway'
+};
+`
+
+    // Check if Script Include exists
+    const siCheckResponse = await fetch(
+      `${instanceUrl}/api/now/table/sys_script_include?sysparm_query=name=LLMGateway&sysparm_limit=1`,
+      { headers }
+    )
+    const siCheckData = await siCheckResponse.json()
+
+    if (siCheckData.result && siCheckData.result.length > 0) {
+      // Update existing Script Include
+      await fetch(
+        `${instanceUrl}/api/now/table/sys_script_include/${siCheckData.result[0].sys_id}`,
+        {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({ script: scriptIncludeScript }),
+        }
+      )
+    } else {
+      // Create new Script Include
+      await fetch(
+        `${instanceUrl}/api/now/table/sys_script_include`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            name: "LLMGateway",
+            api_name: "global.LLMGateway",
+            script: scriptIncludeScript,
+            active: true,
+            client_callable: false,
+            description: "LLM Gateway for routing requests through MID Server to local LLM models",
+          }),
+        }
+      )
+    }
+
+    // Step 3: Create Scripted REST API
+    // Check if REST API exists
+    const restCheckResponse = await fetch(
+      `${instanceUrl}/api/now/table/sys_ws_definition?sysparm_query=name=LLM Gateway&sysparm_limit=1`,
+      { headers }
+    )
+    const restCheckData = await restCheckResponse.json()
+
+    let restApiSysId: string
+
+    if (restCheckData.result && restCheckData.result.length > 0) {
+      restApiSysId = restCheckData.result[0].sys_id
+    } else {
+      // Create REST API Definition
+      const restApiResponse = await fetch(
+        `${instanceUrl}/api/now/table/sys_ws_definition`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            name: "LLM Gateway",
+            api_id: "x_snow_llm",
+            short_description: "OpenAI-compatible LLM Gateway via MID Server",
+            active: true,
+          }),
+        }
+      )
+      const restApiData = await restApiResponse.json()
+      restApiSysId = restApiData.result.sys_id
+    }
+
+    // Step 4: Create REST API Resource for chat completions
+    const resourceScript = `
+(function process(request, response) {
+  try {
+    var gateway = new LLMGateway();
+    var requestBody = request.body.data;
+
+    var result = gateway.chatCompletion(requestBody);
+
+    response.setStatus(200);
+    response.setBody(result);
+  } catch (e) {
+    response.setStatus(500);
+    response.setBody({
+      error: {
+        message: e.message,
+        type: 'gateway_error'
+      }
+    });
+  }
+})(request, response);
+`
+
+    // Check if resource exists
+    const resCheckResponse = await fetch(
+      `${instanceUrl}/api/now/table/sys_ws_operation?sysparm_query=web_service_definition=${restApiSysId}^name=Chat Completions&sysparm_limit=1`,
+      { headers }
+    )
+    const resCheckData = await resCheckResponse.json()
+
+    if (resCheckData.result && resCheckData.result.length > 0) {
+      // Update existing resource
+      await fetch(
+        `${instanceUrl}/api/now/table/sys_ws_operation/${resCheckData.result[0].sys_id}`,
+        {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({ operation_script: resourceScript }),
+        }
+      )
+    } else {
+      // Create new resource
+      await fetch(
+        `${instanceUrl}/api/now/table/sys_ws_operation`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            name: "Chat Completions",
+            web_service_definition: restApiSysId,
+            http_method: "POST",
+            relative_path: "/v1/chat/completions",
+            operation_script: resourceScript,
+            active: true,
+          }),
+        }
+      )
+    }
+
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Test LLM connectivity through MID Server
+ * Sends a test request via ECC Queue to verify the LLM endpoint is reachable
+ */
+async function testLLMConnectivity(options: {
+  instanceUrl: string
+  accessToken: string
+  midServerName: string
+  llmEndpoint: string
+  modelName: string
+}): Promise<{ success: boolean; error?: string }> {
+  const { instanceUrl, accessToken, midServerName, llmEndpoint, modelName } = options
+
+  const headers = {
+    "Authorization": `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+  }
+
+  try {
+    // First, verify MID Server is up
+    const midCheckResponse = await fetch(
+      `${instanceUrl}/api/now/table/ecc_agent?sysparm_query=name=${encodeURIComponent(midServerName)}^status=Up&sysparm_limit=1`,
+      { headers }
+    )
+    const midCheckData = await midCheckResponse.json()
+
+    if (!midCheckData.result || midCheckData.result.length === 0) {
+      return { success: false, error: `MID Server '${midServerName}' is not running or not found` }
+    }
+
+    const midServerId = midCheckData.result[0].sys_id
+
+    // Create ECC Queue entry to test connectivity
+    const testPayload = {
+      url: `${llmEndpoint}/v1/models`,
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    }
+
+    const eccResponse = await fetch(
+      `${instanceUrl}/api/now/table/ecc_queue`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          agent: midServerId,
+          topic: "RESTProbe",
+          name: "LLMConnectivityTest",
+          source: "snow-code-auth",
+          queue: "output",
+          payload: JSON.stringify(testPayload),
+        }),
+      }
+    )
+
+    if (!eccResponse.ok) {
+      return { success: false, error: "Failed to create ECC Queue entry for connectivity test" }
+    }
+
+    const eccData = await eccResponse.json()
+    const eccSysId = eccData.result.sys_id
+
+    // Wait for response (poll for up to 30 seconds)
+    const startTime = Date.now()
+    const timeout = 30000
+
+    while (Date.now() - startTime < timeout) {
+      const responseCheck = await fetch(
+        `${instanceUrl}/api/now/table/ecc_queue?sysparm_query=response_to=${eccSysId}^queue=input&sysparm_limit=1`,
+        { headers }
+      )
+      const responseData = await responseCheck.json()
+
+      if (responseData.result && responseData.result.length > 0) {
+        const payload = responseData.result[0].payload
+        try {
+          const parsedPayload = JSON.parse(payload)
+          if (parsedPayload.error) {
+            return { success: false, error: parsedPayload.error }
+          }
+          return { success: true }
+        } catch {
+          // If payload is not JSON, check if it contains error indicators
+          if (payload && (payload.includes("error") || payload.includes("Error"))) {
+            return { success: false, error: payload }
+          }
+          return { success: true }
+        }
+      }
+
+      // Wait 1 second before next poll
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+
+    return { success: false, error: "Timeout waiting for MID Server response (30s)" }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
+/**
  * Validate enterprise license key with enterprise server
  * Note: Does NOT require user authentication token - the license key validates itself
  */
@@ -871,6 +1261,134 @@ export const AuthLoginCommand = cmd({
         // Track if this is a complete setup (chains all auth steps)
         const isCompleteSetup = authCategory === "complete"
 
+        // For complete setup: ServiceNow FIRST, then LLM Provider
+        // This ensures OAuth credentials are available for MID Server LLM deployment
+        if (isCompleteSetup) {
+          prompts.log.step("Step 1: ServiceNow Configuration")
+          prompts.log.info("Snow-Flow requires ServiceNow connection for development")
+          prompts.log.message("")
+
+          const snowInstance = (await prompts.text({
+            message: "ServiceNow instance URL",
+            placeholder: "dev12345.service-now.com",
+            validate: (value) => {
+              if (!value || value.trim() === "") return "Instance URL is required"
+              const cleaned = value.replace(/^https?:\/\//, "").replace(/\/$/, "")
+              if (
+                !cleaned.includes(".service-now.com") &&
+                !cleaned.includes("localhost") &&
+                !cleaned.includes("127.0.0.1")
+              ) {
+                return "Must be a ServiceNow domain (e.g., dev12345.service-now.com)"
+              }
+            },
+          })) as string
+
+          if (prompts.isCancel(snowInstance)) throw new UI.CancelledError()
+
+          const snowAuthMethod = (await prompts.select({
+            message: "Authentication method",
+            options: [
+              { value: "oauth", label: "OAuth 2.0", hint: "recommended - required for MID Server LLM" },
+              { value: "basic", label: "Basic Auth", hint: "username/password" },
+            ],
+          })) as string
+
+          if (prompts.isCancel(snowAuthMethod)) throw new UI.CancelledError()
+
+          if (snowAuthMethod === "oauth") {
+            const snowClientId = (await prompts.text({
+              message: "OAuth Client ID",
+              placeholder: "32-character hex string from ServiceNow",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Client ID is required"
+                if (value.length < 32) return "Client ID too short (expected 32+ characters)"
+              },
+            })) as string
+
+            if (prompts.isCancel(snowClientId)) throw new UI.CancelledError()
+
+            const snowClientSecret = (await prompts.password({
+              message: "OAuth Client Secret",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Client Secret is required"
+                if (value.length < 32) return "Client Secret too short (expected 32+ characters)"
+              },
+            })) as string
+
+            if (prompts.isCancel(snowClientSecret)) throw new UI.CancelledError()
+
+            // Run OAuth flow for ServiceNow
+            const oauth = new ServiceNowOAuth()
+            const snowAuthResult = await oauth.authenticate({
+              instance: snowInstance,
+              clientId: snowClientId,
+              clientSecret: snowClientSecret,
+            })
+
+            if (snowAuthResult.success) {
+              // Write to .env file
+              await updateEnvFile([
+                { key: "SNOW_INSTANCE", value: snowInstance },
+                { key: "SNOW_AUTH_METHOD", value: "oauth" },
+                { key: "SNOW_CLIENT_ID", value: snowClientId },
+                { key: "SNOW_CLIENT_SECRET", value: snowClientSecret },
+              ])
+              // Update SnowCode MCP configs
+              await updateSnowCodeMCPConfigs(snowInstance, snowClientId, snowClientSecret)
+              prompts.log.success("ServiceNow authentication successful!")
+            } else {
+              prompts.log.error(`ServiceNow authentication failed: ${snowAuthResult.error}`)
+              prompts.outro("Setup cancelled")
+              await Instance.dispose()
+              process.exit(1)
+            }
+          } else {
+            // Basic auth
+            const snowUsername = (await prompts.text({
+              message: "ServiceNow username",
+              placeholder: "admin",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Username is required"
+              },
+            })) as string
+
+            if (prompts.isCancel(snowUsername)) throw new UI.CancelledError()
+
+            const snowPassword = (await prompts.password({
+              message: "ServiceNow password",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Password is required"
+              },
+            })) as string
+
+            if (prompts.isCancel(snowPassword)) throw new UI.CancelledError()
+
+            // Save to Auth store
+            await Auth.set("servicenow", {
+              type: "servicenow-basic",
+              instance: snowInstance,
+              username: snowUsername,
+              password: snowPassword,
+            })
+
+            // Write to .env file
+            await updateEnvFile([
+              { key: "SNOW_INSTANCE", value: snowInstance },
+              { key: "SNOW_AUTH_METHOD", value: "basic" },
+              { key: "SNOW_USERNAME", value: snowUsername },
+              { key: "SNOW_PASSWORD", value: snowPassword },
+            ])
+            // Update MCP configs with instance only (no OAuth credentials)
+            await updateSnowCodeMCPConfigs(snowInstance, "", "")
+
+            prompts.log.success("ServiceNow credentials saved!")
+          }
+
+          prompts.log.message("")
+          prompts.log.step("Step 2: LLM Provider Configuration")
+        }
+
         // LLM Provider authentication
         let provider: string = ""
         await ModelsDev.refresh().catch(() => {})
@@ -906,6 +1424,11 @@ export const AuthLoginCommand = cmd({
               {
                 value: "other",
                 label: "Other",
+              },
+              {
+                value: "midserver-llm",
+                label: "ServiceNow MID Server LLM",
+                hint: "local LLM via MID Server (enterprise)",
               },
             ],
           })
@@ -1340,7 +1863,8 @@ export const AuthLoginCommand = cmd({
           provider !== "amazon-bedrock" &&
           provider !== "google-vertex" &&
           provider !== "servicenow" &&
-          provider !== "enterprise"
+          provider !== "enterprise" &&
+          provider !== "midserver-llm"
         ) {
           const providerData = providers[provider]
           if (providerData && providerData.models && Object.keys(providerData.models).length > 0) {
@@ -1572,154 +2096,8 @@ export const AuthLoginCommand = cmd({
               process.exit(0)
             }
 
-            // For complete setup, continue to ServiceNow
-            prompts.log.message("")
-            prompts.log.step("ServiceNow Configuration")
-            prompts.log.info("Snow-Flow requires ServiceNow connection for development")
-            prompts.log.message("")
-
-            // Run ServiceNow setup directly (handler was already passed earlier)
-            const snowInstance = (await prompts.text({
-              message: "ServiceNow instance URL",
-              placeholder: "dev12345.service-now.com",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Instance URL is required"
-                const cleaned = value.replace(/^https?:\/\//, "").replace(/\/$/, "")
-                if (
-                  !cleaned.includes(".service-now.com") &&
-                  !cleaned.includes("localhost") &&
-                  !cleaned.includes("127.0.0.1")
-                ) {
-                  return "Must be a ServiceNow domain (e.g., dev12345.service-now.com)"
-                }
-              },
-            })) as string
-
-            if (prompts.isCancel(snowInstance)) {
-              prompts.outro("Done")
-              await Instance.dispose()
-              return
-            }
-
-            const snowAuthMethod = (await prompts.select({
-              message: "Authentication method",
-              options: [
-                { value: "oauth", label: "OAuth 2.0", hint: "recommended" },
-                { value: "basic", label: "Basic Auth", hint: "username/password" },
-              ],
-            })) as string
-
-            if (prompts.isCancel(snowAuthMethod)) {
-              prompts.outro("Done")
-              await Instance.dispose()
-              return
-            }
-
-            if (snowAuthMethod === "oauth") {
-              const snowClientId = (await prompts.text({
-                message: "OAuth Client ID",
-                placeholder: "32-character hex string from ServiceNow",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Client ID is required"
-                  if (value.length < 32) return "Client ID too short (expected 32+ characters)"
-                },
-              })) as string
-
-              if (prompts.isCancel(snowClientId)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              const snowClientSecret = (await prompts.password({
-                message: "OAuth Client Secret",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Client Secret is required"
-                  if (value.length < 32) return "Client Secret too short (expected 32+ characters)"
-                },
-              })) as string
-
-              if (prompts.isCancel(snowClientSecret)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              // Run full OAuth flow
-              const oauth = new ServiceNowOAuth()
-              const result = await oauth.authenticate({
-                instance: snowInstance,
-                clientId: snowClientId,
-                clientSecret: snowClientSecret,
-              })
-
-              if (result.success) {
-                // Write to .env file
-                await updateEnvFile([
-                  { key: "SNOW_INSTANCE", value: snowInstance },
-                  { key: "SNOW_AUTH_METHOD", value: "oauth" },
-                  { key: "SNOW_CLIENT_ID", value: snowClientId },
-                  { key: "SNOW_CLIENT_SECRET", value: snowClientSecret },
-                ])
-                // Update SnowCode MCP configs
-                await updateSnowCodeMCPConfigs(snowInstance, snowClientId, snowClientSecret)
-                prompts.log.success("ServiceNow authentication successful")
-                prompts.log.info("Credentials saved to .env and SnowCode configs")
-              } else {
-                prompts.log.error(`Authentication failed: ${result.error}`)
-              }
-            } else {
-              // Basic auth
-              const snowUsername = (await prompts.text({
-                message: "ServiceNow username",
-                placeholder: "admin",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Username is required"
-                },
-              })) as string
-
-              if (prompts.isCancel(snowUsername)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              const snowPassword = (await prompts.password({
-                message: "ServiceNow password",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Password is required"
-                },
-              })) as string
-
-              if (prompts.isCancel(snowPassword)) {
-                prompts.outro("Done")
-                await Instance.dispose()
-                return
-              }
-
-              // Save to Auth store
-              await Auth.set("servicenow", {
-                type: "servicenow-basic",
-                instance: snowInstance,
-                username: snowUsername,
-                password: snowPassword,
-              })
-
-              // Write to .env file
-              await updateEnvFile([
-                { key: "SNOW_INSTANCE", value: snowInstance },
-                { key: "SNOW_AUTH_METHOD", value: "basic" },
-                { key: "SNOW_USERNAME", value: snowUsername },
-                { key: "SNOW_PASSWORD", value: snowPassword },
-              ])
-              // Note: Basic auth doesn't use OAuth, so we update MCP configs with instance only
-              await updateSnowCodeMCPConfigs(snowInstance, "", "")
-
-              prompts.log.success("ServiceNow credentials saved")
-              prompts.log.info("Credentials saved to .env and SnowCode configs")
-            }
-
-            // After ServiceNow setup, ask about Snow-Flow License (optional)
+            // For complete setup, ServiceNow is already configured at the start
+            // Now ask about Snow-Flow License (optional)
             prompts.log.message("")
             const configureEnterpriseAfterLLM = await prompts.confirm({
               message: "Configure Snow-Flow License? (optional - enables Jira, Azure DevOps, Confluence)",
@@ -2037,6 +2415,324 @@ export const AuthLoginCommand = cmd({
           process.exit(0)
         }
 
+        // Handle MID Server LLM configuration
+        if (provider === "midserver-llm") {
+          prompts.log.step("ServiceNow MID Server LLM Configuration")
+          prompts.log.info("Configure access to local LLM models through ServiceNow MID Server")
+          prompts.log.message("")
+          prompts.log.info("This enables routing LLM requests through your MID Server to access")
+          prompts.log.info("on-premise models (Ollama, vLLM, LocalAI) within your corporate network.")
+          prompts.log.message("")
+
+          // Check if ServiceNow is already configured
+          const existingServiceNow = await Auth.get("servicenow")
+          let serviceNowInstance = ""
+          let hasOAuthCredentials = false
+
+          if (existingServiceNow && existingServiceNow.type === "servicenow-oauth") {
+            serviceNowInstance = existingServiceNow.instance
+            hasOAuthCredentials = true
+            prompts.log.success(`Using existing ServiceNow instance: ${serviceNowInstance}`)
+          } else if (existingServiceNow && existingServiceNow.type === "servicenow-basic") {
+            serviceNowInstance = existingServiceNow.instance
+            hasOAuthCredentials = false
+            prompts.log.success(`Using existing ServiceNow instance: ${serviceNowInstance}`)
+            prompts.log.warn("Basic Auth detected - automatic gateway deployment requires OAuth")
+            prompts.log.info("You can still configure MID Server LLM, but will need to deploy the gateway manually")
+          } else {
+            prompts.log.warn("ServiceNow not configured. OAuth is recommended for automatic gateway deployment.")
+            const configureNow = await prompts.confirm({
+              message: "Would you like to configure ServiceNow OAuth now?",
+              initialValue: true,
+            })
+            if (prompts.isCancel(configureNow) || !configureNow) {
+              prompts.outro("MID Server LLM setup cancelled")
+              await Instance.dispose()
+              process.exit(0)
+            }
+
+            // Get ServiceNow instance details
+            serviceNowInstance = (await prompts.text({
+              message: "ServiceNow instance URL",
+              placeholder: "dev12345.service-now.com",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Instance URL is required"
+                const cleaned = value.replace(/^https?:\/\//, "").replace(/\/$/, "")
+                if (!cleaned.includes(".service-now.com") && !cleaned.includes("localhost")) {
+                  return "Must be a ServiceNow domain"
+                }
+              },
+            })) as string
+            if (prompts.isCancel(serviceNowInstance)) throw new UI.CancelledError()
+          }
+
+          // Get MID Server name
+          prompts.log.message("")
+          const midServerName = (await prompts.text({
+            message: "MID Server name",
+            placeholder: "my-datacenter-mid-1",
+            validate: (value) => {
+              if (!value || value.trim() === "") return "MID Server name is required"
+            },
+          })) as string
+          if (prompts.isCancel(midServerName)) throw new UI.CancelledError()
+
+          // Get local LLM endpoint (from MID Server perspective)
+          const llmEndpoint = (await prompts.text({
+            message: "Local LLM endpoint (from MID Server perspective)",
+            placeholder: "http://llm-server.internal:11434",
+            validate: (value) => {
+              if (!value || value.trim() === "") return "LLM endpoint is required"
+              if (!value.startsWith("http://") && !value.startsWith("https://")) {
+                return "Must be a valid URL (http:// or https://)"
+              }
+            },
+          })) as string
+          if (prompts.isCancel(llmEndpoint)) throw new UI.CancelledError()
+
+          // Get local LLM type
+          const llmType = (await prompts.select({
+            message: "Local LLM type",
+            options: [
+              { value: "ollama", label: "Ollama", hint: "port 11434" },
+              { value: "vllm", label: "vLLM", hint: "OpenAI-compatible" },
+              { value: "localai", label: "LocalAI", hint: "OpenAI-compatible" },
+              { value: "lmstudio", label: "LM Studio", hint: "OpenAI-compatible" },
+              { value: "other", label: "Other", hint: "OpenAI-compatible API" },
+            ],
+          })) as string
+          if (prompts.isCancel(llmType)) throw new UI.CancelledError()
+
+          // Get model name(s)
+          const modelName = (await prompts.text({
+            message: "Default model name",
+            placeholder: llmType === "ollama" ? "llama3.3" : "default",
+            validate: (value) => {
+              if (!value || value.trim() === "") return "Model name is required"
+            },
+          })) as string
+          if (prompts.isCancel(modelName)) throw new UI.CancelledError()
+
+          // Ensure instance URL format
+          const instanceUrl = serviceNowInstance.startsWith("http")
+            ? serviceNowInstance
+            : `https://${serviceNowInstance}`
+
+          // Get ServiceNow OAuth credentials for deploying the gateway
+          let accessToken: string | undefined
+          let clientId: string | undefined
+          let clientSecret: string | undefined
+
+          if (existingServiceNow && existingServiceNow.type === "servicenow-oauth") {
+            accessToken = existingServiceNow.accessToken
+            clientId = existingServiceNow.clientId
+            clientSecret = existingServiceNow.clientSecret
+
+            // Check if token needs refresh
+            if (existingServiceNow.expiresAt && existingServiceNow.expiresAt < Date.now()) {
+              prompts.log.info("Refreshing ServiceNow access token...")
+              const oauth = new ServiceNowOAuth()
+              const refreshResult = await oauth.refreshAccessToken(
+                instanceUrl,
+                clientId,
+                clientSecret,
+                existingServiceNow.refreshToken!
+              )
+              if (refreshResult.success) {
+                accessToken = refreshResult.accessToken
+              } else {
+                prompts.log.warn("Token refresh failed, will need to re-authenticate")
+                accessToken = undefined
+              }
+            }
+          }
+
+          // If we don't have OAuth credentials, ask for them
+          if (!accessToken) {
+            prompts.log.message("")
+            prompts.log.step("ServiceNow Authentication Required")
+            prompts.log.info("OAuth credentials needed to deploy the LLM Gateway")
+
+            clientId = (await prompts.text({
+              message: "OAuth Client ID",
+              placeholder: "32-character hex string from ServiceNow",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Client ID is required"
+                if (value.length < 32) return "Client ID too short"
+              },
+            })) as string
+            if (prompts.isCancel(clientId)) throw new UI.CancelledError()
+
+            clientSecret = (await prompts.password({
+              message: "OAuth Client Secret",
+              validate: (value) => {
+                if (!value || value.trim() === "") return "Client Secret is required"
+              },
+            })) as string
+            if (prompts.isCancel(clientSecret)) throw new UI.CancelledError()
+
+            // Run OAuth flow
+            const oauth = new ServiceNowOAuth()
+            const authResult = await oauth.authenticate({
+              instance: instanceUrl,
+              clientId,
+              clientSecret,
+            })
+
+            if (!authResult.success) {
+              prompts.log.error(`Authentication failed: ${authResult.error}`)
+              prompts.outro("MID Server LLM setup cancelled")
+              await Instance.dispose()
+              process.exit(1)
+            }
+
+            accessToken = authResult.accessToken
+          }
+
+          // Ask if user wants to deploy the LLM Gateway (only if we have OAuth)
+          let gatewayDeployed = false
+          let connectivityTested = false
+
+          if (hasOAuthCredentials && accessToken) {
+            prompts.log.message("")
+            const deployGateway = await prompts.confirm({
+              message: "Deploy LLM Gateway to ServiceNow now?",
+              initialValue: true,
+            })
+
+            if (prompts.isCancel(deployGateway)) throw new UI.CancelledError()
+
+            if (deployGateway) {
+              const deploySpinner = prompts.spinner()
+              deploySpinner.start("Deploying LLM Gateway to ServiceNow...")
+
+              try {
+                // Deploy the LLM Gateway via REST API
+                const deployResult = await deployLLMGateway({
+                  instanceUrl,
+                  accessToken: accessToken!,
+                  midServerName,
+                  llmEndpoint,
+                  llmType,
+                })
+
+                if (deployResult.success) {
+                  deploySpinner.stop("LLM Gateway deployed successfully!")
+                  gatewayDeployed = true
+
+                  // Test connectivity through the MID Server
+                  prompts.log.message("")
+                  const testConnectivity = await prompts.confirm({
+                    message: "Test LLM connectivity through MID Server?",
+                    initialValue: true,
+                  })
+
+                  if (!prompts.isCancel(testConnectivity) && testConnectivity) {
+                    const testSpinner = prompts.spinner()
+                    testSpinner.start("Testing LLM connectivity via MID Server...")
+
+                    const testResult = await testLLMConnectivity({
+                      instanceUrl,
+                      accessToken: accessToken!,
+                      midServerName,
+                      llmEndpoint,
+                      modelName,
+                    })
+
+                    if (testResult.success) {
+                      testSpinner.stop("LLM connectivity test passed!")
+                      connectivityTested = true
+                    } else {
+                      testSpinner.stop(`Connectivity test failed: ${testResult.error}`)
+                      prompts.log.warn("The gateway is deployed but the LLM endpoint may not be reachable from the MID Server")
+                    }
+                  }
+                } else {
+                  deploySpinner.stop(`Gateway deployment failed: ${deployResult.error}`)
+                  prompts.log.warn("You can try deploying manually later with: snow-flow deploy llm-gateway")
+                }
+              } catch (error: any) {
+                deploySpinner.stop(`Deployment error: ${error.message}`)
+              }
+            }
+          } else {
+            // User has Basic Auth - cannot auto-deploy
+            prompts.log.message("")
+            prompts.log.info("Manual gateway deployment required (OAuth needed for automatic deployment)")
+            prompts.log.info("See: docs/MID_SERVER_LLM_ARCHITECTURE.md for deployment instructions")
+          }
+
+          // Save the MID Server LLM provider configuration
+          const globalConfigPath = path.join(os.homedir(), ".config", "snow-code", "config.json")
+          let globalConfig: any = {}
+          try {
+            const file = Bun.file(globalConfigPath)
+            if (await file.exists()) {
+              globalConfig = JSON.parse(await file.text())
+            }
+          } catch {}
+
+          // Add the servicenow-llm provider configuration
+          if (!globalConfig.provider) globalConfig.provider = {}
+          globalConfig.provider["servicenow-llm"] = {
+            npm: "@ai-sdk/openai-compatible",
+            name: "ServiceNow LLM Gateway",
+            options: {
+              baseURL: `${instanceUrl}/api/x_snow_llm/v1`,
+              apiKey: "{env:SERVICENOW_LLM_TOKEN}",
+            },
+            models: {
+              [modelName]: {
+                name: `${modelName} (via MID Server)`,
+              },
+            },
+          }
+
+          // Also save the MID Server configuration
+          if (!globalConfig.midServerLLM) globalConfig.midServerLLM = {}
+          globalConfig.midServerLLM = {
+            midServer: midServerName,
+            llmEndpoint: llmEndpoint,
+            llmType: llmType,
+            defaultModel: modelName,
+            instanceUrl: instanceUrl,
+            gatewayDeployed: gatewayDeployed,
+            connectivityTested: connectivityTested,
+          }
+
+          // Set default model to use MID Server LLM
+          globalConfig.model = `servicenow-llm/${modelName}`
+
+          await Bun.write(globalConfigPath, JSON.stringify(globalConfig, null, 2))
+
+          prompts.log.message("")
+          prompts.log.success("✅ MID Server LLM configuration complete!")
+          prompts.log.message("")
+          prompts.log.info("Configuration saved:")
+          prompts.log.message(`  • MID Server: ${midServerName}`)
+          prompts.log.message(`  • LLM Endpoint: ${llmEndpoint}`)
+          prompts.log.message(`  • LLM Type: ${llmType}`)
+          prompts.log.message(`  • Default Model: ${modelName}`)
+          prompts.log.message(`  • Gateway Deployed: ${gatewayDeployed ? "Yes" : "No"}`)
+          prompts.log.message(`  • Connectivity Tested: ${connectivityTested ? "Yes" : "No"}`)
+          prompts.log.message("")
+
+          if (gatewayDeployed && connectivityTested) {
+            prompts.log.success("🚀 Ready to use! Run: snow-flow agent \"<objective>\"")
+          } else if (gatewayDeployed) {
+            prompts.log.info("Gateway deployed. Test connectivity manually or start using:")
+            prompts.log.message('  snow-flow agent "<objective>"')
+          } else {
+            prompts.log.info("Next steps:")
+            prompts.log.message("  1. Deploy LLM Gateway: snow-flow deploy llm-gateway")
+            prompts.log.message('  2. Start developing: snow-flow agent "<objective>"')
+          }
+
+          prompts.outro("Done")
+          await Instance.dispose()
+          process.exit(0)
+        }
+
         if (provider === "opencode") {
           prompts.log.info("Create an api key at https://opencode.ai/auth")
         }
@@ -2088,153 +2784,8 @@ export const AuthLoginCommand = cmd({
           process.exit(0)
         }
 
-        // For complete setup, continue to ServiceNow
-        prompts.log.message("")
-        prompts.log.step("ServiceNow Configuration")
-        prompts.log.info("Snow-Flow requires ServiceNow connection for development")
-        prompts.log.message("")
-
-        const snowInstance = (await prompts.text({
-          message: "ServiceNow instance URL",
-          placeholder: "dev12345.service-now.com",
-          validate: (value) => {
-            if (!value || value.trim() === "") return "Instance URL is required"
-            const cleaned = value.replace(/^https?:\/\//, "").replace(/\/$/, "")
-            if (
-              !cleaned.includes(".service-now.com") &&
-              !cleaned.includes("localhost") &&
-              !cleaned.includes("127.0.0.1")
-            ) {
-              return "Must be a ServiceNow domain (e.g., dev12345.service-now.com)"
-            }
-          },
-        })) as string
-
-        if (prompts.isCancel(snowInstance)) {
-          prompts.outro("Done")
-          await Instance.dispose()
-          return
-        }
-
-        const snowAuthMethod = (await prompts.select({
-          message: "Authentication method",
-          options: [
-            { value: "oauth", label: "OAuth 2.0", hint: "recommended" },
-            { value: "basic", label: "Basic Auth", hint: "username/password" },
-          ],
-        })) as string
-
-        if (prompts.isCancel(snowAuthMethod)) {
-          prompts.outro("Done")
-          await Instance.dispose()
-          return
-        }
-
-        if (snowAuthMethod === "oauth") {
-          const snowClientId = (await prompts.text({
-            message: "OAuth Client ID",
-            placeholder: "32-character hex string from ServiceNow",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "Client ID is required"
-              if (value.length < 32) return "Client ID too short (expected 32+ characters)"
-            },
-          })) as string
-
-          if (prompts.isCancel(snowClientId)) {
-            prompts.outro("Done")
-            await Instance.dispose()
-            return
-          }
-
-          const snowClientSecret = (await prompts.password({
-            message: "OAuth Client Secret",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "Client Secret is required"
-              if (value.length < 32) return "Client Secret too short (expected 32+ characters)"
-            },
-          })) as string
-
-          if (prompts.isCancel(snowClientSecret)) {
-            prompts.outro("Done")
-            await Instance.dispose()
-            return
-          }
-
-          // Run full OAuth flow
-          const oauth = new ServiceNowOAuth()
-          const result = await oauth.authenticate({
-            instance: snowInstance,
-            clientId: snowClientId,
-            clientSecret: snowClientSecret,
-          })
-
-          if (result.success) {
-            // Write to .env file
-            await updateEnvFile([
-              { key: "SNOW_INSTANCE", value: snowInstance },
-              { key: "SNOW_AUTH_METHOD", value: "oauth" },
-              { key: "SNOW_CLIENT_ID", value: snowClientId },
-              { key: "SNOW_CLIENT_SECRET", value: snowClientSecret },
-            ])
-            // Update SnowCode MCP configs
-            await updateSnowCodeMCPConfigs(snowInstance, snowClientId, snowClientSecret)
-            prompts.log.success("ServiceNow authentication successful")
-            prompts.log.info("Credentials saved to .env and SnowCode configs")
-          } else {
-            prompts.log.error(`Authentication failed: ${result.error}`)
-          }
-        } else {
-          // Basic auth
-          const snowUsername = (await prompts.text({
-            message: "ServiceNow username",
-            placeholder: "admin",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "Username is required"
-            },
-          })) as string
-
-          if (prompts.isCancel(snowUsername)) {
-            prompts.outro("Done")
-            await Instance.dispose()
-            return
-          }
-
-          const snowPassword = (await prompts.password({
-            message: "ServiceNow password",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "Password is required"
-            },
-          })) as string
-
-          if (prompts.isCancel(snowPassword)) {
-            prompts.outro("Done")
-            await Instance.dispose()
-            return
-          }
-
-          // Save to Auth store
-          await Auth.set("servicenow", {
-            type: "servicenow-basic",
-            instance: snowInstance,
-            username: snowUsername,
-            password: snowPassword,
-          })
-
-          // Write to .env file
-          await updateEnvFile([
-            { key: "SNOW_INSTANCE", value: snowInstance },
-            { key: "SNOW_AUTH_METHOD", value: "basic" },
-            { key: "SNOW_USERNAME", value: snowUsername },
-            { key: "SNOW_PASSWORD", value: snowPassword },
-          ])
-          // Note: Basic auth doesn't use OAuth, so we update MCP configs with instance only
-          await updateSnowCodeMCPConfigs(snowInstance, "", "")
-
-          prompts.log.success("ServiceNow credentials saved")
-          prompts.log.info("Credentials saved to .env and SnowCode configs")
-        }
-
-        // After ServiceNow setup, ask about Snow-Flow License (optional)
+        // For complete setup, ServiceNow is already configured at the start
+        // Now ask about Snow-Flow License (optional)
         prompts.log.message("")
         const configureEnterpriseFinal = await prompts.confirm({
           message: "Configure Snow-Flow License? (optional - enables Jira, Azure DevOps, Confluence)",
