@@ -2776,6 +2776,15 @@ export const AuthLoginCommand = cmd({
           prompts.log.message(`  • Default Model: ${modelName}`)
           prompts.log.message(`  • Gateway Deployed: ${gatewayDeployed ? "Yes" : "No"}`)
           prompts.log.message(`  • Connectivity Tested: ${connectivityTested ? "Yes" : "No"}`)
+
+          if (gatewayDeployed) {
+            prompts.log.message("")
+            prompts.log.info("ServiceNow LLM Gateway:")
+            prompts.log.message(`  ${instanceUrl}/sys_ws_definition.do?sysparm_query=name=x_snow_llm`)
+            prompts.log.message("")
+            prompts.log.info("System Properties:")
+            prompts.log.message(`  ${instanceUrl}/sys_properties_list.do?sysparm_query=nameLIKEx_snow_llm`)
+          }
           prompts.log.message("")
 
           if (gatewayDeployed && connectivityTested) {
