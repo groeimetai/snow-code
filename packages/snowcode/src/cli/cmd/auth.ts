@@ -2424,6 +2424,41 @@ export const AuthLoginCommand = cmd({
           prompts.log.info("on-premise models (Ollama, vLLM, LocalAI) within your corporate network.")
           prompts.log.message("")
 
+          // Clean up any invalid config before proceeding (prevents schema validation errors)
+          const configCleanupPath = path.join(os.homedir(), ".config", "snow-code", "config.json")
+          try {
+            const configFile = Bun.file(configCleanupPath)
+            if (await configFile.exists()) {
+              const configContent = JSON.parse(await configFile.text())
+              let configModified = false
+
+              // Clean up invalid provider configurations (move unknown keys to options)
+              if (configContent.provider) {
+                const validProviderKeys = ["npm", "name", "options", "models", "api", "cost"]
+                for (const [, providerConfig] of Object.entries(configContent.provider)) {
+                  if (providerConfig && typeof providerConfig === "object") {
+                    const config = providerConfig as Record<string, any>
+                    const unknownKeys = Object.keys(config).filter((k) => !validProviderKeys.includes(k))
+                    if (unknownKeys.length > 0) {
+                      if (!config.options) config.options = {}
+                      for (const key of unknownKeys) {
+                        config.options[key] = config[key]
+                        delete config[key]
+                      }
+                      configModified = true
+                    }
+                  }
+                }
+              }
+
+              if (configModified) {
+                await Bun.write(configCleanupPath, JSON.stringify(configContent, null, 2))
+              }
+            }
+          } catch {
+            // Ignore cleanup errors
+          }
+
           // Check if ServiceNow is already configured
           const existingServiceNow = await Auth.get("servicenow")
           let serviceNowInstance = ""
@@ -2671,6 +2706,25 @@ export const AuthLoginCommand = cmd({
               globalConfig = JSON.parse(await file.text())
             }
           } catch {}
+
+          // Clean up any invalid provider configurations (move unknown keys to options)
+          if (globalConfig.provider) {
+            const validProviderKeys = ["npm", "name", "options", "models", "api", "cost"]
+            for (const [providerName, providerConfig] of Object.entries(globalConfig.provider)) {
+              if (providerConfig && typeof providerConfig === "object") {
+                const config = providerConfig as Record<string, any>
+                const unknownKeys = Object.keys(config).filter((k) => !validProviderKeys.includes(k))
+                if (unknownKeys.length > 0) {
+                  // Move unknown keys to options
+                  if (!config.options) config.options = {}
+                  for (const key of unknownKeys) {
+                    config.options[key] = config[key]
+                    delete config[key]
+                  }
+                }
+              }
+            }
+          }
 
           // Add the servicenow-llm provider configuration
           if (!globalConfig.provider) globalConfig.provider = {}
