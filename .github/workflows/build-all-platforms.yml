@@ -90,10 +90,33 @@ jobs:
       - name: Install dependencies
         run: |
           # Install from monorepo root to get all workspace dependencies
-          bun install
+          # Retry up to 3 times in case of transient CDN errors (e.g., sharp/libvips)
+          install_success=false
+          for i in 1 2 3; do
+            echo "Attempt $i of 3..."
+            if bun install; then
+              echo "Install succeeded on attempt $i"
+              install_success=true
+              break
+            fi
+            echo "Install failed, retrying in 10 seconds..."
+            sleep 10
+          done
+
+          # If normal install failed, try without postinstall scripts (sharp CDN might be down)
+          if [ "$install_success" = false ]; then
+            echo "Normal install failed, trying with --ignore-scripts..."
+            if bun install --ignore-scripts; then
+              echo "Install without scripts succeeded"
+            else
+              echo "All install attempts failed"
+              exit 1
+            fi
+          fi
+
           # Also install in packages/snowcode for local deps
           cd packages/snowcode
-          bun install --no-save
+          bun install --no-save || bun install --no-save --ignore-scripts
 
       - name: Build platform binary
         run: |
