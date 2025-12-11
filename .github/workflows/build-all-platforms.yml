@@ -88,6 +88,7 @@ jobs:
           grep '"version"' package.json
 
       - name: Install dependencies
+        shell: bash
         run: |
           # Install from monorepo root to get all workspace dependencies
           # Retry up to 3 times in case of transient CDN errors (e.g., sharp/libvips)
