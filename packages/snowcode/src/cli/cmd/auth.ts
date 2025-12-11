@@ -2451,6 +2451,12 @@ export const AuthLoginCommand = cmd({
                 }
               }
 
+              // Remove legacy root-level midServerLLM (now stored in provider.options)
+              if (configContent.midServerLLM) {
+                delete configContent.midServerLLM
+                configModified = true
+              }
+
               if (configModified) {
                 await Bun.write(configCleanupPath, JSON.stringify(configContent, null, 2))
               }
@@ -2727,6 +2733,7 @@ export const AuthLoginCommand = cmd({
           }
 
           // Add the servicenow-llm provider configuration
+          // Store MID Server config inside options (schema allows custom keys there)
           if (!globalConfig.provider) globalConfig.provider = {}
           globalConfig.provider["servicenow-llm"] = {
             npm: "@ai-sdk/openai-compatible",
@@ -2734,6 +2741,13 @@ export const AuthLoginCommand = cmd({
             options: {
               baseURL: `${instanceUrl}/api/x_snow_llm/v1`,
               apiKey: "{env:SERVICENOW_LLM_TOKEN}",
+              // MID Server configuration stored here (options allows custom keys)
+              midServer: midServerName,
+              llmEndpoint: llmEndpoint,
+              llmType: llmType,
+              defaultModel: modelName,
+              gatewayDeployed: gatewayDeployed,
+              connectivityTested: connectivityTested,
             },
             models: {
               [modelName]: {
@@ -2742,16 +2756,9 @@ export const AuthLoginCommand = cmd({
             },
           }
 
-          // Also save the MID Server configuration
-          if (!globalConfig.midServerLLM) globalConfig.midServerLLM = {}
-          globalConfig.midServerLLM = {
-            midServer: midServerName,
-            llmEndpoint: llmEndpoint,
-            llmType: llmType,
-            defaultModel: modelName,
-            instanceUrl: instanceUrl,
-            gatewayDeployed: gatewayDeployed,
-            connectivityTested: connectivityTested,
+          // Remove legacy root-level midServerLLM if it exists (moved to provider.options)
+          if (globalConfig.midServerLLM) {
+            delete globalConfig.midServerLLM
           }
 
           // Set default model to use MID Server LLM
