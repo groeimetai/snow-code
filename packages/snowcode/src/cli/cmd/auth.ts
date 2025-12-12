@@ -1149,7 +1149,7 @@ SnowFlowLLMService.prototype = {
 
       if (resCheckData.result && resCheckData.result.length > 0) {
         // Update existing resource
-        await fetch(
+        const updateRes = await fetch(
           `${instanceUrl}/api/now/table/sys_ws_operation/${resCheckData.result[0].sys_id}`,
           {
             method: "PATCH",
@@ -1157,9 +1157,13 @@ SnowFlowLLMService.prototype = {
             body: JSON.stringify({ operation_script: resource.operation_script }),
           }
         )
+        if (!updateRes.ok) {
+          const errorBody = await updateRes.text()
+          return { success: false, error: `Failed to update resource ${resource.name}: HTTP ${updateRes.status} - ${errorBody}` }
+        }
       } else {
         // Create new resource
-        await fetch(
+        const createRes = await fetch(
           `${instanceUrl}/api/now/table/sys_ws_operation`,
           {
             method: "POST",
@@ -1174,6 +1178,10 @@ SnowFlowLLMService.prototype = {
             }),
           }
         )
+        if (!createRes.ok) {
+          const errorBody = await createRes.text()
+          return { success: false, error: `Failed to create resource ${resource.name}: HTTP ${createRes.status} - ${errorBody}` }
+        }
       }
     }
 
