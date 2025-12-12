@@ -567,11 +567,15 @@ async function discoverMidServers(instanceUrl: string, accessToken: string): Pro
 
   try {
     // First try the Snow-Flow LLM API (if deployed)
-    const snowFlowResponse = await fetch(`${instanceUrl}/api/snow_flow/llm/mid-servers`, { headers })
-
-    if (snowFlowResponse.ok) {
-      const data = await snowFlowResponse.json()
-      return { success: true, midServers: data.result?.mid_servers || [] }
+    try {
+      const snowFlowResponse = await fetch(`${instanceUrl}/api/snow_flow/llm/mid-servers`, { headers })
+      if (snowFlowResponse.ok) {
+        const data = await snowFlowResponse.json()
+        return { success: true, midServers: data.result?.mid_servers || [] }
+      }
+      // API not deployed or returned error - fall through to fallback
+    } catch {
+      // Snow-Flow API not available - fall through to fallback
     }
 
     // Fallback: Query ecc_agent table directly
@@ -619,11 +623,15 @@ async function discoverRestMessages(instanceUrl: string, accessToken: string): P
 
   try {
     // First try the Snow-Flow LLM API (if deployed)
-    const snowFlowResponse = await fetch(`${instanceUrl}/api/snow_flow/llm/rest-messages`, { headers })
-
-    if (snowFlowResponse.ok) {
-      const data = await snowFlowResponse.json()
-      return { success: true, restMessages: data.result?.rest_messages || [] }
+    try {
+      const snowFlowResponse = await fetch(`${instanceUrl}/api/snow_flow/llm/rest-messages`, { headers })
+      if (snowFlowResponse.ok) {
+        const data = await snowFlowResponse.json()
+        return { success: true, restMessages: data.result?.rest_messages || [] }
+      }
+      // API not deployed or returned error - fall through to fallback
+    } catch {
+      // Snow-Flow API not available - fall through to fallback
     }
 
     // Fallback: Query sys_rest_message table directly (get all REST Messages)
