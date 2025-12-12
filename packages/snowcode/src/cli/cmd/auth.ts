@@ -626,9 +626,10 @@ async function discoverRestMessages(instanceUrl: string, accessToken: string): P
       return { success: true, restMessages: data.result?.rest_messages || [] }
     }
 
-    // Fallback: Query sys_rest_message table directly
+    // Fallback: Query sys_rest_message table directly (get all REST Messages)
+    // Note: MID Server config may be on HTTP Method level (sys_rest_message_fn) or REST Message level
     const response = await fetch(
-      `${instanceUrl}/api/now/table/sys_rest_message?sysparm_query=mid_serverISNOTEMPTY&sysparm_fields=name,sys_id,rest_endpoint,mid_server&sysparm_display_value=true&sysparm_limit=50`,
+      `${instanceUrl}/api/now/table/sys_rest_message?sysparm_fields=name,sys_id,rest_endpoint&sysparm_display_value=true&sysparm_limit=50`,
       { headers }
     )
 
@@ -665,8 +666,8 @@ async function discoverRestMessages(instanceUrl: string, accessToken: string): P
       restMessages.push({
         name: msg.name,
         sys_id: msg.sys_id,
-        endpoint: msg.rest_endpoint,
-        mid_server: msg.mid_server,
+        endpoint: msg.rest_endpoint || "",
+        mid_server: msg.mid_server || "",
         methods,
       })
     }
@@ -876,11 +877,10 @@ SnowFlowLLMService.prototype = {
         return servers;
     },
 
-    // Lijst REST Messages met MID Server
+    // Lijst REST Messages (all available)
     getRestMessages: function() {
         var messages = [];
         var gr = new GlideRecord('sys_rest_message');
-        gr.addNotNullQuery('mid_server');
         gr.query();
         while (gr.next()) {
             var methods = [];
@@ -897,8 +897,7 @@ SnowFlowLLMService.prototype = {
             messages.push({
                 name: gr.getValue('name'),
                 sys_id: gr.getValue('sys_id'),
-                endpoint: gr.getValue('rest_endpoint'),
-                mid_server: gr.mid_server.getDisplayValue(),
+                endpoint: gr.getValue('rest_endpoint') || '',
                 methods: methods
             });
         }
