@@ -779,8 +779,16 @@ async function deploySnowFlowLLMAPI(options: {
   restMessage?: string
   httpMethod?: string
   defaultModel?: string
+  verbose?: boolean
 }): Promise<{ success: boolean; error?: string }> {
   const { instanceUrl, accessToken } = options
+  const verbose = options.verbose || verboseMode
+
+  const log = (msg: string) => {
+    if (verbose) {
+      prompts.log.info(`[DEPLOY] ${msg}`)
+    }
+  }
 
   const headers = {
     "Authorization": `Bearer ${accessToken}`,
@@ -789,6 +797,8 @@ async function deploySnowFlowLLMAPI(options: {
   }
 
   try {
+    log(`Starting deployment to ${instanceUrl}`)
+
     // Step 1: Create Script Include - SnowFlowLLMService
     const scriptIncludeScript = `var SnowFlowLLMService = Class.create();
 SnowFlowLLMService.prototype = {
@@ -938,6 +948,7 @@ SnowFlowLLMService.prototype = {
 };`
 
     // Check if Script Include exists
+    log("Step 1: Checking Script Include...")
     const siCheckResponse = await fetch(
       `${instanceUrl}/api/now/table/sys_script_include?sysparm_query=name=SnowFlowLLMService&sysparm_limit=1`,
       { headers }
@@ -946,6 +957,7 @@ SnowFlowLLMService.prototype = {
 
     if (siCheckData.result && siCheckData.result.length > 0) {
       // Update existing Script Include
+      log(`Script Include exists (sys_id: ${siCheckData.result[0].sys_id}), updating...`)
       const updateResponse = await fetch(
         `${instanceUrl}/api/now/table/sys_script_include/${siCheckData.result[0].sys_id}`,
         {
@@ -955,10 +967,13 @@ SnowFlowLLMService.prototype = {
         }
       )
       if (!updateResponse.ok) {
-        return { success: false, error: `Failed to update Script Include: HTTP ${updateResponse.status}` }
+        const errorBody = await updateResponse.text()
+        return { success: false, error: `Failed to update Script Include: HTTP ${updateResponse.status} - ${errorBody}` }
       }
+      log("Script Include updated successfully")
     } else {
       // Create new Script Include
+      log("Script Include not found, creating...")
       const createResponse = await fetch(
         `${instanceUrl}/api/now/table/sys_script_include`,
         {
@@ -975,11 +990,15 @@ SnowFlowLLMService.prototype = {
         }
       )
       if (!createResponse.ok) {
-        return { success: false, error: `Failed to create Script Include: HTTP ${createResponse.status}` }
+        const errorBody = await createResponse.text()
+        return { success: false, error: `Failed to create Script Include: HTTP ${createResponse.status} - ${errorBody}` }
       }
+      const siData = await createResponse.json()
+      log(`Script Include created (sys_id: ${siData.result?.sys_id})`)
     }
 
     // Step 2: Create Scripted REST API
+    log("Step 2: Checking Scripted REST API...")
     const restCheckResponse = await fetch(
       `${instanceUrl}/api/now/table/sys_ws_definition?sysparm_query=service_id=snow_flow&sysparm_limit=1`,
       { headers }
@@ -990,8 +1009,10 @@ SnowFlowLLMService.prototype = {
 
     if (restCheckData.result && restCheckData.result.length > 0) {
       restApiSysId = restCheckData.result[0].sys_id
+      log(`REST API exists (sys_id: ${restApiSysId})`)
     } else {
       // Create REST API Definition
+      log("REST API not found, creating...")
       const restApiResponse = await fetch(
         `${instanceUrl}/api/now/table/sys_ws_definition`,
         {
@@ -1006,10 +1027,12 @@ SnowFlowLLMService.prototype = {
         }
       )
       if (!restApiResponse.ok) {
-        return { success: false, error: `Failed to create REST API: HTTP ${restApiResponse.status}` }
+        const errorBody = await restApiResponse.text()
+        return { success: false, error: `Failed to create REST API: HTTP ${restApiResponse.status} - ${errorBody}` }
       }
       const restApiData = await restApiResponse.json()
       restApiSysId = restApiData.result.sys_id
+      log(`REST API created (sys_id: ${restApiSysId})`)
     }
 
     // Step 3: Create REST Resources
@@ -1139,7 +1162,9 @@ SnowFlowLLMService.prototype = {
       },
     ]
 
+    log(`Step 3: Creating ${resources.length} REST Resources...`)
     for (const resource of resources) {
+      log(`  Checking resource: ${resource.name} (${resource.relative_path})`)
       // Check if resource exists
       const resCheckResponse = await fetch(
         `${instanceUrl}/api/now/table/sys_ws_operation?sysparm_query=web_service_definition=${restApiSysId}^relative_path=${encodeURIComponent(resource.relative_path)}&sysparm_limit=1`,
@@ -1149,6 +1174,7 @@ SnowFlowLLMService.prototype = {
 
       if (resCheckData.result && resCheckData.result.length > 0) {
         // Update existing resource
+        log(`    Resource exists (sys_id: ${resCheckData.result[0].sys_id}), updating...`)
         const updateRes = await fetch(
           `${instanceUrl}/api/now/table/sys_ws_operation/${resCheckData.result[0].sys_id}`,
           {
@@ -1161,8 +1187,10 @@ SnowFlowLLMService.prototype = {
           const errorBody = await updateRes.text()
           return { success: false, error: `Failed to update resource ${resource.name}: HTTP ${updateRes.status} - ${errorBody}` }
         }
+        log(`    Resource updated successfully`)
       } else {
         // Create new resource
+        log(`    Resource not found, creating...`)
         const createRes = await fetch(
           `${instanceUrl}/api/now/table/sys_ws_operation`,
           {
@@ -1182,8 +1210,11 @@ SnowFlowLLMService.prototype = {
           const errorBody = await createRes.text()
           return { success: false, error: `Failed to create resource ${resource.name}: HTTP ${createRes.status} - ${errorBody}` }
         }
+        const resData = await createRes.json()
+        log(`    Resource created (sys_id: ${resData.result?.sys_id})`)
       }
     }
+    log("All resources created successfully")
 
     // Set system properties for REST Message configuration if provided
     if (options.restMessage || options.httpMethod || options.defaultModel) {
@@ -1624,15 +1655,26 @@ export const AuthListCommand = cmd({
   },
 })
 
+// Global verbose flag for detailed logging
+let verboseMode = false
+
 export const AuthLoginCommand = cmd({
   command: "login [url]",
   describe: "log in to a provider",
   builder: (yargs) =>
-    yargs.positional("url", {
-      describe: "opencode auth provider",
-      type: "string",
-    }),
+    yargs
+      .positional("url", {
+        describe: "opencode auth provider",
+        type: "string",
+      })
+      .option("verbose", {
+        alias: "v",
+        describe: "enable verbose logging for debugging",
+        type: "boolean",
+        default: false,
+      }),
   async handler(args) {
+    verboseMode = args.verbose as boolean
     await Instance.provide({
       directory: process.cwd(),
       async fn() {
