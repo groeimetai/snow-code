@@ -3713,7 +3713,6 @@ export const AuthLoginCommand = cmd({
               name: "ServiceNow MID Server LLM",
               options: {
                 baseURL: `${instanceUrl}${effectiveBaseUri}`,
-                apiKey: "{env:SERVICENOW_LLM_TOKEN}",
                 restMessage: selectedRestMessage,
                 httpMethod: selectedHttpMethod,
                 midServer: selectedMidServer,
@@ -3735,7 +3734,6 @@ export const AuthLoginCommand = cmd({
               name: "ServiceNow LLM Gateway",
               options: {
                 baseURL: `${instanceUrl}/api/x_snow_llm/v1`,
-                apiKey: "{env:SERVICENOW_LLM_TOKEN}",
                 midServer: selectedMidServer,
                 llmEndpoint: llmEndpoint,
                 llmType: llmType,
@@ -3761,6 +3759,15 @@ export const AuthLoginCommand = cmd({
           globalConfig.model = `servicenow-llm/${selectedModel}`
 
           await Bun.write(globalConfigPath, JSON.stringify(globalConfig, null, 2))
+
+          // Save the ServiceNow access token as API key for servicenow-llm provider
+          // This allows the @ai-sdk/openai-compatible SDK to authenticate with ServiceNow
+          if (accessToken) {
+            await Auth.set("servicenow-llm", {
+              type: "api",
+              key: accessToken,
+            })
+          }
 
           // ============================================================================
           // OUTPUT SUMMARY
