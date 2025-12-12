@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.5.13",
+  "version": "1.5.14",
   "name": "@groeimetai/snow-code",
   "description": "Snow-Code - AI-powered ServiceNow development CLI enhanced for Snow-Flow",
   "type": "module",
