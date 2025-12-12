@@ -440,7 +440,119 @@ export namespace Provider {
       const modPath =
         provider.id === "google-vertex-anthropic" ? `${installedPath}/dist/anthropic/index.mjs` : installedPath
       const mod = await import(modPath)
-      if (options["timeout"] !== undefined && options["timeout"] !== null) {
+      // ServiceNow-LLM provider needs special handling:
+      // ServiceNow Scripted REST APIs wrap responses in { "result": ... }
+      // but the AI SDK expects direct OpenAI-compatible format
+      if (provider.id === "servicenow-llm") {
+        const originalTimeout = options["timeout"]
+        options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
+          const { signal, ...rest } = init ?? {}
+
+          const signals: AbortSignal[] = []
+          if (signal) signals.push(signal)
+          if (originalTimeout !== undefined && originalTimeout !== null && originalTimeout !== false) {
+            signals.push(AbortSignal.timeout(originalTimeout))
+          }
+
+          const combined = signals.length > 1 ? AbortSignal.any(signals) : signals.length === 1 ? signals[0] : undefined
+
+          // Make the request to ServiceNow
+          const response = await fetch(input, {
+            ...rest,
+            signal: combined,
+            // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
+            timeout: false,
+          })
+
+          // Clone the response to read the body
+          const cloned = response.clone()
+          try {
+            const text = await cloned.text()
+
+            // Try to parse as JSON to check for ServiceNow wrapper
+            let body: any
+            try {
+              body = JSON.parse(text)
+            } catch {
+              // Not JSON, return original response
+              return response
+            }
+
+            // Check if this is a ServiceNow wrapped response
+            if (body && typeof body === "object" && "result" in body) {
+              const unwrapped = body.result
+
+              // If the unwrapped result is the OpenAI format, use it
+              // OpenAI format has: choices array or error object
+              if (
+                unwrapped &&
+                typeof unwrapped === "object" &&
+                (Array.isArray(unwrapped.choices) || unwrapped.error || unwrapped.id)
+              ) {
+                // Return a new Response with the unwrapped body
+                return new Response(JSON.stringify(unwrapped), {
+                  status: response.status,
+                  statusText: response.statusText,
+                  headers: response.headers,
+                })
+              }
+
+              // Check if ServiceNow returned a custom format that we need to convert
+              // Custom format: { success: true, response: "...", model: "...", usage: {...} }
+              if (unwrapped && unwrapped.success === true && typeof unwrapped.response === "string") {
+                // Convert custom format to OpenAI format
+                const openAIResponse = {
+                  id: `chatcmpl-${Date.now()}`,
+                  object: "chat.completion",
+                  created: Math.floor(Date.now() / 1000),
+                  model: unwrapped.model || "unknown",
+                  choices: [
+                    {
+                      index: 0,
+                      message: {
+                        role: "assistant",
+                        content: unwrapped.response,
+                      },
+                      finish_reason: "stop",
+                    },
+                  ],
+                  usage: unwrapped.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+                }
+                return new Response(JSON.stringify(openAIResponse), {
+                  status: response.status,
+                  statusText: response.statusText,
+                  headers: response.headers,
+                })
+              }
+
+              // Check if it's an error response from ServiceNow
+              if (unwrapped && unwrapped.success === false && unwrapped.error) {
+                const errorResponse = {
+                  error: {
+                    message: unwrapped.error,
+                    type: "servicenow_error",
+                  },
+                }
+                return new Response(JSON.stringify(errorResponse), {
+                  status: 500,
+                  statusText: "Internal Server Error",
+                  headers: response.headers,
+                })
+              }
+            }
+
+            // If the response is already in OpenAI format (no wrapper), return as-is
+            if (body && (Array.isArray(body.choices) || body.error || body.id)) {
+              return response
+            }
+          } catch (e) {
+            // If we can't process the response, return the original
+            log.warn("servicenow-llm fetch handler error", { error: String(e) })
+          }
+
+          return response
+        }
+      } else if (options["timeout"] !== undefined && options["timeout"] !== null) {
         // Only override fetch if user explicitly sets timeout
         options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
           const { signal, ...rest } = init ?? {}
