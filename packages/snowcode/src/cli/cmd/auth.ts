@@ -730,8 +730,11 @@ async function testSnowFlowLLMChat(options: {
   restMessage: string
   httpMethod: string
   model?: string
+  apiBaseUri?: string
 }): Promise<{ success: boolean; response?: string; error?: string }> {
-  const { instanceUrl, accessToken, restMessage, httpMethod, model } = options
+  const { instanceUrl, accessToken, restMessage, httpMethod, model, apiBaseUri } = options
+  // apiBaseUri is like "/api/1304151/snow_flow", add "/llm" for resource path
+  const baseUri = apiBaseUri ? `${apiBaseUri}/llm` : "/api/snow_flow/llm"
 
   const headers = {
     "Authorization": `Bearer ${accessToken}`,
@@ -740,7 +743,7 @@ async function testSnowFlowLLMChat(options: {
   }
 
   try {
-    const response = await fetch(`${instanceUrl}/api/snow_flow/llm/chat`, {
+    const response = await fetch(`${instanceUrl}${baseUri}/chat`, {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -780,7 +783,7 @@ async function deploySnowFlowLLMAPI(options: {
   httpMethod?: string
   defaultModel?: string
   verbose?: boolean
-}): Promise<{ success: boolean; error?: string }> {
+}): Promise<{ success: boolean; error?: string; namespace?: string; baseUri?: string }> {
   const { instanceUrl, accessToken } = options
   const verbose = options.verbose || verboseMode
 
@@ -1000,16 +1003,20 @@ SnowFlowLLMService.prototype = {
     // Step 2: Create Scripted REST API
     log("Step 2: Checking Scripted REST API...")
     const restCheckResponse = await fetch(
-      `${instanceUrl}/api/now/table/sys_ws_definition?sysparm_query=service_id=snow_flow&sysparm_limit=1`,
+      `${instanceUrl}/api/now/table/sys_ws_definition?sysparm_query=service_id=snow_flow&sysparm_fields=sys_id,namespace,base_uri&sysparm_limit=1`,
       { headers }
     )
     const restCheckData = await restCheckResponse.json()
 
     let restApiSysId: string
+    let apiNamespace: string = ""
+    let apiBaseUri: string = ""
 
     if (restCheckData.result && restCheckData.result.length > 0) {
       restApiSysId = restCheckData.result[0].sys_id
-      log(`REST API exists (sys_id: ${restApiSysId})`)
+      apiNamespace = restCheckData.result[0].namespace || ""
+      apiBaseUri = restCheckData.result[0].base_uri || ""
+      log(`REST API exists (sys_id: ${restApiSysId}, namespace: ${apiNamespace}, base_uri: ${apiBaseUri})`)
     } else {
       // Create REST API Definition
       log("REST API not found, creating...")
@@ -1032,7 +1039,19 @@ SnowFlowLLMService.prototype = {
       }
       const restApiData = await restApiResponse.json()
       restApiSysId = restApiData.result.sys_id
-      log(`REST API created (sys_id: ${restApiSysId})`)
+
+      // Re-fetch to get the generated namespace
+      log("Fetching generated namespace...")
+      const refetchResponse = await fetch(
+        `${instanceUrl}/api/now/table/sys_ws_definition/${restApiSysId}?sysparm_fields=namespace,base_uri`,
+        { headers }
+      )
+      if (refetchResponse.ok) {
+        const refetchData = await refetchResponse.json()
+        apiNamespace = refetchData.result?.namespace || ""
+        apiBaseUri = refetchData.result?.base_uri || ""
+      }
+      log(`REST API created (sys_id: ${restApiSysId}, namespace: ${apiNamespace}, base_uri: ${apiBaseUri})`)
     }
 
     // Step 3: Create REST Resources
@@ -1263,7 +1282,8 @@ SnowFlowLLMService.prototype = {
       }
     }
 
-    return { success: true }
+    log(`Deployment complete! API base URI: ${apiBaseUri}`)
+    return { success: true, namespace: apiNamespace, baseUri: apiBaseUri }
   } catch (error: any) {
     return { success: false, error: error.message }
   }
@@ -3327,6 +3347,7 @@ export const AuthLoginCommand = cmd({
           let llmType: string = ""
           let gatewayDeployed = false
           let connectivityTested = false
+          let apiBaseUri: string = ""  // The actual API base URI from ServiceNow (includes namespace)
 
           prompts.log.message("")
           const discoverSpinner = prompts.spinner()
@@ -3459,6 +3480,10 @@ export const AuthLoginCommand = cmd({
                 if (deployResult.success) {
                   deploySpinner.stop("Snow-Flow LLM API deployed successfully!")
                   gatewayDeployed = true
+                  apiBaseUri = deployResult.baseUri || ""
+                  if (apiBaseUri) {
+                    prompts.log.info(`API endpoint: ${instanceUrl}${apiBaseUri}`)
+                  }
                 } else {
                   deploySpinner.stop(`Deployment failed: ${deployResult.error}`)
                 }
@@ -3482,6 +3507,7 @@ export const AuthLoginCommand = cmd({
                     restMessage: selectedRestMessage,
                     httpMethod: selectedHttpMethod,
                     model: selectedModel,
+                    apiBaseUri: apiBaseUri,
                   })
 
                   if (testResult.success) {
@@ -3679,11 +3705,15 @@ export const AuthLoginCommand = cmd({
 
           if (discoveryMode) {
             // Discovery mode config - uses REST Message
+            // Use the actual API base URI from deployment (includes ServiceNow-generated namespace)
+            // apiBaseUri is like "/api/1304151/snow_flow", resources are at "/llm/..."
+            // So full baseURL for AI SDK is: instanceUrl + apiBaseUri + "/llm"
+            const effectiveBaseUri = apiBaseUri ? `${apiBaseUri}/llm` : "/api/snow_flow/llm"
             globalConfig.provider["servicenow-llm"] = {
               npm: "@ai-sdk/openai-compatible",
               name: "ServiceNow MID Server LLM",
               options: {
-                baseURL: `${instanceUrl}/api/snow_flow/llm`,
+                baseURL: `${instanceUrl}${effectiveBaseUri}`,
                 apiKey: "{env:SERVICENOW_LLM_TOKEN}",
                 restMessage: selectedRestMessage,
                 httpMethod: selectedHttpMethod,
