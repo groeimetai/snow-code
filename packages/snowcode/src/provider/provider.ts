@@ -441,19 +441,99 @@ export namespace Provider {
         provider.id === "google-vertex-anthropic" ? `${installedPath}/dist/anthropic/index.mjs` : installedPath
       const mod = await import(modPath)
       // ServiceNow-LLM provider needs special handling:
-      // ServiceNow Scripted REST APIs wrap responses in { "result": ... }
-      // but the AI SDK expects direct OpenAI-compatible format
-      // Also, MID Server calls are async via ECC Queue and can take 30-120+ seconds
+      // 1. ServiceNow Scripted REST APIs wrap responses in { "result": ... }
+      // 2. MID Server calls are async via ECC Queue and can take 30-120+ seconds
+      // 3. ServiceNow returns complete JSON but AI SDK expects SSE streaming
       if (provider.id === "servicenow-llm") {
         // Use a long timeout for MID Server calls (default 180s = 3 minutes)
-        // ServiceNow's waitForResponse() is typically set to 120s
-        const midServerTimeout = options["timeout"] ?? 180000 // 3 minutes default
+        const midServerTimeout = options["timeout"] ?? 180000
+
+        // Helper function to convert complete response to SSE stream
+        const createSSEStream = (content: string, model: string, usage?: any) => {
+          const id = `chatcmpl-${Date.now()}`
+          const created = Math.floor(Date.now() / 1000)
+
+          // Create SSE chunks - split content into smaller pieces for realistic streaming
+          const chunks: string[] = []
+
+          // First chunk with role
+          chunks.push(
+            `data: ${JSON.stringify({
+              id,
+              object: "chat.completion.chunk",
+              created,
+              model,
+              choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
+            })}\n\n`,
+          )
+
+          // Content chunks - split by words for smoother streaming
+          const words = content.split(/(\s+)/)
+          let currentChunk = ""
+          for (const word of words) {
+            currentChunk += word
+            if (currentChunk.length >= 10 || word.includes("\n")) {
+              chunks.push(
+                `data: ${JSON.stringify({
+                  id,
+                  object: "chat.completion.chunk",
+                  created,
+                  model,
+                  choices: [{ index: 0, delta: { content: currentChunk }, finish_reason: null }],
+                })}\n\n`,
+              )
+              currentChunk = ""
+            }
+          }
+
+          // Send remaining content
+          if (currentChunk) {
+            chunks.push(
+              `data: ${JSON.stringify({
+                id,
+                object: "chat.completion.chunk",
+                created,
+                model,
+                choices: [{ index: 0, delta: { content: currentChunk }, finish_reason: null }],
+              })}\n\n`,
+            )
+          }
+
+          // Final chunk with finish_reason and usage
+          chunks.push(
+            `data: ${JSON.stringify({
+              id,
+              object: "chat.completion.chunk",
+              created,
+              model,
+              choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+              usage: usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            })}\n\n`,
+          )
+
+          // [DONE] marker
+          chunks.push("data: [DONE]\n\n")
+
+          return chunks.join("")
+        }
+
         options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
           const { signal, ...rest } = init ?? {}
 
+          // Check if this is a streaming request
+          let isStreamingRequest = false
+          try {
+            if (init?.body) {
+              const bodyStr = typeof init.body === "string" ? init.body : await new Response(init.body).text()
+              const bodyJson = JSON.parse(bodyStr)
+              isStreamingRequest = bodyJson.stream === true
+            }
+          } catch {
+            // Ignore parsing errors
+          }
+
           const signals: AbortSignal[] = []
           if (signal) signals.push(signal)
-          // Always add a timeout for MID Server calls to prevent hanging forever
           if (midServerTimeout !== false) {
             signals.push(AbortSignal.timeout(midServerTimeout))
           }
@@ -463,6 +543,7 @@ export namespace Provider {
           log.info("servicenow-llm fetch", {
             url: typeof input === "string" ? input : input.url,
             timeout: midServerTimeout,
+            streaming: isStreamingRequest,
           })
 
           // Make the request to ServiceNow
@@ -483,84 +564,113 @@ export namespace Provider {
           try {
             const text = await cloned.text()
 
-            // Try to parse as JSON to check for ServiceNow wrapper
+            log.info("servicenow-llm raw body", {
+              length: text.length,
+              preview: text.substring(0, 300),
+            })
+
+            // Try to parse as JSON
             let body: any
             try {
               body = JSON.parse(text)
-            } catch {
-              // Not JSON, return original response
+            } catch (parseError) {
+              log.warn("servicenow-llm not JSON", { error: String(parseError) })
               return response
             }
 
-            // Check if this is a ServiceNow wrapped response
+            // Extract content from various response formats
+            let content: string | null = null
+            let model = "unknown"
+            let usage: any = null
+
+            // Check for ServiceNow wrapper
             if (body && typeof body === "object" && "result" in body) {
               const unwrapped = body.result
 
-              // If the unwrapped result is the OpenAI format, use it
-              // OpenAI format has: choices array or error object
-              if (
-                unwrapped &&
-                typeof unwrapped === "object" &&
-                (Array.isArray(unwrapped.choices) || unwrapped.error || unwrapped.id)
-              ) {
-                // Return a new Response with the unwrapped body
-                return new Response(JSON.stringify(unwrapped), {
-                  status: response.status,
-                  statusText: response.statusText,
-                  headers: response.headers,
-                })
-              }
+              log.info("servicenow-llm unwrapped", {
+                type: typeof unwrapped,
+                keys: unwrapped && typeof unwrapped === "object" ? Object.keys(unwrapped) : [],
+              })
 
-              // Check if ServiceNow returned a custom format that we need to convert
-              // Custom format: { success: true, response: "...", model: "...", usage: {...} }
-              if (unwrapped && unwrapped.success === true && typeof unwrapped.response === "string") {
-                // Convert custom format to OpenAI format
+              // OpenAI format inside wrapper
+              if (unwrapped && Array.isArray(unwrapped.choices) && unwrapped.choices[0]?.message?.content) {
+                content = unwrapped.choices[0].message.content
+                model = unwrapped.model || model
+                usage = unwrapped.usage
+                log.info("servicenow-llm: extracted from OpenAI format in wrapper")
+              }
+              // Custom ServiceNow format
+              else if (unwrapped && unwrapped.success === true && typeof unwrapped.response === "string") {
+                content = unwrapped.response
+                model = unwrapped.model || model
+                usage = unwrapped.usage
+                log.info("servicenow-llm: extracted from custom format")
+              }
+              // Error response
+              else if (unwrapped && unwrapped.success === false && unwrapped.error) {
+                log.warn("servicenow-llm: ServiceNow error", { error: unwrapped.error })
+                return new Response(
+                  JSON.stringify({ error: { message: unwrapped.error, type: "servicenow_error" } }),
+                  { status: 500, headers: { "content-type": "application/json" } },
+                )
+              }
+            }
+            // Direct OpenAI format (no wrapper)
+            else if (body && Array.isArray(body.choices) && body.choices[0]?.message?.content) {
+              content = body.choices[0].message.content
+              model = body.model || model
+              usage = body.usage
+              log.info("servicenow-llm: extracted from direct OpenAI format")
+            }
+
+            // If we extracted content and this is a streaming request, convert to SSE
+            if (content !== null) {
+              log.info("servicenow-llm: content extracted", {
+                contentLength: content.length,
+                model,
+                isStreaming: isStreamingRequest,
+              })
+
+              if (isStreamingRequest) {
+                // Convert to SSE stream
+                const sseBody = createSSEStream(content, model, usage)
+                log.info("servicenow-llm: returning SSE stream", { sseLength: sseBody.length })
+
+                return new Response(sseBody, {
+                  status: 200,
+                  headers: {
+                    "content-type": "text/event-stream",
+                    "cache-control": "no-cache",
+                    connection: "keep-alive",
+                  },
+                })
+              } else {
+                // Non-streaming: return OpenAI JSON format
                 const openAIResponse = {
                   id: `chatcmpl-${Date.now()}`,
                   object: "chat.completion",
                   created: Math.floor(Date.now() / 1000),
-                  model: unwrapped.model || "unknown",
+                  model,
                   choices: [
                     {
                       index: 0,
-                      message: {
-                        role: "assistant",
-                        content: unwrapped.response,
-                      },
+                      message: { role: "assistant", content },
                       finish_reason: "stop",
                     },
                   ],
-                  usage: unwrapped.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+                  usage: usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
                 }
                 return new Response(JSON.stringify(openAIResponse), {
-                  status: response.status,
-                  statusText: response.statusText,
-                  headers: response.headers,
-                })
-              }
-
-              // Check if it's an error response from ServiceNow
-              if (unwrapped && unwrapped.success === false && unwrapped.error) {
-                const errorResponse = {
-                  error: {
-                    message: unwrapped.error,
-                    type: "servicenow_error",
-                  },
-                }
-                return new Response(JSON.stringify(errorResponse), {
-                  status: 500,
-                  statusText: "Internal Server Error",
-                  headers: response.headers,
+                  status: 200,
+                  headers: { "content-type": "application/json" },
                 })
               }
             }
 
-            // If the response is already in OpenAI format (no wrapper), return as-is
-            if (body && (Array.isArray(body.choices) || body.error || body.id)) {
-              return response
-            }
+            log.warn("servicenow-llm: could not extract content from response", {
+              bodyPreview: JSON.stringify(body).substring(0, 300),
+            })
           } catch (e) {
-            // If we can't process the response, return the original
             log.warn("servicenow-llm fetch handler error", { error: String(e) })
           }
 
