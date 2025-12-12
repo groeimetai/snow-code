@@ -1688,7 +1688,6 @@ export const AuthLoginCommand = cmd({
         type: "string",
       })
       .option("verbose", {
-        alias: "v",
         describe: "enable verbose logging for debugging",
         type: "boolean",
         default: false,
