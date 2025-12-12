@@ -628,7 +628,7 @@ async function discoverRestMessages(instanceUrl: string, accessToken: string): P
 
     // Fallback: Query sys_rest_message table directly
     const response = await fetch(
-      `${instanceUrl}/api/now/table/sys_rest_message?sysparm_query=use_mid_server=true&sysparm_fields=name,sys_id,rest_endpoint,mid_server&sysparm_display_value=true&sysparm_limit=50`,
+      `${instanceUrl}/api/now/table/sys_rest_message?sysparm_query=mid_serverISNOTEMPTY&sysparm_fields=name,sys_id,rest_endpoint,mid_server&sysparm_display_value=true&sysparm_limit=50`,
       { headers }
     )
 
@@ -767,6 +767,9 @@ async function testSnowFlowLLMChat(options: {
 async function deploySnowFlowLLMAPI(options: {
   instanceUrl: string
   accessToken: string
+  restMessage?: string
+  httpMethod?: string
+  defaultModel?: string
 }): Promise<{ success: boolean; error?: string }> {
   const { instanceUrl, accessToken } = options
 
@@ -819,6 +822,43 @@ SnowFlowLLMService.prototype = {
         return result;
     },
 
+    // Chat with full OpenAI messages array
+    chatOpenAI: function(messages, maxTokens, restMessageName, httpMethodName, modelName) {
+        var result = { success: false, response: '', error: '' };
+        try {
+            var r = new sn_ws.RESTMessageV2(restMessageName, httpMethodName);
+
+            // Build OpenAI-compatible request body with full messages array
+            var requestBody = JSON.stringify({
+                model: modelName || gs.getProperty('snow_flow.llm.default_model', 'default'),
+                messages: messages,
+                max_tokens: maxTokens || 100
+            });
+            r.setRequestBody(requestBody);
+
+            var response = r.execute();
+            var httpStatus = response.getStatusCode();
+            var body = response.getBody();
+
+            if (httpStatus == 200) {
+                var parsed = JSON.parse(body);
+                result.success = true;
+                if (parsed.choices && parsed.choices.length > 0) {
+                    result.response = parsed.choices[0].message.content;
+                } else {
+                    result.response = body;
+                }
+                result.model = parsed.model;
+                result.usage = parsed.usage;
+            } else {
+                result.error = 'HTTP ' + httpStatus + ': ' + body;
+            }
+        } catch (ex) {
+            result.error = ex.getMessage();
+        }
+        return result;
+    },
+
     // Lijst beschikbare MID Servers
     getMidServers: function() {
         var servers = [];
@@ -840,7 +880,7 @@ SnowFlowLLMService.prototype = {
     getRestMessages: function() {
         var messages = [];
         var gr = new GlideRecord('sys_rest_message');
-        gr.addQuery('use_mid_server', true);
+        gr.addNotNullQuery('mid_server');
         gr.query();
         while (gr.next()) {
             var methods = [];
@@ -1009,6 +1049,72 @@ SnowFlowLLMService.prototype = {
 })(request, response);`,
       },
       {
+        name: "Chat Completions (OpenAI Compatible)",
+        relative_path: "/llm/chat/completions",
+        http_method: "POST",
+        operation_script: `(function process(request, response) {
+    // OpenAI-compatible endpoint
+    var body = request.body.data;
+    var model = body.model || 'default';
+    var messages = body.messages || [];
+    var maxTokens = body.max_tokens || 100;
+
+    // Get REST Message config from headers or system property
+    var restMessage = request.getHeader('X-Snow-Flow-Rest-Message') ||
+                      gs.getProperty('snow_flow.llm.rest_message', '');
+    var httpMethod = request.getHeader('X-Snow-Flow-Http-Method') ||
+                     gs.getProperty('snow_flow.llm.http_method', 'Chat_Completions');
+
+    if (!restMessage) {
+        response.setStatus(400);
+        return {
+            error: {
+                message: 'REST Message not configured. Set X-Snow-Flow-Rest-Message header or snow_flow.llm.rest_message property.',
+                type: 'invalid_request_error'
+            }
+        };
+    }
+
+    // Extract user message from messages array
+    var userMessage = '';
+    for (var i = 0; i < messages.length; i++) {
+        if (messages[i].role === 'user') {
+            userMessage = messages[i].content;
+        }
+    }
+
+    var service = new SnowFlowLLMService();
+    var result = service.chatOpenAI(messages, maxTokens, restMessage, httpMethod, model);
+
+    if (result.success) {
+        response.setStatus(200);
+        return {
+            id: 'chatcmpl-' + gs.generateGUID(),
+            object: 'chat.completion',
+            created: Math.floor(new Date().getTime() / 1000),
+            model: result.model || model,
+            choices: [{
+                index: 0,
+                message: {
+                    role: 'assistant',
+                    content: result.response
+                },
+                finish_reason: 'stop'
+            }],
+            usage: result.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+        };
+    } else {
+        response.setStatus(500);
+        return {
+            error: {
+                message: result.error,
+                type: 'api_error'
+            }
+        };
+    }
+})(request, response);`,
+      },
+      {
         name: "Models",
         relative_path: "/llm/models",
         http_method: "GET",
@@ -1061,6 +1167,53 @@ SnowFlowLLMService.prototype = {
             }),
           }
         )
+      }
+    }
+
+    // Set system properties for REST Message configuration if provided
+    if (options.restMessage || options.httpMethod || options.defaultModel) {
+      const properties = [
+        { name: "snow_flow.llm.rest_message", value: options.restMessage || "" },
+        { name: "snow_flow.llm.http_method", value: options.httpMethod || "Chat_Completions" },
+        { name: "snow_flow.llm.default_model", value: options.defaultModel || "default" },
+      ]
+
+      for (const prop of properties) {
+        if (prop.value) {
+          // Check if property exists
+          const propCheckResponse = await fetch(
+            `${instanceUrl}/api/now/table/sys_properties?sysparm_query=name=${encodeURIComponent(prop.name)}&sysparm_limit=1`,
+            { headers }
+          )
+          const propCheckData = await propCheckResponse.json()
+
+          if (propCheckData.result && propCheckData.result.length > 0) {
+            // Update existing property
+            await fetch(
+              `${instanceUrl}/api/now/table/sys_properties/${propCheckData.result[0].sys_id}`,
+              {
+                method: "PATCH",
+                headers,
+                body: JSON.stringify({ value: prop.value }),
+              }
+            )
+          } else {
+            // Create new property
+            await fetch(
+              `${instanceUrl}/api/now/table/sys_properties`,
+              {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                  name: prop.name,
+                  value: prop.value,
+                  description: "Snow-Flow LLM configuration",
+                  type: "string",
+                }),
+              }
+            )
+          }
+        }
       }
     }
 
@@ -3238,7 +3391,13 @@ export const AuthLoginCommand = cmd({
                 const deploySpinner = prompts.spinner()
                 deploySpinner.start("Deploying Snow-Flow LLM API...")
 
-                const deployResult = await deploySnowFlowLLMAPI({ instanceUrl, accessToken: accessToken! })
+                const deployResult = await deploySnowFlowLLMAPI({
+                  instanceUrl,
+                  accessToken: accessToken!,
+                  restMessage: selectedRestMessage,
+                  httpMethod: selectedHttpMethod,
+                  defaultModel: selectedModel,
+                })
 
                 if (deployResult.success) {
                   deploySpinner.stop("Snow-Flow LLM API deployed successfully!")
