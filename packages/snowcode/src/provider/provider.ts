@@ -443,18 +443,27 @@ export namespace Provider {
       // ServiceNow-LLM provider needs special handling:
       // ServiceNow Scripted REST APIs wrap responses in { "result": ... }
       // but the AI SDK expects direct OpenAI-compatible format
+      // Also, MID Server calls are async via ECC Queue and can take 30-120+ seconds
       if (provider.id === "servicenow-llm") {
-        const originalTimeout = options["timeout"]
+        // Use a long timeout for MID Server calls (default 180s = 3 minutes)
+        // ServiceNow's waitForResponse() is typically set to 120s
+        const midServerTimeout = options["timeout"] ?? 180000 // 3 minutes default
         options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
           const { signal, ...rest } = init ?? {}
 
           const signals: AbortSignal[] = []
           if (signal) signals.push(signal)
-          if (originalTimeout !== undefined && originalTimeout !== null && originalTimeout !== false) {
-            signals.push(AbortSignal.timeout(originalTimeout))
+          // Always add a timeout for MID Server calls to prevent hanging forever
+          if (midServerTimeout !== false) {
+            signals.push(AbortSignal.timeout(midServerTimeout))
           }
 
           const combined = signals.length > 1 ? AbortSignal.any(signals) : signals.length === 1 ? signals[0] : undefined
+
+          log.info("servicenow-llm fetch", {
+            url: typeof input === "string" ? input : input.url,
+            timeout: midServerTimeout,
+          })
 
           // Make the request to ServiceNow
           const response = await fetch(input, {
@@ -462,6 +471,11 @@ export namespace Provider {
             signal: combined,
             // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
             timeout: false,
+          })
+
+          log.info("servicenow-llm response", {
+            status: response.status,
+            statusText: response.statusText,
           })
 
           // Clone the response to read the body
