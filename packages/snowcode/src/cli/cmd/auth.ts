@@ -297,11 +297,69 @@ async function discoverRestMessages(instanceUrl: string, accessToken: string): P
 }
 
 /**
+ * Look up model metadata from models.dev database
+ * Tries to match model ID using various patterns (exact match, partial match, fuzzy match)
+ */
+async function lookupModelInModelsDev(modelId: string): Promise<{
+  found: boolean
+  contextWindow?: number
+  maxTokens?: number
+  matchedModel?: string
+}> {
+  try {
+    const database = await ModelsDev.get()
+    const normalizedId = modelId.toLowerCase().replace(/[_-]/g, "")
+
+    // Search across all providers for a matching model
+    for (const [_providerId, provider] of Object.entries(database)) {
+      for (const [modelKey, model] of Object.entries(provider.models)) {
+        const normalizedKey = modelKey.toLowerCase().replace(/[_-]/g, "")
+        const normalizedModelId = (model.id || "").toLowerCase().replace(/[_-]/g, "")
+        const normalizedName = (model.name || "").toLowerCase().replace(/[_-]/g, "")
+
+        // Try exact match first
+        if (normalizedKey === normalizedId || normalizedModelId === normalizedId) {
+          return {
+            found: true,
+            contextWindow: model.limit?.context,
+            maxTokens: model.limit?.output,
+            matchedModel: modelKey,
+          }
+        }
+
+        // Try partial match (e.g., "llama3" matches "llama-3-70b-instruct")
+        if (normalizedKey.includes(normalizedId) || normalizedId.includes(normalizedKey) ||
+            normalizedModelId.includes(normalizedId) || normalizedId.includes(normalizedModelId) ||
+            normalizedName.includes(normalizedId) || normalizedId.includes(normalizedName)) {
+          return {
+            found: true,
+            contextWindow: model.limit?.context,
+            maxTokens: model.limit?.output,
+            matchedModel: modelKey,
+          }
+        }
+      }
+    }
+
+    return { found: false }
+  } catch {
+    return { found: false }
+  }
+}
+
+/**
  * Discover available models from LLM endpoint via Snow-Flow API
  */
+interface ModelInfo {
+  id: string
+  name?: string
+  contextWindow?: number  // max_model_len (vLLM) or context_length (Ollama)
+  maxTokens?: number      // Recommended max output tokens
+}
+
 async function discoverModels(instanceUrl: string, accessToken: string, restMessage: string): Promise<{
   success: boolean
-  models?: Array<{ id: string; name?: string }>
+  models?: Array<ModelInfo>
   error?: string
 }> {
   const headers = {
@@ -320,10 +378,19 @@ async function discoverModels(instanceUrl: string, accessToken: string, restMess
     }
 
     const data = await response.json()
-    const models = (data.result?.models || []).map((m: any) => ({
-      id: m.id || m,
-      name: m.name || m.id || m,
-    }))
+    const models: ModelInfo[] = (data.result?.models || []).map((m: any) => {
+      // Extract context window from various possible field names
+      // vLLM uses max_model_len, Ollama uses context_length, HuggingFace TGI uses max_input_length
+      const contextWindow = m.max_model_len || m.context_length || m.max_input_length || m.context_window || undefined
+
+      return {
+        id: m.id || m,
+        name: m.name || m.id || m,
+        contextWindow: contextWindow ? Number(contextWindow) : undefined,
+        // Recommended max_tokens is typically 1/4 to 1/2 of context window
+        maxTokens: contextWindow ? Math.min(4096, Math.floor(Number(contextWindow) / 4)) : undefined,
+      }
+    })
 
     return { success: true, models }
   } catch (error: any) {
@@ -2894,6 +2961,28 @@ export const AuthLoginCommand = cmd({
               )
               if (refreshResult.success) {
                 accessToken = refreshResult.accessToken
+
+                // Persist the new access token and updated expiration
+                const newExpiresAt = refreshResult.expiresIn
+                  ? Date.now() + refreshResult.expiresIn * 1000
+                  : Date.now() + 30 * 60 * 1000
+
+                await Auth.set("servicenow", {
+                  type: "servicenow-oauth",
+                  instance: instanceUrl,
+                  clientId: clientId!,
+                  clientSecret: clientSecret!,
+                  accessToken: refreshResult.accessToken!,
+                  refreshToken: refreshResult.refreshToken || existingServiceNow.refreshToken,
+                  expiresAt: newExpiresAt,
+                })
+
+                // Also update the servicenow-llm API key
+                await Auth.set("servicenow-llm", {
+                  type: "api",
+                  key: refreshResult.accessToken,
+                })
+                prompts.log.success("Token refreshed successfully")
               } else {
                 prompts.log.warn("Token refresh failed, will need to re-authenticate")
                 accessToken = undefined
@@ -2942,6 +3031,23 @@ export const AuthLoginCommand = cmd({
 
             accessToken = authResult.accessToken
             hasOAuthCredentials = true
+
+            // Save the ServiceNow OAuth credentials for future use
+            // This enables token refresh on subsequent runs
+            const expiresAt = authResult.expiresIn
+              ? Date.now() + authResult.expiresIn * 1000
+              : Date.now() + 30 * 60 * 1000 // Default 30 minutes
+
+            await Auth.set("servicenow", {
+              type: "servicenow-oauth",
+              instance: instanceUrl,
+              clientId: clientId!,
+              clientSecret: clientSecret!,
+              accessToken: authResult.accessToken!,
+              refreshToken: authResult.refreshToken,
+              expiresAt: expiresAt,
+            })
+            prompts.log.success("ServiceNow OAuth credentials saved")
           }
 
           // ============================================================================
@@ -2951,6 +3057,8 @@ export const AuthLoginCommand = cmd({
           let selectedRestMessage: string = ""
           let selectedHttpMethod: string = ""
           let selectedModel: string = ""
+          let selectedContextWindow: number | undefined = undefined  // Model's max context length
+          let selectedMaxTokens: number | undefined = undefined      // Recommended max output tokens
           let gatewayDeployed = false
           let connectivityTested = false
           let apiBaseUri: string = ""  // The actual API base URI from ServiceNow (includes namespace)
@@ -3018,11 +3126,19 @@ export const AuthLoginCommand = cmd({
             modelsSpinner.stop(modelsResult.success ? "Models discovered" : "Could not query models")
 
             if (modelsResult.success && modelsResult.models && modelsResult.models.length > 0) {
+              // Format context window for display (e.g., "40960" → "40K")
+              const formatContextWindow = (ctx?: number) => {
+                if (!ctx) return ""
+                if (ctx >= 1000) return `${Math.round(ctx / 1000)}K ctx`
+                return `${ctx} ctx`
+              }
+
               const modelOptions = modelsResult.models.map((m) => ({
                 value: m.id,
                 label: m.name || m.id,
+                hint: m.contextWindow ? formatContextWindow(m.contextWindow) : undefined,
               }))
-              modelOptions.push({ value: "_manual_", label: "Enter model name manually" })
+              modelOptions.push({ value: "_manual_", label: "Enter model name manually", hint: undefined })
 
               const modelChoice = (await prompts.select({
                 message: "Select model",
@@ -3039,6 +3155,12 @@ export const AuthLoginCommand = cmd({
                 if (prompts.isCancel(selectedModel)) throw new UI.CancelledError()
               } else {
                 selectedModel = modelChoice
+                // Get the selected model's metadata from endpoint discovery
+                const selectedModelInfo = modelsResult.models.find((m) => m.id === modelChoice)
+                if (selectedModelInfo) {
+                  selectedContextWindow = selectedModelInfo.contextWindow
+                  selectedMaxTokens = selectedModelInfo.maxTokens
+                }
               }
             } else {
               // Manual model input
@@ -3048,6 +3170,32 @@ export const AuthLoginCommand = cmd({
                 validate: (v) => (!v || v.trim() === "") ? "Model name is required" : undefined,
               })) as string
               if (prompts.isCancel(selectedModel)) throw new UI.CancelledError()
+            }
+
+            // ============================================================================
+            // FALLBACK: Look up model metadata from models.dev if not from endpoint
+            // ============================================================================
+            if (!selectedContextWindow) {
+              const lookupSpinner = prompts.spinner()
+              lookupSpinner.start("Looking up model specifications in models.dev...")
+
+              const modelsDevLookup = await lookupModelInModelsDev(selectedModel)
+
+              if (modelsDevLookup.found && modelsDevLookup.contextWindow) {
+                selectedContextWindow = modelsDevLookup.contextWindow
+                selectedMaxTokens = modelsDevLookup.maxTokens || Math.min(4096, Math.floor(modelsDevLookup.contextWindow / 4))
+                lookupSpinner.stop(`Found in models.dev: ${modelsDevLookup.matchedModel}`)
+                prompts.log.info(`Context window: ${selectedContextWindow.toLocaleString()} tokens`)
+                prompts.log.info(`Max output tokens: ${selectedMaxTokens.toLocaleString()}`)
+              } else {
+                lookupSpinner.stop("Model not found in models.dev")
+                prompts.log.warn("Using conservative default: 4,096 max output tokens")
+                prompts.log.info("Tip: You can manually configure token limits in ~/.config/snow-code/config.json")
+                selectedMaxTokens = 4096
+              }
+            } else {
+              // Show info from endpoint discovery
+              prompts.log.info(`Context window: ${selectedContextWindow.toLocaleString()} tokens (from endpoint)`)
             }
 
             // Deploy Snow-Flow LLM API if not already deployed
@@ -3115,14 +3263,38 @@ export const AuthLoginCommand = cmd({
               }
             }
           } else if (hasMidServers) {
-            // MID Servers found but no REST Messages with MID Server
+            // MID Servers found but no REST Messages configured
             prompts.log.info(`Found ${midServersResult.midServers!.length} MID Server(s), but no LLM REST Messages configured`)
-            prompts.log.warn("You need to create a REST Message in ServiceNow that uses a MID Server")
             prompts.log.message("")
+            prompts.log.error("❌ MID Server LLM setup cannot continue without REST Messages")
+            prompts.log.message("")
+            prompts.log.info("To use MID Server LLM, you need to:")
+            prompts.log.message("  1. Create a REST Message in ServiceNow")
+            prompts.log.message("  2. Configure it to use your MID Server")
+            prompts.log.message("  3. Set up HTTP Methods for chat completions")
+            prompts.log.message("")
+            prompts.log.info("Documentation: https://docs.servicenow.com/bundle/washingtondc-api-reference/page/integrate/outbound-rest/task/t_CreateARESTMessage.html")
+            prompts.log.message("")
+
+            prompts.outro("MID Server LLM setup cancelled - no REST Messages configured")
+            await Instance.dispose()
+            process.exit(1)
           } else {
             // No MID Servers found
-            prompts.log.warn("No active MID Servers found in ServiceNow")
             prompts.log.message("")
+            prompts.log.error("❌ No active MID Servers found in ServiceNow")
+            prompts.log.message("")
+            prompts.log.info("MID Server LLM requires:")
+            prompts.log.message("  1. A MID Server installed and connected to your ServiceNow instance")
+            prompts.log.message("  2. The MID Server must have status 'Up'")
+            prompts.log.message("  3. Network access from MID Server to your local LLM endpoint")
+            prompts.log.message("")
+            prompts.log.info("Documentation: https://docs.servicenow.com/bundle/washingtondc-servicenow-platform/page/product/mid-server/concept/mid-server-landing.html")
+            prompts.log.message("")
+
+            prompts.outro("MID Server LLM setup cancelled - no MID Servers found")
+            await Instance.dispose()
+            process.exit(1)
           }
 
           // ============================================================================
@@ -3162,6 +3334,44 @@ export const AuthLoginCommand = cmd({
           // apiBaseUri is like "/api/1304151/snow_flow", resources are at "/llm/..."
           // So full baseURL for AI SDK is: instanceUrl + apiBaseUri + "/llm"
           const effectiveBaseUri = apiBaseUri ? `${apiBaseUri}/llm` : "/api/snow_flow/llm"
+
+          // Create a friendly alias for the model (e.g., "Qwen/Qwen3-1.7B" → "qwen3-1.7b")
+          // This allows users to use `servicenow-llm/qwen3` instead of the full path
+          const createModelAlias = (modelId: string): string => {
+            // Extract the model name part (after last /)
+            const parts = modelId.split("/")
+            const modelName = parts[parts.length - 1]
+            // Normalize: lowercase, remove special chars except dots and dashes
+            return modelName.toLowerCase().replace(/[^a-z0-9.-]/g, "")
+          }
+
+          const modelAlias = createModelAlias(selectedModel)
+          const useAlias = modelAlias !== selectedModel.toLowerCase()
+
+          // Build models config with both alias and original
+          const modelsConfig: Record<string, any> = {}
+
+          // Primary entry: use alias as key, store real ID
+          if (useAlias) {
+            modelsConfig[modelAlias] = {
+              id: selectedModel,  // ← Real model ID for the endpoint
+              name: `${selectedModel} (via MID Server)`,
+              limit: {
+                context: selectedContextWindow || 0,
+                output: selectedMaxTokens || 4096,
+              },
+            }
+          }
+
+          // Also add the full model ID as a direct entry (for backwards compatibility)
+          modelsConfig[selectedModel] = {
+            name: `${selectedModel} (via MID Server)`,
+            limit: {
+              context: selectedContextWindow || 0,
+              output: selectedMaxTokens || 4096,
+            },
+          }
+
           globalConfig.provider["servicenow-llm"] = {
             npm: "@ai-sdk/openai-compatible",
             name: "ServiceNow MID Server LLM",
@@ -3174,11 +3384,7 @@ export const AuthLoginCommand = cmd({
               gatewayDeployed: gatewayDeployed,
               connectivityTested: connectivityTested,
             },
-            models: {
-              [selectedModel]: {
-                name: `${selectedModel} (via MID Server)`,
-              },
-            },
+            models: modelsConfig,
           }
 
           // Remove legacy root-level midServerLLM if it exists
@@ -3186,8 +3392,8 @@ export const AuthLoginCommand = cmd({
             delete globalConfig.midServerLLM
           }
 
-          // Set default model to use MID Server LLM
-          globalConfig.model = `servicenow-llm/${selectedModel}`
+          // Set default model to use the alias (shorter, friendlier)
+          globalConfig.model = useAlias ? `servicenow-llm/${modelAlias}` : `servicenow-llm/${selectedModel}`
 
           await Bun.write(globalConfigPath, JSON.stringify(globalConfig, null, 2))
 
@@ -3210,7 +3416,16 @@ export const AuthLoginCommand = cmd({
           prompts.log.message(`  • MID Server: ${selectedMidServer}`)
           prompts.log.message(`  • REST Message: ${selectedRestMessage}`)
           prompts.log.message(`  • HTTP Method: ${selectedHttpMethod}`)
-          prompts.log.message(`  • Default Model: ${selectedModel}`)
+          prompts.log.message(`  • Model ID: ${selectedModel}`)
+          if (useAlias) {
+            prompts.log.message(`  • Model Alias: ${modelAlias}`)
+          }
+          if (selectedContextWindow) {
+            prompts.log.message(`  • Context Window: ${selectedContextWindow.toLocaleString()} tokens`)
+            prompts.log.message(`  • Max Output Tokens: ${(selectedMaxTokens || 4096).toLocaleString()} (auto-calculated)`)
+          } else {
+            prompts.log.message(`  • Max Output Tokens: ${(selectedMaxTokens || 4096).toLocaleString()} (default)`)
+          }
           prompts.log.message(`  • API Deployed: ${gatewayDeployed ? "Yes" : "No"}`)
           prompts.log.message(`  • Connectivity Tested: ${connectivityTested ? "Yes" : "No"}`)
 
@@ -3218,6 +3433,16 @@ export const AuthLoginCommand = cmd({
             prompts.log.message("")
             prompts.log.info("ServiceNow Snow-Flow LLM API:")
             prompts.log.message(`  ${instanceUrl}/sys_ws_definition.do?sysparm_query=service_id=snow_flow`)
+          }
+
+          // Show model usage examples
+          prompts.log.message("")
+          prompts.log.info("Model usage:")
+          if (useAlias) {
+            prompts.log.message(`  Default: servicenow-llm/${modelAlias}`)
+            prompts.log.message(`  Full ID: servicenow-llm/${selectedModel}`)
+          } else {
+            prompts.log.message(`  Model: servicenow-llm/${selectedModel}`)
           }
           prompts.log.message("")
 
