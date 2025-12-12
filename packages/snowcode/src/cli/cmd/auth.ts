@@ -158,396 +158,6 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
   // Config updates are transparent to the user
 }
 
-/**
- * Deploy LLM Gateway to ServiceNow via REST API
- * Creates Scripted REST API, Script Include, and System Properties
- */
-async function deployLLMGateway(options: {
-  instanceUrl: string
-  accessToken: string
-  midServerName: string
-  llmEndpoint: string
-  llmType: string
-}): Promise<{ success: boolean; error?: string }> {
-  const { instanceUrl, accessToken, midServerName, llmEndpoint, llmType } = options
-
-  const headers = {
-    "Authorization": `Bearer ${accessToken}`,
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-  }
-
-  try {
-    // Step 1: Create System Properties for LLM Gateway configuration
-    const properties = [
-      { name: "x_snow_llm.mid_server", value: midServerName, description: "MID Server for LLM requests" },
-      { name: "x_snow_llm.llm_endpoint", value: llmEndpoint, description: "Local LLM endpoint URL" },
-      { name: "x_snow_llm.llm_type", value: llmType, description: "LLM type (ollama, vllm, etc.)" },
-    ]
-
-    for (const prop of properties) {
-      // Check if property exists
-      const checkResponse = await fetch(
-        `${instanceUrl}/api/now/table/sys_properties?sysparm_query=name=${encodeURIComponent(prop.name)}&sysparm_limit=1`,
-        { headers }
-      )
-      const checkData = await checkResponse.json()
-
-      if (checkData.result && checkData.result.length > 0) {
-        // Update existing property
-        await fetch(
-          `${instanceUrl}/api/now/table/sys_properties/${checkData.result[0].sys_id}`,
-          {
-            method: "PATCH",
-            headers,
-            body: JSON.stringify({ value: prop.value }),
-          }
-        )
-      } else {
-        // Create new property
-        await fetch(
-          `${instanceUrl}/api/now/table/sys_properties`,
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              name: prop.name,
-              value: prop.value,
-              description: prop.description,
-              type: "string",
-            }),
-          }
-        )
-      }
-    }
-
-    // Step 2: Create Script Include for LLM Gateway logic
-    const scriptIncludeScript = `
-var LLMGateway = Class.create();
-LLMGateway.prototype = {
-  initialize: function() {
-    this.midServer = gs.getProperty('x_snow_llm.mid_server');
-    this.llmEndpoint = gs.getProperty('x_snow_llm.llm_endpoint');
-    this.llmType = gs.getProperty('x_snow_llm.llm_type');
-  },
-
-  /**
-   * Send chat completion request through MID Server
-   * @param {Object} requestBody - OpenAI-compatible request body
-   * @returns {Object} Response from LLM
-   */
-  chatCompletion: function(requestBody) {
-    var ecc = new GlideRecord('ecc_queue');
-    ecc.initialize();
-    ecc.agent = this._getMidServerId();
-    ecc.topic = 'RESTProbe';
-    ecc.name = 'LLMChatCompletion';
-    ecc.source = 'LLMGateway';
-    ecc.queue = 'output';
-    ecc.payload = JSON.stringify({
-      url: this.llmEndpoint + '/v1/chat/completions',
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
-    });
-    ecc.insert();
-
-    // Wait for response with timeout
-    return this._waitForResponse(ecc.sys_id, 120);
-  },
-
-  /**
-   * Test connectivity to LLM endpoint via MID Server
-   * @returns {Object} Test result
-   */
-  testConnectivity: function() {
-    var testPayload = {
-      model: 'test',
-      messages: [{ role: 'user', content: 'ping' }],
-      max_tokens: 1
-    };
-
-    try {
-      var result = this.chatCompletion(testPayload);
-      return { success: true, message: 'LLM endpoint is reachable' };
-    } catch (e) {
-      return { success: false, error: e.message };
-    }
-  },
-
-  _getMidServerId: function() {
-    var mid = new GlideRecord('ecc_agent');
-    mid.addQuery('name', this.midServer);
-    mid.addQuery('status', 'Up');
-    mid.query();
-    if (mid.next()) {
-      return mid.sys_id.toString();
-    }
-    throw new Error('MID Server not found or not running: ' + this.midServer);
-  },
-
-  _waitForResponse: function(eccSysId, timeoutSeconds) {
-    var startTime = new Date().getTime();
-    var timeout = timeoutSeconds * 1000;
-
-    while ((new Date().getTime() - startTime) < timeout) {
-      var response = new GlideRecord('ecc_queue');
-      response.addQuery('response_to', eccSysId);
-      response.addQuery('queue', 'input');
-      response.query();
-
-      if (response.next()) {
-        var payload = response.payload.toString();
-        try {
-          return JSON.parse(payload);
-        } catch (e) {
-          return { raw: payload };
-        }
-      }
-
-      gs.sleep(500);
-    }
-
-    throw new Error('Timeout waiting for MID Server response');
-  },
-
-  type: 'LLMGateway'
-};
-`
-
-    // Check if Script Include exists
-    const siCheckResponse = await fetch(
-      `${instanceUrl}/api/now/table/sys_script_include?sysparm_query=name=LLMGateway&sysparm_limit=1`,
-      { headers }
-    )
-    const siCheckData = await siCheckResponse.json()
-
-    if (siCheckData.result && siCheckData.result.length > 0) {
-      // Update existing Script Include
-      await fetch(
-        `${instanceUrl}/api/now/table/sys_script_include/${siCheckData.result[0].sys_id}`,
-        {
-          method: "PATCH",
-          headers,
-          body: JSON.stringify({ script: scriptIncludeScript }),
-        }
-      )
-    } else {
-      // Create new Script Include
-      await fetch(
-        `${instanceUrl}/api/now/table/sys_script_include`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            name: "LLMGateway",
-            api_name: "global.LLMGateway",
-            script: scriptIncludeScript,
-            active: true,
-            client_callable: false,
-            description: "LLM Gateway for routing requests through MID Server to local LLM models",
-          }),
-        }
-      )
-    }
-
-    // Step 3: Create Scripted REST API
-    // Check if REST API exists
-    const restCheckResponse = await fetch(
-      `${instanceUrl}/api/now/table/sys_ws_definition?sysparm_query=name=LLM Gateway&sysparm_limit=1`,
-      { headers }
-    )
-    const restCheckData = await restCheckResponse.json()
-
-    let restApiSysId: string
-
-    if (restCheckData.result && restCheckData.result.length > 0) {
-      restApiSysId = restCheckData.result[0].sys_id
-    } else {
-      // Create REST API Definition
-      const restApiResponse = await fetch(
-        `${instanceUrl}/api/now/table/sys_ws_definition`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            name: "LLM Gateway",
-            api_id: "x_snow_llm",
-            short_description: "OpenAI-compatible LLM Gateway via MID Server",
-            active: true,
-          }),
-        }
-      )
-      const restApiData = await restApiResponse.json()
-      restApiSysId = restApiData.result.sys_id
-    }
-
-    // Step 4: Create REST API Resource for chat completions
-    const resourceScript = `
-(function process(request, response) {
-  try {
-    var gateway = new LLMGateway();
-    var requestBody = request.body.data;
-
-    var result = gateway.chatCompletion(requestBody);
-
-    response.setStatus(200);
-    response.setBody(result);
-  } catch (e) {
-    response.setStatus(500);
-    response.setBody({
-      error: {
-        message: e.message,
-        type: 'gateway_error'
-      }
-    });
-  }
-})(request, response);
-`
-
-    // Check if resource exists
-    const resCheckResponse = await fetch(
-      `${instanceUrl}/api/now/table/sys_ws_operation?sysparm_query=web_service_definition=${restApiSysId}^name=Chat Completions&sysparm_limit=1`,
-      { headers }
-    )
-    const resCheckData = await resCheckResponse.json()
-
-    if (resCheckData.result && resCheckData.result.length > 0) {
-      // Update existing resource
-      await fetch(
-        `${instanceUrl}/api/now/table/sys_ws_operation/${resCheckData.result[0].sys_id}`,
-        {
-          method: "PATCH",
-          headers,
-          body: JSON.stringify({ operation_script: resourceScript }),
-        }
-      )
-    } else {
-      // Create new resource
-      await fetch(
-        `${instanceUrl}/api/now/table/sys_ws_operation`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            name: "Chat Completions",
-            web_service_definition: restApiSysId,
-            http_method: "POST",
-            relative_path: "/v1/chat/completions",
-            operation_script: resourceScript,
-            active: true,
-          }),
-        }
-      )
-    }
-
-    return { success: true }
-  } catch (error: any) {
-    return { success: false, error: error.message }
-  }
-}
-
-/**
- * Test LLM connectivity through MID Server
- * Sends a test request via ECC Queue to verify the LLM endpoint is reachable
- */
-async function testLLMConnectivity(options: {
-  instanceUrl: string
-  accessToken: string
-  midServerName: string
-  llmEndpoint: string
-  modelName: string
-}): Promise<{ success: boolean; error?: string }> {
-  const { instanceUrl, accessToken, midServerName, llmEndpoint, modelName } = options
-
-  const headers = {
-    "Authorization": `Bearer ${accessToken}`,
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-  }
-
-  try {
-    // First, verify MID Server is up
-    const midCheckResponse = await fetch(
-      `${instanceUrl}/api/now/table/ecc_agent?sysparm_query=name=${encodeURIComponent(midServerName)}^status=Up&sysparm_limit=1`,
-      { headers }
-    )
-    const midCheckData = await midCheckResponse.json()
-
-    if (!midCheckData.result || midCheckData.result.length === 0) {
-      return { success: false, error: `MID Server '${midServerName}' is not running or not found` }
-    }
-
-    const midServerId = midCheckData.result[0].sys_id
-
-    // Create ECC Queue entry to test connectivity
-    const testPayload = {
-      url: `${llmEndpoint}/v1/models`,
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    }
-
-    const eccResponse = await fetch(
-      `${instanceUrl}/api/now/table/ecc_queue`,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          agent: midServerId,
-          topic: "RESTProbe",
-          name: "LLMConnectivityTest",
-          source: "snow-code-auth",
-          queue: "output",
-          payload: JSON.stringify(testPayload),
-        }),
-      }
-    )
-
-    if (!eccResponse.ok) {
-      return { success: false, error: "Failed to create ECC Queue entry for connectivity test" }
-    }
-
-    const eccData = await eccResponse.json()
-    const eccSysId = eccData.result.sys_id
-
-    // Wait for response (poll for up to 30 seconds)
-    const startTime = Date.now()
-    const timeout = 30000
-
-    while (Date.now() - startTime < timeout) {
-      const responseCheck = await fetch(
-        `${instanceUrl}/api/now/table/ecc_queue?sysparm_query=response_to=${eccSysId}^queue=input&sysparm_limit=1`,
-        { headers }
-      )
-      const responseData = await responseCheck.json()
-
-      if (responseData.result && responseData.result.length > 0) {
-        const payload = responseData.result[0].payload
-        try {
-          const parsedPayload = JSON.parse(payload)
-          if (parsedPayload.error) {
-            return { success: false, error: parsedPayload.error }
-          }
-          return { success: true }
-        } catch {
-          // If payload is not JSON, check if it contains error indicators
-          if (payload && (payload.includes("error") || payload.includes("Error"))) {
-            return { success: false, error: payload }
-          }
-          return { success: true }
-        }
-      }
-
-      // Wait 1 second before next poll
-      await new Promise(resolve => setTimeout(resolve, 1000))
-    }
-
-    return { success: false, error: "Timeout waiting for MID Server response (30s)" }
-  } catch (error: any) {
-    return { success: false, error: error.message }
-  }
-}
-
 // ============================================================================
 // Snow-Flow LLM API - Discovery-based approach for MID Server LLM integration
 // ============================================================================
@@ -3335,15 +2945,12 @@ export const AuthLoginCommand = cmd({
           }
 
           // ============================================================================
-          // DISCOVERY MODE: Try to discover existing MID Servers and REST Messages
+          // DISCOVERY MODE: Discover existing MID Servers and REST Messages
           // ============================================================================
-          let discoveryMode = false
           let selectedMidServer: string = ""
           let selectedRestMessage: string = ""
           let selectedHttpMethod: string = ""
           let selectedModel: string = ""
-          let llmEndpoint: string = ""
-          let llmType: string = ""
           let gatewayDeployed = false
           let connectivityTested = false
           let apiBaseUri: string = ""  // The actual API base URI from ServiceNow (includes namespace)
@@ -3366,159 +2973,144 @@ export const AuthLoginCommand = cmd({
             prompts.log.success(`Found ${midServersResult.midServers!.length} MID Server(s) and ${restMessagesResult.restMessages!.length} LLM REST Message(s)`)
             prompts.log.message("")
 
-            // Let user choose configuration mode
-            const configMode = (await prompts.select({
-              message: "How would you like to configure MID Server LLM?",
-              options: [
-                { value: "discovery", label: "Use discovered REST Message", hint: "recommended - uses existing ServiceNow configuration" },
-                { value: "manual", label: "Manual configuration", hint: "configure endpoint manually" },
-              ],
+            // Select REST Message (which includes MID Server info)
+            const restMessageOptions = restMessagesResult.restMessages!.map((rm) => ({
+              value: rm.name,
+              label: rm.name,
+              hint: `MID: ${rm.mid_server || "default"} | ${rm.endpoint}`,
+            }))
+
+            selectedRestMessage = (await prompts.select({
+              message: "Select LLM REST Message",
+              options: restMessageOptions,
             })) as string
-            if (prompts.isCancel(configMode)) throw new UI.CancelledError()
+            if (prompts.isCancel(selectedRestMessage)) throw new UI.CancelledError()
 
-            if (configMode === "discovery") {
-              discoveryMode = true
+            // Get the selected REST Message details
+            const selectedRM = restMessagesResult.restMessages!.find((rm) => rm.name === selectedRestMessage)!
+            selectedMidServer = selectedRM.mid_server || ""
 
-              // Select REST Message (which includes MID Server info)
-              const restMessageOptions = restMessagesResult.restMessages!.map((rm) => ({
-                value: rm.name,
-                label: rm.name,
-                hint: `MID: ${rm.mid_server || "default"} | ${rm.endpoint}`,
+            // Select HTTP Method if multiple available
+            if (selectedRM.methods.length > 1) {
+              const methodOptions = selectedRM.methods.map((m) => ({
+                value: m.name,
+                label: m.name,
+                hint: m.http_method,
               }))
 
-              selectedRestMessage = (await prompts.select({
-                message: "Select LLM REST Message",
-                options: restMessageOptions,
+              selectedHttpMethod = (await prompts.select({
+                message: "Select HTTP Method for chat completions",
+                options: methodOptions,
               })) as string
-              if (prompts.isCancel(selectedRestMessage)) throw new UI.CancelledError()
+              if (prompts.isCancel(selectedHttpMethod)) throw new UI.CancelledError()
+            } else if (selectedRM.methods.length === 1) {
+              selectedHttpMethod = selectedRM.methods[0].name
+            } else {
+              selectedHttpMethod = "Chat_Completions"
+            }
 
-              // Get the selected REST Message details
-              const selectedRM = restMessagesResult.restMessages!.find((rm) => rm.name === selectedRestMessage)!
-              selectedMidServer = selectedRM.mid_server || ""
-              llmEndpoint = selectedRM.endpoint
+            // Try to discover models from the LLM endpoint
+            prompts.log.message("")
+            const modelsSpinner = prompts.spinner()
+            modelsSpinner.start("Querying available models from LLM...")
 
-              // Select HTTP Method if multiple available
-              if (selectedRM.methods.length > 1) {
-                const methodOptions = selectedRM.methods.map((m) => ({
-                  value: m.name,
-                  label: m.name,
-                  hint: m.http_method,
-                }))
+            const modelsResult = await discoverModels(instanceUrl, accessToken!, selectedRestMessage)
+            modelsSpinner.stop(modelsResult.success ? "Models discovered" : "Could not query models")
 
-                selectedHttpMethod = (await prompts.select({
-                  message: "Select HTTP Method for chat completions",
-                  options: methodOptions,
-                })) as string
-                if (prompts.isCancel(selectedHttpMethod)) throw new UI.CancelledError()
-              } else if (selectedRM.methods.length === 1) {
-                selectedHttpMethod = selectedRM.methods[0].name
-              } else {
-                selectedHttpMethod = "Chat_Completions"
-              }
+            if (modelsResult.success && modelsResult.models && modelsResult.models.length > 0) {
+              const modelOptions = modelsResult.models.map((m) => ({
+                value: m.id,
+                label: m.name || m.id,
+              }))
+              modelOptions.push({ value: "_manual_", label: "Enter model name manually" })
 
-              // Try to discover models from the LLM endpoint
-              prompts.log.message("")
-              const modelsSpinner = prompts.spinner()
-              modelsSpinner.start("Querying available models from LLM...")
+              const modelChoice = (await prompts.select({
+                message: "Select model",
+                options: modelOptions,
+              })) as string
+              if (prompts.isCancel(modelChoice)) throw new UI.CancelledError()
 
-              const modelsResult = await discoverModels(instanceUrl, accessToken!, selectedRestMessage)
-              modelsSpinner.stop(modelsResult.success ? "Models discovered" : "Could not query models")
-
-              if (modelsResult.success && modelsResult.models && modelsResult.models.length > 0) {
-                const modelOptions = modelsResult.models.map((m) => ({
-                  value: m.id,
-                  label: m.name || m.id,
-                }))
-                modelOptions.push({ value: "_manual_", label: "Enter model name manually" })
-
-                const modelChoice = (await prompts.select({
-                  message: "Select model",
-                  options: modelOptions,
-                })) as string
-                if (prompts.isCancel(modelChoice)) throw new UI.CancelledError()
-
-                if (modelChoice === "_manual_") {
-                  selectedModel = (await prompts.text({
-                    message: "Model name",
-                    placeholder: "e.g., llama3.3 or Qwen/Qwen3-1.7B",
-                    validate: (v) => (!v || v.trim() === "") ? "Model name is required" : undefined,
-                  })) as string
-                  if (prompts.isCancel(selectedModel)) throw new UI.CancelledError()
-                } else {
-                  selectedModel = modelChoice
-                }
-              } else {
-                // Manual model input
+              if (modelChoice === "_manual_") {
                 selectedModel = (await prompts.text({
                   message: "Model name",
                   placeholder: "e.g., llama3.3 or Qwen/Qwen3-1.7B",
                   validate: (v) => (!v || v.trim() === "") ? "Model name is required" : undefined,
                 })) as string
                 if (prompts.isCancel(selectedModel)) throw new UI.CancelledError()
+              } else {
+                selectedModel = modelChoice
               }
+            } else {
+              // Manual model input
+              selectedModel = (await prompts.text({
+                message: "Model name",
+                placeholder: "e.g., llama3.3 or Qwen/Qwen3-1.7B",
+                validate: (v) => (!v || v.trim() === "") ? "Model name is required" : undefined,
+              })) as string
+              if (prompts.isCancel(selectedModel)) throw new UI.CancelledError()
+            }
 
-              // Deploy Snow-Flow LLM API if not already deployed
+            // Deploy Snow-Flow LLM API if not already deployed
+            prompts.log.message("")
+            const deployApi = await prompts.confirm({
+              message: "Deploy/update Snow-Flow LLM API to ServiceNow?",
+              initialValue: true,
+            })
+
+            if (!prompts.isCancel(deployApi) && deployApi) {
+              const deploySpinner = prompts.spinner()
+              deploySpinner.start("Deploying Snow-Flow LLM API...")
+
+              const deployResult = await deploySnowFlowLLMAPI({
+                instanceUrl,
+                accessToken: accessToken!,
+                restMessage: selectedRestMessage,
+                httpMethod: selectedHttpMethod,
+                defaultModel: selectedModel,
+              })
+
+              if (deployResult.success) {
+                deploySpinner.stop("Snow-Flow LLM API deployed successfully!")
+                gatewayDeployed = true
+                apiBaseUri = deployResult.baseUri || ""
+                if (apiBaseUri) {
+                  prompts.log.info(`API endpoint: ${instanceUrl}${apiBaseUri}`)
+                }
+              } else {
+                deploySpinner.stop(`Deployment failed: ${deployResult.error}`)
+              }
+            }
+
+            // Test connectivity via Snow-Flow LLM API
+            if (gatewayDeployed) {
               prompts.log.message("")
-              const deployApi = await prompts.confirm({
-                message: "Deploy/update Snow-Flow LLM API to ServiceNow?",
+              const testChat = await prompts.confirm({
+                message: "Test LLM chat through MID Server?",
                 initialValue: true,
               })
 
-              if (!prompts.isCancel(deployApi) && deployApi) {
-                const deploySpinner = prompts.spinner()
-                deploySpinner.start("Deploying Snow-Flow LLM API...")
+              if (!prompts.isCancel(testChat) && testChat) {
+                const testSpinner = prompts.spinner()
+                testSpinner.start("Testing LLM chat via MID Server...")
 
-                const deployResult = await deploySnowFlowLLMAPI({
+                const testResult = await testSnowFlowLLMChat({
                   instanceUrl,
                   accessToken: accessToken!,
                   restMessage: selectedRestMessage,
                   httpMethod: selectedHttpMethod,
-                  defaultModel: selectedModel,
+                  model: selectedModel,
+                  apiBaseUri: apiBaseUri,
                 })
 
-                if (deployResult.success) {
-                  deploySpinner.stop("Snow-Flow LLM API deployed successfully!")
-                  gatewayDeployed = true
-                  apiBaseUri = deployResult.baseUri || ""
-                  if (apiBaseUri) {
-                    prompts.log.info(`API endpoint: ${instanceUrl}${apiBaseUri}`)
+                if (testResult.success) {
+                  testSpinner.stop("LLM chat test passed!")
+                  connectivityTested = true
+                  if (testResult.response) {
+                    prompts.log.info(`Response: "${testResult.response.substring(0, 100)}${testResult.response.length > 100 ? "..." : ""}"`)
                   }
                 } else {
-                  deploySpinner.stop(`Deployment failed: ${deployResult.error}`)
-                }
-              }
-
-              // Test connectivity via Snow-Flow LLM API
-              if (gatewayDeployed) {
-                prompts.log.message("")
-                const testChat = await prompts.confirm({
-                  message: "Test LLM chat through MID Server?",
-                  initialValue: true,
-                })
-
-                if (!prompts.isCancel(testChat) && testChat) {
-                  const testSpinner = prompts.spinner()
-                  testSpinner.start("Testing LLM chat via MID Server...")
-
-                  const testResult = await testSnowFlowLLMChat({
-                    instanceUrl,
-                    accessToken: accessToken!,
-                    restMessage: selectedRestMessage,
-                    httpMethod: selectedHttpMethod,
-                    model: selectedModel,
-                    apiBaseUri: apiBaseUri,
-                  })
-
-                  if (testResult.success) {
-                    testSpinner.stop("LLM chat test passed!")
-                    connectivityTested = true
-                    if (testResult.response) {
-                      prompts.log.info(`Response: "${testResult.response.substring(0, 100)}${testResult.response.length > 100 ? "..." : ""}"`)
-                    }
-                  } else {
-                    testSpinner.stop(`Test failed: ${testResult.error}`)
-                    prompts.log.warn("The LLM endpoint may not be reachable from the MID Server")
-                  }
+                  testSpinner.stop(`Test failed: ${testResult.error}`)
+                  prompts.log.warn("The LLM endpoint may not be reachable from the MID Server")
                 }
               }
             }
@@ -3531,142 +3123,6 @@ export const AuthLoginCommand = cmd({
             // No MID Servers found
             prompts.log.warn("No active MID Servers found in ServiceNow")
             prompts.log.message("")
-          }
-
-          // ============================================================================
-          // MANUAL MODE: Fallback to manual configuration
-          // ============================================================================
-          if (!discoveryMode) {
-            prompts.log.step("Manual Configuration")
-            prompts.log.info("Configure MID Server LLM endpoint manually")
-            prompts.log.message("")
-
-            // Get MID Server name
-            if (hasMidServers) {
-              const midOptions = midServersResult.midServers!.map((m) => ({
-                value: m.name,
-                label: m.name,
-                hint: m.validated ? "validated" : "",
-              }))
-              midOptions.push({ value: "_manual_", label: "Enter MID Server name manually", hint: "" })
-
-              const midChoice = (await prompts.select({
-                message: "Select MID Server",
-                options: midOptions,
-              })) as string
-              if (prompts.isCancel(midChoice)) throw new UI.CancelledError()
-
-              if (midChoice === "_manual_") {
-                selectedMidServer = (await prompts.text({
-                  message: "MID Server name",
-                  placeholder: "my-datacenter-mid-1",
-                  validate: (v) => (!v || v.trim() === "") ? "MID Server name is required" : undefined,
-                })) as string
-                if (prompts.isCancel(selectedMidServer)) throw new UI.CancelledError()
-              } else {
-                selectedMidServer = midChoice
-              }
-            } else {
-              selectedMidServer = (await prompts.text({
-                message: "MID Server name",
-                placeholder: "my-datacenter-mid-1",
-                validate: (v) => (!v || v.trim() === "") ? "MID Server name is required" : undefined,
-              })) as string
-              if (prompts.isCancel(selectedMidServer)) throw new UI.CancelledError()
-            }
-
-            // Get local LLM endpoint
-            llmEndpoint = (await prompts.text({
-              message: "Local LLM endpoint (from MID Server perspective)",
-              placeholder: "http://llm-server.internal:11434",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "LLM endpoint is required"
-                if (!value.startsWith("http://") && !value.startsWith("https://")) {
-                  return "Must be a valid URL (http:// or https://)"
-                }
-              },
-            })) as string
-            if (prompts.isCancel(llmEndpoint)) throw new UI.CancelledError()
-
-            // Get local LLM type
-            llmType = (await prompts.select({
-              message: "Local LLM type",
-              options: [
-                { value: "ollama", label: "Ollama", hint: "port 11434" },
-                { value: "vllm", label: "vLLM", hint: "OpenAI-compatible" },
-                { value: "localai", label: "LocalAI", hint: "OpenAI-compatible" },
-                { value: "lmstudio", label: "LM Studio", hint: "OpenAI-compatible" },
-                { value: "other", label: "Other", hint: "OpenAI-compatible API" },
-              ],
-            })) as string
-            if (prompts.isCancel(llmType)) throw new UI.CancelledError()
-
-            // Get model name
-            selectedModel = (await prompts.text({
-              message: "Default model name",
-              placeholder: llmType === "ollama" ? "llama3.3" : "default",
-              validate: (v) => (!v || v.trim() === "") ? "Model name is required" : undefined,
-            })) as string
-            if (prompts.isCancel(selectedModel)) throw new UI.CancelledError()
-
-            // Deploy legacy LLM Gateway (x_snow_llm)
-            prompts.log.message("")
-            const deployGateway = await prompts.confirm({
-              message: "Deploy LLM Gateway to ServiceNow now?",
-              initialValue: true,
-            })
-
-            if (!prompts.isCancel(deployGateway) && deployGateway) {
-              const deploySpinner = prompts.spinner()
-              deploySpinner.start("Deploying LLM Gateway to ServiceNow...")
-
-              try {
-                const deployResult = await deployLLMGateway({
-                  instanceUrl,
-                  accessToken: accessToken!,
-                  midServerName: selectedMidServer,
-                  llmEndpoint,
-                  llmType,
-                })
-
-                if (deployResult.success) {
-                  deploySpinner.stop("LLM Gateway deployed successfully!")
-                  gatewayDeployed = true
-
-                  // Test connectivity
-                  prompts.log.message("")
-                  const testConnectivity = await prompts.confirm({
-                    message: "Test LLM connectivity through MID Server?",
-                    initialValue: true,
-                  })
-
-                  if (!prompts.isCancel(testConnectivity) && testConnectivity) {
-                    const testSpinner = prompts.spinner()
-                    testSpinner.start("Testing LLM connectivity via MID Server...")
-
-                    const testResult = await testLLMConnectivity({
-                      instanceUrl,
-                      accessToken: accessToken!,
-                      midServerName: selectedMidServer,
-                      llmEndpoint,
-                      modelName: selectedModel,
-                    })
-
-                    if (testResult.success) {
-                      testSpinner.stop("LLM connectivity test passed!")
-                      connectivityTested = true
-                    } else {
-                      testSpinner.stop(`Connectivity test failed: ${testResult.error}`)
-                      prompts.log.warn("The gateway is deployed but the LLM endpoint may not be reachable from the MID Server")
-                    }
-                  }
-                } else {
-                  deploySpinner.stop(`Gateway deployment failed: ${deployResult.error}`)
-                }
-              } catch (error: any) {
-                deploySpinner.stop(`Deployment error: ${error.message}`)
-              }
-            }
           }
 
           // ============================================================================
@@ -3702,52 +3158,27 @@ export const AuthLoginCommand = cmd({
           // Add the servicenow-llm provider configuration
           if (!globalConfig.provider) globalConfig.provider = {}
 
-          if (discoveryMode) {
-            // Discovery mode config - uses REST Message
-            // Use the actual API base URI from deployment (includes ServiceNow-generated namespace)
-            // apiBaseUri is like "/api/1304151/snow_flow", resources are at "/llm/..."
-            // So full baseURL for AI SDK is: instanceUrl + apiBaseUri + "/llm"
-            const effectiveBaseUri = apiBaseUri ? `${apiBaseUri}/llm` : "/api/snow_flow/llm"
-            globalConfig.provider["servicenow-llm"] = {
-              npm: "@ai-sdk/openai-compatible",
-              name: "ServiceNow MID Server LLM",
-              options: {
-                baseURL: `${instanceUrl}${effectiveBaseUri}`,
-                restMessage: selectedRestMessage,
-                httpMethod: selectedHttpMethod,
-                midServer: selectedMidServer,
-                defaultModel: selectedModel,
-                discoveryMode: true,
-                gatewayDeployed: gatewayDeployed,
-                connectivityTested: connectivityTested,
+          // Use the actual API base URI from deployment (includes ServiceNow-generated namespace)
+          // apiBaseUri is like "/api/1304151/snow_flow", resources are at "/llm/..."
+          // So full baseURL for AI SDK is: instanceUrl + apiBaseUri + "/llm"
+          const effectiveBaseUri = apiBaseUri ? `${apiBaseUri}/llm` : "/api/snow_flow/llm"
+          globalConfig.provider["servicenow-llm"] = {
+            npm: "@ai-sdk/openai-compatible",
+            name: "ServiceNow MID Server LLM",
+            options: {
+              baseURL: `${instanceUrl}${effectiveBaseUri}`,
+              restMessage: selectedRestMessage,
+              httpMethod: selectedHttpMethod,
+              midServer: selectedMidServer,
+              defaultModel: selectedModel,
+              gatewayDeployed: gatewayDeployed,
+              connectivityTested: connectivityTested,
+            },
+            models: {
+              [selectedModel]: {
+                name: `${selectedModel} (via MID Server)`,
               },
-              models: {
-                [selectedModel]: {
-                  name: `${selectedModel} (via MID Server)`,
-                },
-              },
-            }
-          } else {
-            // Manual mode config - uses legacy x_snow_llm gateway
-            globalConfig.provider["servicenow-llm"] = {
-              npm: "@ai-sdk/openai-compatible",
-              name: "ServiceNow LLM Gateway",
-              options: {
-                baseURL: `${instanceUrl}/api/x_snow_llm/v1`,
-                midServer: selectedMidServer,
-                llmEndpoint: llmEndpoint,
-                llmType: llmType,
-                defaultModel: selectedModel,
-                discoveryMode: false,
-                gatewayDeployed: gatewayDeployed,
-                connectivityTested: connectivityTested,
-              },
-              models: {
-                [selectedModel]: {
-                  name: `${selectedModel} (via MID Server)`,
-                },
-              },
-            }
+            },
           }
 
           // Remove legacy root-level midServerLLM if it exists
@@ -3776,15 +3207,9 @@ export const AuthLoginCommand = cmd({
           prompts.log.success("✅ MID Server LLM configuration complete!")
           prompts.log.message("")
           prompts.log.info("Configuration saved:")
-          prompts.log.message(`  • Mode: ${discoveryMode ? "Discovery (REST Message)" : "Manual"}`)
           prompts.log.message(`  • MID Server: ${selectedMidServer}`)
-          if (discoveryMode) {
-            prompts.log.message(`  • REST Message: ${selectedRestMessage}`)
-            prompts.log.message(`  • HTTP Method: ${selectedHttpMethod}`)
-          } else {
-            prompts.log.message(`  • LLM Endpoint: ${llmEndpoint}`)
-            prompts.log.message(`  • LLM Type: ${llmType}`)
-          }
+          prompts.log.message(`  • REST Message: ${selectedRestMessage}`)
+          prompts.log.message(`  • HTTP Method: ${selectedHttpMethod}`)
           prompts.log.message(`  • Default Model: ${selectedModel}`)
           prompts.log.message(`  • API Deployed: ${gatewayDeployed ? "Yes" : "No"}`)
           prompts.log.message(`  • Connectivity Tested: ${connectivityTested ? "Yes" : "No"}`)
@@ -3792,11 +3217,7 @@ export const AuthLoginCommand = cmd({
           if (gatewayDeployed) {
             prompts.log.message("")
             prompts.log.info("ServiceNow Snow-Flow LLM API:")
-            if (discoveryMode) {
-              prompts.log.message(`  ${instanceUrl}/sys_ws_definition.do?sysparm_query=service_id=snow_flow`)
-            } else {
-              prompts.log.message(`  ${instanceUrl}/sys_ws_definition.do?sysparm_query=api_id=x_snow_llm`)
-            }
+            prompts.log.message(`  ${instanceUrl}/sys_ws_definition.do?sysparm_query=service_id=snow_flow`)
           }
           prompts.log.message("")
 
