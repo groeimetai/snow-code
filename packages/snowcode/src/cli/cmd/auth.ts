@@ -3352,13 +3352,18 @@ export const AuthLoginCommand = cmd({
           const modelsConfig: Record<string, any> = {}
 
           // Primary entry: use alias as key, store real ID
+          // Use reasonable defaults if context window not discovered
+          // Most modern LLMs have at least 8K context, many have 32K+
+          const effectiveContextWindow = selectedContextWindow || 32000  // 32K default
+          const effectiveMaxTokens = selectedMaxTokens || 4096
+
           if (useAlias) {
             modelsConfig[modelAlias] = {
               id: selectedModel,  // ← Real model ID for the endpoint
               name: `${selectedModel} (via MID Server)`,
               limit: {
-                context: selectedContextWindow || 0,
-                output: selectedMaxTokens || 4096,
+                context: effectiveContextWindow,
+                output: effectiveMaxTokens,
               },
             }
           }
@@ -3367,8 +3372,8 @@ export const AuthLoginCommand = cmd({
           modelsConfig[selectedModel] = {
             name: `${selectedModel} (via MID Server)`,
             limit: {
-              context: selectedContextWindow || 0,
-              output: selectedMaxTokens || 4096,
+              context: effectiveContextWindow,
+              output: effectiveMaxTokens,
             },
           }
 
