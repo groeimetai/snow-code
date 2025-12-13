@@ -160,6 +160,78 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
   // Config updates are transparent to the user
 }
 
+/**
+ * Known provider baseURLs for providers where models.dev doesn't specify one
+ * These are the official API endpoints for each provider
+ */
+const PROVIDER_BASE_URLS: Record<string, string> = {
+  "openai": "https://api.openai.com/v1",
+  "anthropic": "https://api.anthropic.com",
+  "google": "https://generativelanguage.googleapis.com/v1beta",
+  "groq": "https://api.groq.com/openai/v1",
+  "mistral": "https://api.mistral.ai/v1",
+  "cohere": "https://api.cohere.ai/v1",
+  "together": "https://api.together.xyz/v1",
+  "fireworks": "https://api.fireworks.ai/inference/v1",
+  "perplexity": "https://api.perplexity.ai",
+  "deepseek": "https://api.deepseek.com/v1",
+  "xai": "https://api.x.ai/v1",
+  "cerebras": "https://api.cerebras.ai/v1",
+}
+
+/**
+ * Helper function to save provider configuration with baseURL to config.json
+ * This ensures providers have the correct baseURL set after authentication
+ */
+async function saveProviderConfig(
+  providerId: string,
+  providerInfo?: { api?: string; npm?: string; name?: string }
+) {
+  const globalConfigPath = path.join(os.homedir(), ".config", "snow-code", "config.json")
+
+  // Determine the baseURL to use
+  // Priority: 1. models.dev api field, 2. known provider URLs, 3. skip if unknown
+  const baseURL = providerInfo?.api || PROVIDER_BASE_URLS[providerId]
+
+  if (!baseURL) {
+    // Don't set baseURL if we don't know it - let the SDK use its default
+    return
+  }
+
+  try {
+    // Ensure config directory exists
+    const configDir = path.join(os.homedir(), ".config", "snow-code")
+    await Bun.write(path.join(configDir, ".keep"), "")
+
+    // Read existing config
+    let globalConfig: any = {}
+    try {
+      const file = Bun.file(globalConfigPath)
+      if (await file.exists()) {
+        globalConfig = JSON.parse(await file.text())
+      }
+    } catch {}
+
+    // Initialize provider section if needed
+    globalConfig.provider = globalConfig.provider || {}
+
+    // Update or create provider config with baseURL
+    // Merge with existing config to preserve other settings
+    globalConfig.provider[providerId] = {
+      ...globalConfig.provider[providerId],
+      options: {
+        ...globalConfig.provider[providerId]?.options,
+        baseURL: baseURL,
+      },
+    }
+
+    // Write updated config
+    await Bun.write(globalConfigPath, JSON.stringify(globalConfig, null, 2))
+  } catch (error) {
+    // Silently fail - this is a best-effort enhancement
+  }
+}
+
 // ============================================================================
 // Snow-Flow LLM API - Discovery-based approach for MID Server LLM integration
 // ============================================================================
@@ -2766,6 +2838,8 @@ export const AuthLoginCommand = cmd({
                     key: result.key,
                   })
                 }
+                // Save provider config with baseURL to ensure correct API endpoint
+                await saveProviderConfig(provider, providers[provider])
                 spinner.stop("Login successful")
               }
             }
@@ -2795,6 +2869,8 @@ export const AuthLoginCommand = cmd({
                     key: result.key,
                   })
                 }
+                // Save provider config with baseURL to ensure correct API endpoint
+                await saveProviderConfig(provider, providers[provider])
                 prompts.log.success("Login successful")
               }
             }
@@ -3792,6 +3868,9 @@ export const AuthLoginCommand = cmd({
           type: "api",
           key,
         })
+
+        // Save provider config with baseURL to ensure correct API endpoint
+        await saveProviderConfig(provider, providers[provider])
 
         // Save selected model to global config if chosen
         if (selectedModel) {
