@@ -1,12 +1,43 @@
+# OS files
 .DS_Store
+Thumbs.db
+.Spotlight-V100/
+.AppleDouble/
+
+# Dependencies
 node_modules
+
+# Git
 .worktrees
+
+# SST/Infrastructure
 .sst
+
+# Environment
 .env
+.env.*
+
+# IDE
 .idea
 .vscode
+*.swp
+*.swo
+*.iml
+
+# Generated
 openapi.json
+
+# Development
 playground
 tmp
+
+# Build output
 dist
+**/dist/
+
+# Turbo
 .turbo
+
+# Logs
+logs/
+*.log

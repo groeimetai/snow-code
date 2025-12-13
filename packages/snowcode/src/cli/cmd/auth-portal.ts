@@ -13,6 +13,7 @@ import fs from "fs"
 import open from "open"
 import crypto from "crypto"
 import { Auth } from "../../auth"
+import { UI } from "../ui"
 
 // Portal URLs - Default to production (hosted portal)
 // Can be overridden with environment variables or CLI options for local development
@@ -592,9 +593,8 @@ async function handlePortalAuthSuccess(data: {
   })
 
   // Show summary
-  prompts.log.info("╔════════════════════════════════════════════════════════╗")
-  prompts.log.info("║  ✅ Snow-Flow Portal Authenticated                     ║")
-  prompts.log.info("╚════════════════════════════════════════════════════════╝")
+  prompts.log.info("")
+  prompts.log.info(UI.logoPortal("Authenticated"))
   prompts.log.info("")
   prompts.log.info(`   Email: ${data.portalUser?.email}`)
   prompts.log.info(`   Plan:  ${data.portalUser?.plan || "Individual"}`)

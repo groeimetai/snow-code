@@ -11,6 +11,7 @@ import os from "os"
 import path from "path"
 import fs from "fs"
 import open from "open"
+import { UI } from "../ui"
 
 // Enterprise portal URL
 const PORTAL_URL = process.env.SNOW_FLOW_PORTAL_URL || "https://portal.snow-flow.dev"
@@ -227,9 +228,8 @@ export const AuthEnterpriseLoginCommand = cmd({
       prompts.log.info("")
 
       // Step 7: Show summary
-      prompts.log.info("╔════════════════════════════════════════════════════════╗")
-      prompts.log.info("║  ✅ Snow-Flow Enterprise Authenticated                 ║")
-      prompts.log.info("╚════════════════════════════════════════════════════════╝")
+      prompts.log.info("")
+      prompts.log.info(UI.logoEnterprise("Authenticated"))
       prompts.log.info("")
       prompts.log.info(`   Customer: ${customer.name}`)
       prompts.log.info(`   Company:  ${customer.company}`)

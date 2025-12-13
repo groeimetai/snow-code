@@ -1897,9 +1897,8 @@ export const AuthLoginCommand = cmd({
             }
 
             // Show what was retrieved
-            prompts.log.info("╔════════════════════════════════════════════════════════╗")
-            prompts.log.info("║  ✅ Snow-Flow Enterprise Connected                     ║")
-            prompts.log.info("╚════════════════════════════════════════════════════════╝")
+            prompts.log.info("")
+            prompts.log.info(UI.logoEnterprise("Connected"))
             prompts.log.info("")
             prompts.log.info(`   Customer: ${enterpriseResult.customer?.name}`)
             prompts.log.info(`   Company:  ${enterpriseResult.customer?.company}`)

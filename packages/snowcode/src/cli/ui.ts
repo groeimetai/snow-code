@@ -4,9 +4,9 @@ import { NamedError } from "../util/error"
 
 export namespace UI {
   const LOGO = [
-    [`    ▲  ▲  ▲     `, `█▀▀▀ █▀▀▄ █▀▀█ █   █   █▀▀▀ █▀▀█ █▀▀▄ █▀▀▀`],
-    [`   ▲ ▼▲ ▼▲      `, `▀▀▀█ █  █ █  █ █ █ █   █    █  █ █  █ █▀▀ `],
-    [`  ▲ ▼  ▼  ▼     `, `▀▀▀▀ ▀  ▀ ▀▀▀▀ ▀▀▀▀▀   ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀`],
+    [`    ▲  ▲  ▲     `, `█▀▀▀ █▀▀▄ █▀▀█ █   █   █▀▀▀ █    █▀▀█ █   █`],
+    [`   ▲ ▼▲ ▼▲      `, `▀▀▀█ █  █ █  █ █ █ █ ─ █▀▀  █    █  █ █ █ █`],
+    [`  ▲ ▼  ▼  ▼     `, `▀▀▀▀ ▀  ▀ ▀▀▀▀ ▀▀▀▀▀   ▀    ▀▀▀▀ ▀▀▀▀ ▀▀▀▀▀`],
   ]
 
   export const CancelledError = NamedError.create("UICancelledError", z.void())
@@ -55,6 +55,50 @@ export namespace UI {
       result.push(row[1])
       result.push(EOL)
     }
+    return result.join("").trimEnd()
+  }
+
+  export function logoEnterprise(status: string = "Connected") {
+    const result = []
+    for (const row of LOGO) {
+      result.push("   ")
+      result.push(Bun.color("gray", "ansi"))
+      result.push(row[0])
+      result.push("\x1b[0m")
+      result.push(row[1])
+      result.push(EOL)
+    }
+    result.push("   ")
+    result.push(Style.TEXT_DIM)
+    result.push("                                  E N T E R P R I S E")
+    result.push(Style.TEXT_NORMAL)
+    result.push(EOL)
+    result.push("   ")
+    result.push(Style.TEXT_SUCCESS)
+    result.push("                                  ✓ " + status)
+    result.push(Style.TEXT_NORMAL)
+    return result.join("").trimEnd()
+  }
+
+  export function logoPortal(status: string = "Authenticated") {
+    const result = []
+    for (const row of LOGO) {
+      result.push("   ")
+      result.push(Bun.color("gray", "ansi"))
+      result.push(row[0])
+      result.push("\x1b[0m")
+      result.push(row[1])
+      result.push(EOL)
+    }
+    result.push("   ")
+    result.push(Style.TEXT_DIM)
+    result.push("                                      P O R T A L")
+    result.push(Style.TEXT_NORMAL)
+    result.push(EOL)
+    result.push("   ")
+    result.push(Style.TEXT_SUCCESS)
+    result.push("                                      ✓ " + status)
+    result.push(Style.TEXT_NORMAL)
     return result.join("").trimEnd()
   }
 
