@@ -20,6 +20,17 @@ const API_URL = process.env.SNOW_FLOW_API_URL || "https://portal.snow-flow.dev"
 const CONFIG_DIR = path.join(os.homedir(), ".snow-code")
 const ENTERPRISE_CONFIG_FILE = path.join(CONFIG_DIR, "enterprise.json")
 
+interface ServiceNowInstanceConfig {
+  id: number
+  instanceName: string
+  instanceUrl: string
+  environmentType: string
+  clientId: string
+  clientSecret: string
+  isDefault: boolean
+  enabled: boolean
+}
+
 interface EnterpriseConfig {
   token: string
   customerId: number
@@ -46,6 +57,7 @@ interface EnterpriseConfig {
       enabled: boolean
     }
   }
+  servicenowInstances?: ServiceNowInstanceConfig[]
   mcpServerUrl: string
   lastSynced: number
 }
@@ -194,7 +206,7 @@ export const AuthEnterpriseLoginCommand = cmd({
         throw new Error(error.error || "Failed to fetch enterprise credentials")
       }
 
-      const { credentials, mcpServerUrl } = await credentialsResponse.json()
+      const { credentials, servicenowInstances, mcpServerUrl } = await credentialsResponse.json()
 
       // Step 6: Save configuration
       const enterpriseConfig: EnterpriseConfig = {
@@ -204,6 +216,7 @@ export const AuthEnterpriseLoginCommand = cmd({
         company: customer.company,
         licenseKey: customer.licenseKey,
         credentials,
+        servicenowInstances: servicenowInstances || [],
         mcpServerUrl,
         lastSynced: Date.now()
       }
@@ -231,6 +244,17 @@ export const AuthEnterpriseLoginCommand = cmd({
       }
       if (credentials.confluence?.enabled) {
         prompts.log.info(`   ✓ Confluence (${credentials.confluence.baseUrl})`)
+      }
+
+      // Show ServiceNow instances
+      if (servicenowInstances && servicenowInstances.length > 0) {
+        prompts.log.info("")
+        prompts.log.info("   ServiceNow Instances:")
+        for (const inst of servicenowInstances) {
+          const defaultTag = inst.isDefault ? " (default)" : ""
+          prompts.log.info(`   ✓ ${inst.instanceName} [${inst.environmentType}]${defaultTag}`)
+          prompts.log.info(`     ${inst.instanceUrl}`)
+        }
       }
 
       prompts.log.info("")
@@ -294,12 +318,13 @@ export const AuthEnterpriseSyncCommand = cmd({
         throw new Error(error.error || "Failed to fetch enterprise credentials")
       }
 
-      const { credentials, mcpServerUrl } = await credentialsResponse.json()
+      const { credentials, servicenowInstances, mcpServerUrl } = await credentialsResponse.json()
 
       // Update config
       const updatedConfig: EnterpriseConfig = {
         ...existingConfig,
         credentials,
+        servicenowInstances: servicenowInstances || [],
         mcpServerUrl,
         lastSynced: Date.now()
       }
@@ -328,6 +353,18 @@ export const AuthEnterpriseSyncCommand = cmd({
         prompts.log.info(`   ✓ Confluence (${credentials.confluence.baseUrl})`)
       } else {
         prompts.log.info(`   ✗ Confluence (not configured)`)
+      }
+
+      // Show ServiceNow instances
+      if (servicenowInstances && servicenowInstances.length > 0) {
+        prompts.log.info("")
+        prompts.log.info("   ServiceNow Instances:")
+        for (const inst of servicenowInstances) {
+          const defaultTag = inst.isDefault ? " (default)" : ""
+          prompts.log.info(`   ✓ ${inst.instanceName} [${inst.environmentType}]${defaultTag}`)
+        }
+      } else {
+        prompts.log.info(`   ✗ ServiceNow (no instances configured)`)
       }
 
       prompts.log.info("")

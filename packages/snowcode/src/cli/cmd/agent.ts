@@ -1,6 +1,7 @@
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
+import { UXHelpers } from "../ux-helpers"
 import { Global } from "../../global"
 import { Agent } from "../../agent/agent"
 import path from "path"
@@ -20,23 +21,22 @@ const AgentCreateCommand = cmd({
 
         let scope: "global" | "project" = "global"
         if (project.vcs === "git") {
-          const scopeResult = await prompts.select({
-            message: "Location",
-            options: [
+          scope = await UXHelpers.selectWithRecommended<"global" | "project">(
+            "Location",
+            [
               {
                 label: "Current project",
-                value: "project" as const,
+                value: "project",
                 hint: Instance.worktree,
+                recommended: true, // Project-local agents are recommended
               },
               {
                 label: "Global",
-                value: "global" as const,
+                value: "global",
                 hint: Global.Path.config,
               },
-            ],
-          })
-          if (prompts.isCancel(scopeResult)) throw new UI.CancelledError()
-          scope = scopeResult
+            ]
+          )
         }
 
         const query = await prompts.text({
@@ -79,28 +79,27 @@ const AgentCreateCommand = cmd({
         })
         if (prompts.isCancel(selectedTools)) throw new UI.CancelledError()
 
-        const modeResult = await prompts.select({
-          message: "Agent mode",
-          options: [
+        const modeResult = await UXHelpers.selectWithRecommended<"all" | "primary" | "subagent">(
+          "Agent mode",
+          [
             {
               label: "All",
-              value: "all" as const,
+              value: "all",
               hint: "Can function in both primary and subagent roles",
+              recommended: true, // All is the most flexible option
             },
             {
               label: "Primary",
-              value: "primary" as const,
+              value: "primary",
               hint: "Acts as a primary/main agent",
             },
             {
               label: "Subagent",
-              value: "subagent" as const,
+              value: "subagent",
               hint: "Can be used as a subagent by other agents",
             },
-          ],
-          initialValue: "all",
-        })
-        if (prompts.isCancel(modeResult)) throw new UI.CancelledError()
+          ]
+        )
 
         const tools: Record<string, boolean> = {}
         for (const tool of availableTools) {

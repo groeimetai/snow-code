@@ -17,6 +17,8 @@ export namespace Global {
     cache,
     config,
     state,
+    // Memory storage for session memory and project learnings
+    memory: path.join(data, "memory"),
   } as const
 }
 
@@ -26,6 +28,7 @@ await Promise.all([
   fs.mkdir(Global.Path.state, { recursive: true }),
   fs.mkdir(Global.Path.log, { recursive: true }),
   fs.mkdir(Global.Path.bin, { recursive: true }),
+  fs.mkdir(Global.Path.memory, { recursive: true }),
 ])
 
 const CACHE_VERSION = "9"

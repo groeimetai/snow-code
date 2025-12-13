@@ -16,6 +16,7 @@ import { File } from "../file"
 import { LSP } from "../lsp"
 import { MessageV2 } from "../session/message-v2"
 import { callTui, TuiRoute } from "./tui"
+import { TaskRoute } from "./task"
 import { Permission } from "../permission"
 import { Instance } from "../project/instance"
 import { Agent } from "../agent/agent"
@@ -140,6 +141,7 @@ export namespace Server {
       )
       .use(validator("query", z.object({ directory: z.string().optional() })))
       .route("/project", ProjectRoute)
+      .route("/tasks", TaskRoute)
       .get(
         "/config",
         describeRoute({
