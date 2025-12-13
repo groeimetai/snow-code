@@ -17,8 +17,10 @@ import { PortalSync } from "../../auth/portal-sync"
 import {
   AuthEnterpriseLoginCommand,
   AuthEnterpriseSyncCommand,
-  AuthEnterpriseStatusCommand
+  AuthEnterpriseStatusCommand,
+  readEnterpriseConfig
 } from "./auth-enterprise.js"
+import open from "open"
 
 // Import portal auth commands (Individual/Teams - email-based)
 import {
@@ -1284,6 +1286,172 @@ async function replaceDocumentationForStakeholder(role: string): Promise<void> {
   }
 }
 
+// Enterprise portal URL (same as auth-enterprise.ts)
+const ENTERPRISE_PORTAL_URL = process.env.SNOW_FLOW_PORTAL_URL || "https://portal.snow-flow.dev"
+const ENTERPRISE_API_URL = process.env.SNOW_FLOW_API_URL || "https://portal.snow-flow.dev"
+const ENTERPRISE_CONFIG_DIR = path.join(os.homedir(), ".snow-code")
+const ENTERPRISE_CONFIG_FILE = path.join(ENTERPRISE_CONFIG_DIR, "enterprise.json")
+
+interface ServiceNowInstanceFromPortal {
+  id: number
+  instanceName: string
+  instanceUrl: string
+  environmentType: string
+  clientId: string
+  clientSecret: string
+  isDefault: boolean
+  enabled: boolean
+}
+
+interface EnterpriseCredentialsResult {
+  success: boolean
+  error?: string
+  token?: string
+  customer?: {
+    id: number
+    name: string
+    company: string
+    licenseKey: string
+  }
+  credentials?: {
+    jira?: { baseUrl: string; email: string; apiToken: string; enabled: boolean }
+    "azure-devops"?: { baseUrl: string; username?: string; apiToken: string; enabled: boolean }
+    confluence?: { baseUrl: string; email: string; apiToken: string; enabled: boolean }
+  }
+  servicenowInstances?: ServiceNowInstanceFromPortal[]
+  mcpServerUrl?: string
+}
+
+/**
+ * Perform enterprise device authorization flow (browser-based)
+ * Returns credentials including ServiceNow instances from portal
+ */
+async function performEnterpriseDeviceAuth(): Promise<EnterpriseCredentialsResult> {
+  try {
+    // Step 1: Request device authorization session
+    prompts.log.step("Requesting device authorization...")
+
+    const machineInfo = `${os.userInfo().username}@${os.hostname()} (${os.platform()})`
+    const requestResponse = await fetch(`${ENTERPRISE_API_URL}/api/auth/device/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ machineInfo })
+    })
+
+    if (!requestResponse.ok) {
+      const error = await requestResponse.json()
+      return { success: false, error: error.error || "Failed to request device authorization" }
+    }
+
+    const { sessionId, verificationUrl } = await requestResponse.json()
+
+    // Step 2: Open browser for user approval
+    prompts.log.info("")
+    prompts.log.success("✓ Device authorization session created")
+    prompts.log.info("")
+    prompts.log.info("🌐 Opening browser for authorization...")
+    prompts.log.info("")
+    prompts.log.info(`   If browser doesn't open automatically, visit:`)
+    prompts.log.info(`   ${verificationUrl}`)
+    prompts.log.info("")
+
+    try {
+      await open(verificationUrl)
+    } catch {
+      prompts.log.warn("   Could not open browser automatically")
+    }
+
+    // Step 3: Wait for user to approve and paste code
+    prompts.log.info("📋 After approving in the browser, you'll receive a code.")
+    prompts.log.info("   Please paste it below:")
+    prompts.log.info("")
+
+    const authCodeResponse = await prompts.text({
+      message: "Enter authorization code:",
+      validate: (value) => {
+        if (!value || value.trim().length === 0) {
+          return "Authorization code is required"
+        }
+        return undefined
+      }
+    })
+
+    if (prompts.isCancel(authCodeResponse)) {
+      return { success: false, error: "Authorization cancelled" }
+    }
+
+    const authCode = (authCodeResponse as string).trim()
+
+    // Step 4: Verify code and get token
+    prompts.log.step("Verifying authorization code...")
+
+    const verifyResponse = await fetch(`${ENTERPRISE_API_URL}/api/auth/device/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, authCode })
+    })
+
+    if (!verifyResponse.ok) {
+      const error = await verifyResponse.json()
+      return { success: false, error: error.error || "Failed to verify authorization code" }
+    }
+
+    const { token, customer } = await verifyResponse.json()
+    prompts.log.success("✓ Authorization verified!")
+    prompts.log.info("")
+
+    // Step 5: Fetch enterprise credentials
+    prompts.log.step("Syncing enterprise credentials...")
+
+    const credentialsResponse = await fetch(`${ENTERPRISE_API_URL}/api/auth/enterprise/credentials`, {
+      method: "GET",
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+
+    if (!credentialsResponse.ok) {
+      const error = await credentialsResponse.json()
+      return { success: false, error: error.error || "Failed to fetch enterprise credentials" }
+    }
+
+    const { credentials, servicenowInstances, mcpServerUrl } = await credentialsResponse.json()
+
+    // Step 6: Save configuration to enterprise.json
+    const enterpriseConfig = {
+      token,
+      customerId: customer.id,
+      customerName: customer.name,
+      company: customer.company,
+      licenseKey: customer.licenseKey,
+      credentials,
+      servicenowInstances: servicenowInstances || [],
+      mcpServerUrl,
+      lastSynced: Date.now()
+    }
+
+    // Ensure config directory exists
+    const fs = await import("fs")
+    if (!fs.existsSync(ENTERPRISE_CONFIG_DIR)) {
+      fs.mkdirSync(ENTERPRISE_CONFIG_DIR, { recursive: true })
+    }
+    fs.writeFileSync(ENTERPRISE_CONFIG_FILE, JSON.stringify(enterpriseConfig, null, 2), "utf-8")
+
+    prompts.log.success("✓ Enterprise credentials synced!")
+    prompts.log.info("")
+
+    return {
+      success: true,
+      token,
+      customer,
+      credentials,
+      servicenowInstances: servicenowInstances || [],
+      mcpServerUrl
+    }
+
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
 export const AuthCommand = cmd({
   command: "auth",
   describe: "manage credentials",
@@ -1689,132 +1857,253 @@ export const AuthLoginCommand = cmd({
         // Track if this is a complete setup (chains all auth steps)
         const isCompleteSetup = authCategory === "complete"
 
-        // For complete setup: ServiceNow FIRST, then LLM Provider
-        // This ensures OAuth credentials are available for MID Server LLM deployment
+        // Track if ServiceNow was configured via enterprise (skip manual config)
+        let serviceNowConfiguredViaPortal = false
+        let enterpriseResult: EnterpriseCredentialsResult | null = null
+
+        // For complete setup: Ask about Snow-Flow account FIRST
         if (isCompleteSetup) {
-          prompts.log.step("Step 1: ServiceNow Configuration")
-          prompts.log.info("Snow-Flow requires ServiceNow connection for development")
-          prompts.log.message("")
+          prompts.log.step("Step 1: Snow-Flow Account")
+          prompts.log.info("")
 
-          const snowInstance = (await prompts.text({
-            message: "ServiceNow instance URL",
-            placeholder: "dev12345.service-now.com",
-            validate: (value) => {
-              if (!value || value.trim() === "") return "Instance URL is required"
-              const cleaned = value.replace(/^https?:\/\//, "").replace(/\/$/, "")
-              if (
-                !cleaned.includes(".service-now.com") &&
-                !cleaned.includes("localhost") &&
-                !cleaned.includes("127.0.0.1")
-              ) {
-                return "Must be a ServiceNow domain (e.g., dev12345.service-now.com)"
-              }
-            },
-          })) as string
-
-          if (prompts.isCancel(snowInstance)) throw new UI.CancelledError()
-
-          const snowAuthMethod = (await prompts.select({
-            message: "Authentication method",
+          const accountType = await prompts.select({
+            message: "Do you have a Snow-Flow account?",
             options: [
-              { value: "oauth", label: "OAuth 2.0", hint: "recommended - required for MID Server LLM" },
-              { value: "basic", label: "Basic Auth", hint: "username/password" },
+              {
+                value: "enterprise",
+                label: "Yes, Enterprise",
+                hint: "browser login - auto-configures ServiceNow + credentials (recommended)",
+              },
+              {
+                value: "manual",
+                label: "No, manual setup",
+                hint: "enter ServiceNow credentials manually",
+              },
             ],
-          })) as string
+          })
 
-          if (prompts.isCancel(snowAuthMethod)) throw new UI.CancelledError()
+          if (prompts.isCancel(accountType)) throw new UI.CancelledError()
 
-          if (snowAuthMethod === "oauth") {
-            const snowClientId = (await prompts.text({
-              message: "OAuth Client ID",
-              placeholder: "32-character hex string from ServiceNow",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Client ID is required"
-                if (value.length < 32) return "Client ID too short (expected 32+ characters)"
-              },
-            })) as string
+          if (accountType === "enterprise") {
+            // Run enterprise device authorization flow
+            prompts.log.info("")
+            enterpriseResult = await performEnterpriseDeviceAuth()
 
-            if (prompts.isCancel(snowClientId)) throw new UI.CancelledError()
-
-            const snowClientSecret = (await prompts.password({
-              message: "OAuth Client Secret",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Client Secret is required"
-                if (value.length < 32) return "Client Secret too short (expected 32+ characters)"
-              },
-            })) as string
-
-            if (prompts.isCancel(snowClientSecret)) throw new UI.CancelledError()
-
-            // Run OAuth flow for ServiceNow
-            const oauth = new ServiceNowOAuth()
-            const snowAuthResult = await oauth.authenticate({
-              instance: snowInstance,
-              clientId: snowClientId,
-              clientSecret: snowClientSecret,
-            })
-
-            if (snowAuthResult.success) {
-              // Write to .env file
-              await updateEnvFile([
-                { key: "SNOW_INSTANCE", value: snowInstance },
-                { key: "SNOW_AUTH_METHOD", value: "oauth" },
-                { key: "SNOW_CLIENT_ID", value: snowClientId },
-                { key: "SNOW_CLIENT_SECRET", value: snowClientSecret },
-              ])
-              // Update SnowCode MCP configs
-              await updateSnowCodeMCPConfigs(snowInstance, snowClientId, snowClientSecret)
-              prompts.log.success("ServiceNow authentication successful!")
-            } else {
-              prompts.log.error(`ServiceNow authentication failed: ${snowAuthResult.error}`)
+            if (!enterpriseResult.success) {
+              prompts.log.error(`Enterprise authentication failed: ${enterpriseResult.error}`)
               prompts.outro("Setup cancelled")
               await Instance.dispose()
               process.exit(1)
             }
-          } else {
-            // Basic auth
-            const snowUsername = (await prompts.text({
-              message: "ServiceNow username",
-              placeholder: "admin",
+
+            // Show what was retrieved
+            prompts.log.info("╔════════════════════════════════════════════════════════╗")
+            prompts.log.info("║  ✅ Snow-Flow Enterprise Connected                     ║")
+            prompts.log.info("╚════════════════════════════════════════════════════════╝")
+            prompts.log.info("")
+            prompts.log.info(`   Customer: ${enterpriseResult.customer?.name}`)
+            prompts.log.info(`   Company:  ${enterpriseResult.customer?.company}`)
+            prompts.log.info("")
+
+            // Show available tools
+            if (enterpriseResult.credentials?.jira?.enabled) {
+              prompts.log.info(`   ✓ Jira (${enterpriseResult.credentials.jira.baseUrl})`)
+            }
+            if (enterpriseResult.credentials?.["azure-devops"]?.enabled) {
+              prompts.log.info(`   ✓ Azure DevOps (${enterpriseResult.credentials["azure-devops"].baseUrl})`)
+            }
+            if (enterpriseResult.credentials?.confluence?.enabled) {
+              prompts.log.info(`   ✓ Confluence (${enterpriseResult.credentials.confluence.baseUrl})`)
+            }
+
+            // Handle ServiceNow instances
+            const instances = enterpriseResult.servicenowInstances || []
+
+            if (instances.length > 0) {
+              prompts.log.info("")
+              prompts.log.info("   ServiceNow Instances:")
+              for (const inst of instances) {
+                const defaultTag = inst.isDefault ? " (default)" : ""
+                prompts.log.info(`   ✓ ${inst.instanceName} [${inst.environmentType}]${defaultTag}`)
+              }
+              prompts.log.info("")
+
+              // Select which instance to use
+              let selectedInstance: ServiceNowInstanceFromPortal
+
+              if (instances.length === 1) {
+                // Only one instance, use it directly
+                selectedInstance = instances[0]
+                prompts.log.success(`   Using: ${selectedInstance.instanceName}`)
+              } else {
+                // Multiple instances, let user choose
+                const instanceChoice = await prompts.select({
+                  message: "Select ServiceNow instance to use:",
+                  options: instances.map((inst) => ({
+                    value: inst.id.toString(),
+                    label: `${inst.instanceName} [${inst.environmentType}]`,
+                    hint: inst.isDefault ? "default" : inst.instanceUrl,
+                  })),
+                })
+
+                if (prompts.isCancel(instanceChoice)) throw new UI.CancelledError()
+
+                selectedInstance = instances.find((i) => i.id.toString() === instanceChoice)!
+                prompts.log.success(`   Selected: ${selectedInstance.instanceName}`)
+              }
+
+              // Configure ServiceNow with the selected instance
+              const instanceUrl = selectedInstance.instanceUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")
+
+              // Write to .env file
+              await updateEnvFile([
+                { key: "SNOW_INSTANCE", value: instanceUrl },
+                { key: "SNOW_AUTH_METHOD", value: "oauth" },
+                { key: "SNOW_CLIENT_ID", value: selectedInstance.clientId },
+                { key: "SNOW_CLIENT_SECRET", value: selectedInstance.clientSecret },
+              ])
+
+              // Update SnowCode MCP configs
+              await updateSnowCodeMCPConfigs(instanceUrl, selectedInstance.clientId, selectedInstance.clientSecret)
+
+              prompts.log.success("✓ ServiceNow configured from portal!")
+              serviceNowConfiguredViaPortal = true
+            } else {
+              prompts.log.warn("   No ServiceNow instances configured in portal")
+              prompts.log.info("   You can add instances at: https://portal.snow-flow.dev/portal/servicenow")
+              prompts.log.info("")
+              // Will fall through to manual ServiceNow config
+            }
+
+            prompts.log.info("")
+          }
+
+          // Manual ServiceNow setup (if not configured via portal)
+          if (!serviceNowConfiguredViaPortal) {
+            prompts.log.step("Step 2: ServiceNow Configuration")
+            prompts.log.info("Snow-Flow requires ServiceNow connection for development")
+            prompts.log.message("")
+
+            const snowInstance = (await prompts.text({
+              message: "ServiceNow instance URL",
+              placeholder: "dev12345.service-now.com",
               validate: (value) => {
-                if (!value || value.trim() === "") return "Username is required"
+                if (!value || value.trim() === "") return "Instance URL is required"
+                const cleaned = value.replace(/^https?:\/\//, "").replace(/\/$/, "")
+                if (
+                  !cleaned.includes(".service-now.com") &&
+                  !cleaned.includes("localhost") &&
+                  !cleaned.includes("127.0.0.1")
+                ) {
+                  return "Must be a ServiceNow domain (e.g., dev12345.service-now.com)"
+                }
               },
             })) as string
 
-            if (prompts.isCancel(snowUsername)) throw new UI.CancelledError()
+            if (prompts.isCancel(snowInstance)) throw new UI.CancelledError()
 
-            const snowPassword = (await prompts.password({
-              message: "ServiceNow password",
-              validate: (value) => {
-                if (!value || value.trim() === "") return "Password is required"
-              },
+            const snowAuthMethod = (await prompts.select({
+              message: "Authentication method",
+              options: [
+                { value: "oauth", label: "OAuth 2.0", hint: "recommended - required for MID Server LLM" },
+                { value: "basic", label: "Basic Auth", hint: "username/password" },
+              ],
             })) as string
 
-            if (prompts.isCancel(snowPassword)) throw new UI.CancelledError()
+            if (prompts.isCancel(snowAuthMethod)) throw new UI.CancelledError()
 
-            // Save to Auth store
-            await Auth.set("servicenow", {
-              type: "servicenow-basic",
-              instance: snowInstance,
-              username: snowUsername,
-              password: snowPassword,
-            })
+            if (snowAuthMethod === "oauth") {
+              const snowClientId = (await prompts.text({
+                message: "OAuth Client ID",
+                placeholder: "32-character hex string from ServiceNow",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Client ID is required"
+                  if (value.length < 32) return "Client ID too short (expected 32+ characters)"
+                },
+              })) as string
 
-            // Write to .env file
-            await updateEnvFile([
-              { key: "SNOW_INSTANCE", value: snowInstance },
-              { key: "SNOW_AUTH_METHOD", value: "basic" },
-              { key: "SNOW_USERNAME", value: snowUsername },
-              { key: "SNOW_PASSWORD", value: snowPassword },
-            ])
-            // Update MCP configs with instance only (no OAuth credentials)
-            await updateSnowCodeMCPConfigs(snowInstance, "", "")
+              if (prompts.isCancel(snowClientId)) throw new UI.CancelledError()
 
-            prompts.log.success("ServiceNow credentials saved!")
+              const snowClientSecret = (await prompts.password({
+                message: "OAuth Client Secret",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Client Secret is required"
+                  if (value.length < 32) return "Client Secret too short (expected 32+ characters)"
+                },
+              })) as string
+
+              if (prompts.isCancel(snowClientSecret)) throw new UI.CancelledError()
+
+              // Run OAuth flow for ServiceNow
+              const oauth = new ServiceNowOAuth()
+              const snowAuthResult = await oauth.authenticate({
+                instance: snowInstance,
+                clientId: snowClientId,
+                clientSecret: snowClientSecret,
+              })
+
+              if (snowAuthResult.success) {
+                // Write to .env file
+                await updateEnvFile([
+                  { key: "SNOW_INSTANCE", value: snowInstance },
+                  { key: "SNOW_AUTH_METHOD", value: "oauth" },
+                  { key: "SNOW_CLIENT_ID", value: snowClientId },
+                  { key: "SNOW_CLIENT_SECRET", value: snowClientSecret },
+                ])
+                // Update SnowCode MCP configs
+                await updateSnowCodeMCPConfigs(snowInstance, snowClientId, snowClientSecret)
+                prompts.log.success("ServiceNow authentication successful!")
+              } else {
+                prompts.log.error(`ServiceNow authentication failed: ${snowAuthResult.error}`)
+                prompts.outro("Setup cancelled")
+                await Instance.dispose()
+                process.exit(1)
+              }
+            } else {
+              // Basic auth
+              const snowUsername = (await prompts.text({
+                message: "ServiceNow username",
+                placeholder: "admin",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Username is required"
+                },
+              })) as string
+
+              if (prompts.isCancel(snowUsername)) throw new UI.CancelledError()
+
+              const snowPassword = (await prompts.password({
+                message: "ServiceNow password",
+                validate: (value) => {
+                  if (!value || value.trim() === "") return "Password is required"
+                },
+              })) as string
+
+              if (prompts.isCancel(snowPassword)) throw new UI.CancelledError()
+
+              // Save to Auth store
+              await Auth.set("servicenow", {
+                type: "servicenow-basic",
+                instance: snowInstance,
+                username: snowUsername,
+                password: snowPassword,
+              })
+
+              // Write to .env file
+              await updateEnvFile([
+                { key: "SNOW_INSTANCE", value: snowInstance },
+                { key: "SNOW_AUTH_METHOD", value: "basic" },
+                { key: "SNOW_USERNAME", value: snowUsername },
+                { key: "SNOW_PASSWORD", value: snowPassword },
+              ])
+              // Update MCP configs with instance only (no OAuth credentials)
+              await updateSnowCodeMCPConfigs(snowInstance, "", "")
+
+              prompts.log.success("ServiceNow credentials saved!")
+            }
           }
 
           prompts.log.message("")
-          prompts.log.step("Step 2: LLM Provider Configuration")
+          prompts.log.step(serviceNowConfiguredViaPortal ? "Step 2: LLM Provider Configuration" : "Step 3: LLM Provider Configuration")
         }
 
         // LLM Provider authentication
@@ -2006,6 +2295,26 @@ export const AuthLoginCommand = cmd({
           }
 
           // For complete setup, ask about Snow-Flow License (optional)
+          // Skip if already authenticated via enterprise in Step 1
+          if (serviceNowConfiguredViaPortal && enterpriseResult?.success) {
+            // Already authenticated via enterprise, skip this step
+            prompts.log.message("")
+            prompts.log.success("✅ Complete Setup finished!")
+            prompts.log.message("")
+            prompts.log.info("Configured:")
+            prompts.log.message("  ✓ Snow-Flow Enterprise (license + Jira/Azure DevOps/Confluence)")
+            prompts.log.message("  ✓ ServiceNow instance")
+            prompts.log.message("  ✓ LLM Provider")
+            prompts.log.message("")
+            prompts.log.info("Next steps:")
+            prompts.log.message("")
+            prompts.log.message('  • Run: snow-code init to configure Claude Code with MCP servers')
+            prompts.log.message('  • Run: snow-flow agent "<objective>" to start developing')
+            prompts.outro("Done")
+            await Instance.dispose()
+            process.exit(0)
+          }
+
           prompts.log.message("")
           const configureEnterprise = await prompts.confirm({
             message: "Configure Snow-Flow License? (optional - enables Jira, Azure DevOps, Confluence)",
@@ -2028,7 +2337,7 @@ export const AuthLoginCommand = cmd({
           // User wants Snow-Flow License, ask which type (same as standalone)
           prompts.log.message("")
 
-          const accountType = await prompts.select({
+          const accountType2 = await prompts.select({
             message: "Select your account type",
             options: [
               {
@@ -2044,9 +2353,9 @@ export const AuthLoginCommand = cmd({
             ],
           })
 
-          if (prompts.isCancel(accountType)) throw new UI.CancelledError()
+          if (prompts.isCancel(accountType2)) throw new UI.CancelledError()
 
-          if (accountType === "portal") {
+          if (accountType2 === "portal") {
             // Portal authentication (Individual/Teams) - same as standalone
             const authMethod = await prompts.select({
               message: "How would you like to authenticate?",
