@@ -2909,7 +2909,22 @@ export const AuthLoginCommand = cmd({
             }
 
             // For complete setup, ServiceNow is already configured at the start
-            // Now ask about Snow-Flow License (optional)
+            // Skip Snow-Flow License question if already configured via Enterprise in Step 1
+            if (enterpriseResult?.success) {
+              // Enterprise already configured, we're done!
+              prompts.log.message("")
+              prompts.log.success("✅ Authentication complete!")
+              prompts.log.message("")
+              prompts.log.info("Next steps:")
+              prompts.log.message("")
+              prompts.log.message('  • Run: snow-flow agent "<objective>" to start developing')
+              prompts.log.message("  • Run: snow-code auth list to see configured credentials")
+              prompts.outro("Done")
+              await Instance.dispose()
+              process.exit(0)
+            }
+
+            // Only ask about Snow-Flow License if not already configured
             prompts.log.message("")
             const configureEnterpriseAfterLLM = await prompts.confirm({
               message: "Configure Snow-Flow License? (optional - enables Jira, Azure DevOps, Confluence)",
