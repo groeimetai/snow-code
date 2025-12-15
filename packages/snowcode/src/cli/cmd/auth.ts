@@ -166,7 +166,7 @@ async function updateSnowCodeMCPConfigs(instance: string, clientId: string, clie
  */
 const PROVIDER_BASE_URLS: Record<string, string> = {
   "openai": "https://api.openai.com/v1",
-  "anthropic": "https://api.anthropic.com",
+  "anthropic": "https://api.anthropic.com/v1",
   "google": "https://generativelanguage.googleapis.com/v1beta",
   "groq": "https://api.groq.com/openai/v1",
   "mistral": "https://api.mistral.ai/v1",

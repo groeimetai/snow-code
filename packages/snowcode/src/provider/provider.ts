@@ -773,9 +773,6 @@ export namespace Provider {
     if (!provider) return
     const priority = [
       "claude-haiku-4-5",
-      "claude-haiku-4.5",
-      "3-5-haiku",
-      "3.5-haiku",
       "gemini-2.5-flash",
       "gpt-5-nano",
     ]
@@ -786,7 +783,7 @@ export namespace Provider {
     }
   }
 
-  const priority = ["gemini-2.5-pro-preview", "gpt-5", "claude-sonnet-4"]
+  const priority = ["gemini-2.5-pro-preview", "gpt-5", "claude-opus-4-5"]
   export function sort(models: ModelsDev.Model[]) {
     return sortBy(
       models,
