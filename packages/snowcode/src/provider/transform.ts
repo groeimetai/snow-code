@@ -91,7 +91,11 @@ export namespace ProviderTransform {
       result["promptCacheKey"] = sessionID
     }
 
-    if (modelID.includes("gpt-5") && !modelID.includes("gpt-5-chat")) {
+    // Check for GPT-5 reasoning models (exclude chat models like gpt-5-chat, gpt-5.2-chat, etc.)
+    const isGpt5 = modelID.includes("gpt-5")
+    const isChatModel = modelID.includes("-chat")
+
+    if (isGpt5 && !isChatModel) {
       if (!modelID.includes("codex")) result["reasoningEffort"] = "medium"
 
       if (providerID !== "azure") {
