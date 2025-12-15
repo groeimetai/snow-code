@@ -18,6 +18,7 @@ import {
   AuthEnterpriseLoginCommand,
   AuthEnterpriseSyncCommand,
   AuthEnterpriseStatusCommand,
+  AuthEnterpriseThemeExportCommand,
   readEnterpriseConfig
 } from "./auth-enterprise.js"
 import open from "open"
@@ -1375,6 +1376,29 @@ interface ServiceNowInstanceFromPortal {
   enabled: boolean
 }
 
+interface EnterpriseThemeFromPortal {
+  source: 'service-integrator' | 'custom-theme'
+  // Custom theme info (if source is 'custom-theme')
+  themeId?: number
+  themeName?: string
+  displayName?: string
+  // Branding
+  whiteLabelEnabled?: boolean
+  brandName?: string
+  logoUrl?: string
+  faviconUrl?: string
+  // Colors
+  primaryColor: string
+  secondaryColor: string
+  accentColor: string
+  // Support info
+  supportEmail?: string
+  supportUrl?: string
+  footerText?: string
+  // Full theme config for advanced usage
+  themeConfig?: any
+}
+
 interface EnterpriseCredentialsResult {
   success: boolean
   error?: string
@@ -1392,6 +1416,7 @@ interface EnterpriseCredentialsResult {
   }
   servicenowInstances?: ServiceNowInstanceFromPortal[]
   mcpServerUrl?: string
+  theme?: EnterpriseThemeFromPortal
 }
 
 /**
@@ -1485,7 +1510,7 @@ async function performEnterpriseDeviceAuth(): Promise<EnterpriseCredentialsResul
       return { success: false, error: error.error || "Failed to fetch enterprise credentials" }
     }
 
-    const { credentials, servicenowInstances, mcpServerUrl } = await credentialsResponse.json()
+    const { credentials, servicenowInstances, mcpServerUrl, theme } = await credentialsResponse.json()
 
     // Step 6: Save configuration to enterprise.json
     const enterpriseConfig = {
@@ -1497,6 +1522,7 @@ async function performEnterpriseDeviceAuth(): Promise<EnterpriseCredentialsResul
       credentials,
       servicenowInstances: servicenowInstances || [],
       mcpServerUrl,
+      theme,
       lastSynced: Date.now()
     }
 
@@ -1516,7 +1542,8 @@ async function performEnterpriseDeviceAuth(): Promise<EnterpriseCredentialsResul
       customer,
       credentials,
       servicenowInstances: servicenowInstances || [],
-      mcpServerUrl
+      mcpServerUrl,
+      theme
     }
 
   } catch (error: any) {
@@ -1536,6 +1563,7 @@ export const AuthCommand = cmd({
       .command(AuthEnterpriseLoginCommand)
       .command(AuthEnterpriseSyncCommand)
       .command(AuthEnterpriseStatusCommand)
+      .command(AuthEnterpriseThemeExportCommand)
       // Portal commands (email-based auth for Individual/Teams)
       .command(AuthPortalLoginCommand)
       .command(AuthPortalLogoutCommand)
@@ -1985,6 +2013,16 @@ export const AuthLoginCommand = cmd({
             }
             if (enterpriseResult.credentials?.confluence?.enabled) {
               prompts.log.info(`   ✓ Confluence (${enterpriseResult.credentials.confluence.baseUrl})`)
+            }
+
+            // Show theme info if available
+            if (enterpriseResult.theme) {
+              prompts.log.info("")
+              prompts.log.info("   Theme:")
+              if (enterpriseResult.theme.brandName) {
+                prompts.log.info(`   ✓ Brand: ${enterpriseResult.theme.brandName}`)
+              }
+              prompts.log.info(`   ✓ Colors: ${enterpriseResult.theme.primaryColor} / ${enterpriseResult.theme.secondaryColor} / ${enterpriseResult.theme.accentColor}`)
             }
 
             // Handle ServiceNow instances
@@ -3379,7 +3417,7 @@ export const AuthLoginCommand = cmd({
                 // Also update the servicenow-llm API key
                 await Auth.set("servicenow-llm", {
                   type: "api",
-                  key: refreshResult.accessToken,
+                  key: refreshResult.accessToken!,
                 })
                 prompts.log.success("Token refreshed successfully")
               } else {
