@@ -1130,7 +1130,9 @@ async function findEnterpriseProxyPath(): Promise<string> {
 }
 
 /**
- * Enterprise MCP configuration interface
+ * @deprecated Use updateEnterpriseMcpConfig() instead.
+ * This interface stores credentials locally which is insecure.
+ * Enterprise MCP configuration interface (LEGACY - DO NOT USE)
  */
 interface EnterpriseMcpConfig {
   licenseKey: string
@@ -1155,7 +1157,9 @@ interface EnterpriseMcpConfig {
 }
 
 /**
- * Add enterprise MCP server to snow-code configuration
+ * @deprecated Use updateEnterpriseMcpConfig() instead.
+ * This function stores credentials locally which is insecure.
+ * Add enterprise MCP server to snow-code configuration (LEGACY - DO NOT USE)
  */
 async function addEnterpriseMcpServer(config: EnterpriseMcpConfig): Promise<void> {
   const projectSnowCodeDir = path.join(process.cwd(), ".snow-code")
@@ -1226,6 +1230,75 @@ async function addEnterpriseMcpServer(config: EnterpriseMcpConfig): Promise<void
       await Bun.write(configPath, JSON.stringify(snowCodeConfig, null, 2))
     } catch (error: any) {
       // Skip failed config updates
+    }
+  }
+}
+
+/**
+ * Update enterprise MCP configuration with JWT token.
+ * SECURITY: This function only uses the JWT token - NO credentials are stored locally.
+ * All credentials (Jira, Azure DevOps, Confluence, ServiceNow) are fetched server-side
+ * by the enterprise MCP server using the JWT token for authentication.
+ *
+ * @param jwtToken - The JWT token obtained from device authorization flow
+ * @param mcpServerUrl - The enterprise MCP server URL
+ */
+async function updateEnterpriseMcpConfig(jwtToken: string, mcpServerUrl: string): Promise<void> {
+  const projectSnowCodeDir = path.join(process.cwd(), ".snow-code")
+  const globalConfigDir = path.join(os.homedir(), ".config", "snow-code")
+
+  const configPaths = [
+    // Project root .mcp.json (used by snow-flow)
+    path.join(process.cwd(), ".mcp.json"),
+    // Project .snow-code configs
+    path.join(projectSnowCodeDir, "opencode.json"),
+    path.join(projectSnowCodeDir, "config.json"),
+    // Global configs
+    path.join(globalConfigDir, "opencode.json"),
+    path.join(globalConfigDir, "snowcode.json"),
+    path.join(globalConfigDir, "config.json"),
+  ]
+
+  // Find enterprise proxy path dynamically
+  const enterpriseProxyPath = await findEnterpriseProxyPath()
+
+  // Enterprise MCP server configuration
+  // SECURITY: Only JWT token is passed - credentials are fetched server-side
+  const enterpriseMcpConfig = {
+    type: "local",
+    command: enterpriseProxyPath === "npx" ? ["npx", "snow-flow-enterprise-proxy"] : ["node", enterpriseProxyPath],
+    environment: {
+      SNOW_LICENSE_KEY: jwtToken,  // JWT token for authentication - NOT the raw license key
+      SNOW_ENTERPRISE_URL: mcpServerUrl || "https://enterprise.snow-flow.dev",
+      // NOTE: NO credentials are stored here - they are fetched server-side by the enterprise MCP server
+    },
+    enabled: true,
+  }
+
+  for (const configPath of configPaths) {
+    try {
+      const dir = path.dirname(configPath)
+      // Ensure directory exists by writing a .keep file
+      await Bun.write(path.join(dir, ".keep"), "")
+
+      var snowCodeConfig: any = {}
+      const file = Bun.file(configPath)
+      if (await file.exists()) {
+        const configText = await file.text()
+        snowCodeConfig = JSON.parse(configText)
+      }
+
+      // Ensure mcp key exists
+      if (!snowCodeConfig.mcp) {
+        snowCodeConfig.mcp = {}
+      }
+
+      // Add/update enterprise MCP server configuration
+      snowCodeConfig.mcp["snow-flow-enterprise"] = enterpriseMcpConfig
+
+      await Bun.write(configPath, JSON.stringify(snowCodeConfig, null, 2))
+    } catch (error: any) {
+      // Skip failed config updates - continue with other paths
     }
   }
 }
@@ -1493,8 +1566,30 @@ async function performEnterpriseDeviceAuth(): Promise<EnterpriseCredentialsResul
       return { success: false, error: error.error || "Failed to verify authorization code" }
     }
 
-    const { token, customer } = await verifyResponse.json()
+    const { token, authType, customer, user } = await verifyResponse.json()
+
+    // SECURITY: Block license key admin logins - they must use a user account
+    // Each device auth counts as a seat, so admins should not use CLI directly
+    if (authType === 'enterprise') {
+      prompts.log.error("")
+      prompts.log.error("⚠️  License key admin login is not allowed via CLI")
+      prompts.log.info("")
+      prompts.log.info("   Enterprise admins must create user accounts in the portal.")
+      prompts.log.info("   Each CLI login counts as a licensed seat.")
+      prompts.log.info("")
+      prompts.log.info("   To create users:")
+      prompts.log.info("   1. Go to https://portal.snow-flow.dev")
+      prompts.log.info("   2. Navigate to Users → Add User")
+      prompts.log.info("   3. Assign the user a role (developer/stakeholder)")
+      prompts.log.info("   4. Have the user login with their credentials")
+      prompts.log.info("")
+      return { success: false, error: "License key admin login not allowed - please use a user account" }
+    }
+
     prompts.log.success("✓ Authorization verified!")
+    if (user) {
+      prompts.log.info(`   Welcome, ${user.username || user.email}!`)
+    }
     prompts.log.info("")
 
     // Step 5: Fetch enterprise credentials
@@ -1513,16 +1608,17 @@ async function performEnterpriseDeviceAuth(): Promise<EnterpriseCredentialsResul
     const { credentials, servicenowInstances, mcpServerUrl, theme } = await credentialsResponse.json()
 
     // Step 6: Save configuration to enterprise.json
+    // SECURITY: Only store JWT token and non-sensitive metadata.
+    // Credentials (Jira, Azure, ServiceNow) are fetched server-side by enterprise MCP server.
     const enterpriseConfig = {
       token,
       customerId: customer.id,
       customerName: customer.name,
       company: customer.company,
-      licenseKey: customer.licenseKey,
-      credentials,
-      servicenowInstances: servicenowInstances || [],
+      // NOTE: licenseKey, credentials, and servicenowInstances are NOT stored locally
+      // They are fetched server-side by the enterprise MCP server using the JWT token
       mcpServerUrl,
-      theme,
+      theme,  // Theme is safe to store (UI customization only, no secrets)
       lastSynced: Date.now()
     }
 
@@ -1536,12 +1632,13 @@ async function performEnterpriseDeviceAuth(): Promise<EnterpriseCredentialsResul
     prompts.log.success("✓ Enterprise credentials synced!")
     prompts.log.info("")
 
+    // Return credentials for display purposes only (not stored locally)
     return {
       success: true,
       token,
       customer,
-      credentials,
-      servicenowInstances: servicenowInstances || [],
+      credentials,  // For display only, not stored
+      servicenowInstances: servicenowInstances || [],  // For display only, not stored
       mcpServerUrl,
       theme
     }
@@ -1760,197 +1857,96 @@ export const AuthLoginCommand = cmd({
             await Instance.dispose()
             process.exit(0)
           } else {
-            // Enterprise authentication - simple username/password login
-            // Admin creates users and provides credentials
+            // Enterprise authentication - device authorization flow (browser-based)
+            // SECURITY: Uses JWT token, no credentials stored locally
             prompts.log.step("Snow-Flow Enterprise Login")
-            prompts.log.info("Login with the credentials provided by your admin")
+            prompts.log.info("Authenticate via browser (device authorization)")
             prompts.log.message("")
 
-            // Enterprise portal URL is fixed
-            const portalUrl = "https://portal.snow-flow.dev"
-            const mcpServerUrl = "https://enterprise.snow-flow.dev"
+            // Run enterprise device authorization flow
+            const enterpriseAuthResult = await performEnterpriseDeviceAuth()
 
-            let username: string = ""
-            let password: string
-            let authData: any
+            if (!enterpriseAuthResult.success) {
+              prompts.log.error(`Enterprise authentication failed: ${enterpriseAuthResult.error}`)
+              prompts.outro("Authentication failed")
+              await Instance.dispose()
+              process.exit(1)
+            }
+
+            // Store enterprise auth (JWT token only - no credentials locally)
             const machineId = generateMachineId()
+            await Auth.set("enterprise", {
+              type: "enterprise",
+              enterpriseUrl: ENTERPRISE_API_URL,
+              token: enterpriseAuthResult.token,
+              machineId,
+            })
 
-            // Login flow
-            let loginSuccess = false
+            // Show success message
+            prompts.log.info("")
+            prompts.log.success(`Welcome to Snow-Flow Enterprise!`)
+            if (enterpriseAuthResult.customer) {
+              prompts.log.info(`Customer: ${enterpriseAuthResult.customer.name}`)
+              prompts.log.info(`Company: ${enterpriseAuthResult.customer.company}`)
+            }
 
-            while (!loginSuccess) {
-              username = (await prompts.text({
-                message: "Username",
-                placeholder: "john.doe",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Username is required"
-                },
-              })) as string
+            // Show available integrations (read-only, credentials are server-side)
+            prompts.log.message("")
+            prompts.log.info("Available Integrations (credentials managed server-side):")
 
-              if (prompts.isCancel(username)) throw new UI.CancelledError()
+            const creds = enterpriseAuthResult.credentials || {}
+            let enabledServices: string[] = []
 
-              password = (await prompts.password({
-                message: "Password",
-                validate: (value) => {
-                  if (!value || value.trim() === "") return "Password is required"
-                },
-              })) as string
+            if (creds.jira?.enabled) {
+              prompts.log.message(`  • Jira`)
+              enabledServices.push('jira')
+            }
+            if (creds["azure-devops"]?.enabled) {
+              prompts.log.message(`  • Azure DevOps`)
+              enabledServices.push('azdo')
+            }
+            if (creds.confluence?.enabled) {
+              prompts.log.message(`  • Confluence`)
+              enabledServices.push('confluence')
+            }
 
-              if (prompts.isCancel(password)) throw new UI.CancelledError()
-
+            // Show ServiceNow instances
+            if (enterpriseAuthResult.servicenowInstances && enterpriseAuthResult.servicenowInstances.length > 0) {
               prompts.log.message("")
-              const spinner = prompts.spinner()
-              spinner.start("Authenticating...")
-
-              try {
-                const response = await fetch(`${portalUrl}/api/user-auth/login`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ username, password }),
-                })
-
-                authData = await response.json()
-
-                if (!response.ok || !authData.success) {
-                  spinner.stop("Authentication failed", 1)
-                  prompts.log.error(authData.error || "Invalid username or password")
-
-                  const tryAgain = await prompts.confirm({
-                    message: "Would you like to try again?",
-                    initialValue: true,
-                  })
-                  if (prompts.isCancel(tryAgain) || !tryAgain) {
-                    prompts.outro("Login cancelled")
-                    await Instance.dispose()
-                    process.exit(1)
-                  }
-                  continue
-                }
-
-                spinner.stop("Authentication successful!")
-                loginSuccess = true
-              } catch (error: any) {
-                spinner.stop("Connection error", 1)
-                prompts.log.error(`Connection error: ${error.message}`)
-                prompts.outro("Login cancelled")
-                await Instance.dispose()
-                process.exit(1)
+              prompts.log.info("ServiceNow Instances:")
+              for (const inst of enterpriseAuthResult.servicenowInstances) {
+                const defaultTag = inst.isDefault ? " (default)" : ""
+                prompts.log.message(`  • ${inst.instanceName} [${inst.environmentType}]${defaultTag}`)
               }
             }
 
-            const role = authData.user?.role || "developer"
-            const email = authData.user?.email
-            const licenseKey = authData.customer?.licenseKey || ""
-
-            // Store enterprise auth
-          await Auth.set("enterprise", {
-            type: "enterprise",
-            licenseKey,
-            enterpriseUrl: portalUrl,
-            token: authData.token,
-            sessionToken: authData.sessionToken,
-            username,
-            email,
-            role: authData.user?.role || role,
-            machineId,
-          })
-
-          // NOTE: .env writes removed - credentials are fetched from Portal API by enterprise MCP server
-          // JWT token is stored in MCP config, no need to store license key in .env
-
-          prompts.log.success(`Welcome, ${username}!`)
-          prompts.log.info(`Role: ${authData.user?.role || role}`)
-          if (authData.customer?.company) {
-            prompts.log.info(`Company: ${authData.customer.company}`)
-          }
-
-          // Fetch third-party tool credentials from portal (optional)
-          prompts.log.message("")
-          const fetchSpinner = prompts.spinner()
-          fetchSpinner.start("Checking third-party tool integrations...")
-
-          // Track enabled services for documentation generation
-          let enabledServices: string[] = []
-
-          // Check if we have a license key to fetch credentials
-          if (!licenseKey) {
-            fetchSpinner.stop("Could not fetch credentials (no license key)")
-            prompts.log.warn("Your customer account may not have a license key configured")
-          } else {
-            const portalCredentials = await PortalSync.pullFromPortal(licenseKey, portalUrl)
-
-            if (portalCredentials.success && portalCredentials.credentials) {
-              const creds = portalCredentials.credentials
-              const credCount = (creds.jira ? 1 : 0) + (creds.azureDevOps ? 1 : 0) + (creds.confluence ? 1 : 0)
-
-              if (credCount > 0) {
-                fetchSpinner.stop(`Found ${credCount} integration(s)`)
-                if (creds.jira) prompts.log.message(`  • Jira: ${creds.jira.baseUrl}`)
-                if (creds.azureDevOps) prompts.log.message(`  • Azure DevOps: ${creds.azureDevOps.org}`)
-                if (creds.confluence) prompts.log.message(`  • Confluence: ${creds.confluence.baseUrl}`)
-
-                // Build enabled services list based on fetched credentials
-                if (creds.jira) enabledServices.push('jira')
-                if (creds.azureDevOps) enabledServices.push('azdo')
-                if (creds.confluence) enabledServices.push('confluence')
-              } else {
-                fetchSpinner.stop("No third-party integrations configured in portal")
-              }
-            } else {
-              fetchSpinner.stop("Could not fetch credentials")
-              if (portalCredentials.error) {
-                prompts.log.warn(`Reason: ${portalCredentials.error}`)
-              }
-            }
-          }
-
-          // For stakeholders, replace docs with read-only version (regardless of integrations)
-          await replaceDocumentationForStakeholder(role)
-
-          // Update documentation with enterprise features based on enabled integrations
-          if (enabledServices.length > 0) {
-            await updateDocumentationWithEnterprise(enabledServices)
-          }
-
-          // Configure MCP server
-          try {
-            const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
-            const configPath = path.join(globalSnowCodeDir, "config.json")
-            await Bun.write(path.join(globalSnowCodeDir, ".keep"), "")
-
-            const file = Bun.file(configPath)
-            var config: any = {}
-            if (await file.exists()) {
-              config = JSON.parse(await file.text())
-            }
-            if (!config.mcp) config.mcp = {}
-
-            const enterpriseProxyPath = await findEnterpriseProxyPath()
-            config.mcp["snow-flow-enterprise"] = {
-              command: enterpriseProxyPath === "npx" ? "npx" : "node",
-              args: enterpriseProxyPath === "npx" ? ["snow-flow-enterprise-proxy"] : [enterpriseProxyPath],
-              env: {
-                SNOW_LICENSE_KEY: licenseKey,
-                SNOW_ENTERPRISE_URL: mcpServerUrl,
-              },
+            // Update documentation with enterprise features
+            if (enabledServices.length > 0) {
+              await updateDocumentationWithEnterprise(enabledServices)
             }
 
-            await Bun.write(configPath, JSON.stringify(config, null, 2))
-            prompts.log.info("Added snow-flow-enterprise MCP server to config")
-          } catch (error: any) {
-            prompts.log.warn(`Failed to configure MCP server: ${error.message}`)
-          }
+            // Configure MCP server with JWT token
+            try {
+              await updateEnterpriseMcpConfig(enterpriseAuthResult.token!, enterpriseAuthResult.mcpServerUrl || "https://enterprise.snow-flow.dev")
+              prompts.log.info("")
+              prompts.log.info("Added snow-flow-enterprise MCP server to config")
+            } catch (error: any) {
+              prompts.log.warn(`Failed to configure MCP server: ${error.message}`)
+            }
 
-          prompts.log.message("")
-          prompts.log.success("✅ Enterprise authentication complete!")
-          prompts.log.message("")
-          prompts.log.info("Next steps:")
-          prompts.log.message("")
-          prompts.log.message('  • Run: snow-code init to configure Claude Code')
-          prompts.log.message('  • Run: snow-flow agent "<objective>" to start developing')
-          prompts.outro("Done")
-          await Instance.dispose()
-          process.exit(0)
+            prompts.log.message("")
+            prompts.log.info("ℹ️  Note: Credentials are managed server-side by the enterprise MCP server.")
+            prompts.log.info("ℹ️  No sensitive data is stored locally.")
+            prompts.log.message("")
+            prompts.log.success("✅ Enterprise authentication complete!")
+            prompts.log.message("")
+            prompts.log.info("Next steps:")
+            prompts.log.message("")
+            prompts.log.message('  • Run: snow-code init to configure Claude Code')
+            prompts.log.message('  • Run: snow-flow agent "<objective>" to start developing')
+            prompts.outro("Done")
+            await Instance.dispose()
+            process.exit(0)
           }
         }
 
@@ -2592,9 +2588,10 @@ export const AuthLoginCommand = cmd({
           const licenseKey = authData.customer?.licenseKey || ""
 
           // Store enterprise auth
+          // SECURITY: Only store JWT token - never store license key locally
           await Auth.set("enterprise", {
             type: "enterprise",
-            licenseKey,
+            // NOTE: licenseKey is NOT stored - credentials are fetched server-side
             enterpriseUrl: portalUrl,
             token: authData.token,
             sessionToken: authData.sessionToken,
@@ -2661,30 +2658,9 @@ export const AuthLoginCommand = cmd({
             await updateDocumentationWithEnterprise(enabledServices)
           }
 
-          // Configure MCP server
+          // Configure MCP server with JWT token (writes to all config locations)
           try {
-            const globalSnowCodeDir = path.join(os.homedir(), ".snowcode")
-            const configPath = path.join(globalSnowCodeDir, "config.json")
-            await Bun.write(path.join(globalSnowCodeDir, ".keep"), "")
-
-            const file = Bun.file(configPath)
-            var config: any = {}
-            if (await file.exists()) {
-              config = JSON.parse(await file.text())
-            }
-            if (!config.mcp) config.mcp = {}
-
-            const enterpriseProxyPath = await findEnterpriseProxyPath()
-            config.mcp["snow-flow-enterprise"] = {
-              command: enterpriseProxyPath === "npx" ? "npx" : "node",
-              args: enterpriseProxyPath === "npx" ? ["snow-flow-enterprise-proxy"] : [enterpriseProxyPath],
-              env: {
-                SNOW_LICENSE_KEY: licenseKey,
-                SNOW_ENTERPRISE_URL: mcpServerUrl,
-              },
-            }
-
-            await Bun.write(configPath, JSON.stringify(config, null, 2))
+            await updateEnterpriseMcpConfig(authData.token, mcpServerUrl)
             prompts.log.info("Added snow-flow-enterprise MCP server to config")
           } catch (error: any) {
             prompts.log.warn(`Failed to configure MCP server: ${error.message}`)
@@ -3125,9 +3101,10 @@ export const AuthLoginCommand = cmd({
             const enterpriseLicenseKey = enterpriseAuthResult.customer?.licenseKey || ""
 
             // Store enterprise auth
+            // SECURITY: Only store JWT token - never store license key locally
             await Auth.set("enterprise", {
               type: "enterprise",
-              licenseKey: enterpriseLicenseKey,
+              // NOTE: licenseKey is NOT stored - credentials are fetched server-side
               enterpriseUrl: enterprisePortalUrl,
               token: enterpriseAuthResult.token,
               sessionToken: enterpriseAuthResult.sessionToken,
@@ -3194,30 +3171,9 @@ export const AuthLoginCommand = cmd({
               await updateDocumentationWithEnterprise(enabledServicesEnterprise)
             }
 
-            // Configure MCP server
+            // Configure MCP server with JWT token (writes to all config locations)
             try {
-              const globalSnowCodeDirEnterprise = path.join(os.homedir(), ".snowcode")
-              const configPathEnterprise = path.join(globalSnowCodeDirEnterprise, "config.json")
-              await Bun.write(path.join(globalSnowCodeDirEnterprise, ".keep"), "")
-
-              const fileEnterprise = Bun.file(configPathEnterprise)
-              var configEnterprise: any = {}
-              if (await fileEnterprise.exists()) {
-                configEnterprise = JSON.parse(await fileEnterprise.text())
-              }
-              if (!configEnterprise.mcp) configEnterprise.mcp = {}
-
-              const enterpriseProxyPathLLM = await findEnterpriseProxyPath()
-              configEnterprise.mcp["snow-flow-enterprise"] = {
-                command: enterpriseProxyPathLLM === "npx" ? "npx" : "node",
-                args: enterpriseProxyPathLLM === "npx" ? ["snow-flow-enterprise-proxy"] : [enterpriseProxyPathLLM],
-                env: {
-                  SNOW_LICENSE_KEY: enterpriseLicenseKey,
-                  SNOW_ENTERPRISE_URL: enterpriseMcpUrl,
-                },
-              }
-
-              await Bun.write(configPathEnterprise, JSON.stringify(configEnterprise, null, 2))
+              await updateEnterpriseMcpConfig(enterpriseAuthResult.token, enterpriseMcpUrl)
               prompts.log.info("Added snow-flow-enterprise MCP server to config")
             } catch (error: any) {
               prompts.log.warn(`Failed to configure MCP server: ${error.message}`)
@@ -4110,9 +4066,10 @@ export const AuthLoginCommand = cmd({
           const enterpriseLicenseKeyFinal = enterpriseAuthResultFinal.customer?.licenseKey || ""
 
           // Store enterprise auth
+          // SECURITY: Only store JWT token - never store license key locally
           await Auth.set("enterprise", {
             type: "enterprise",
-            licenseKey: enterpriseLicenseKeyFinal,
+            // NOTE: licenseKey is NOT stored - credentials are fetched server-side
             enterpriseUrl: enterprisePortalUrlFinal,
             token: enterpriseAuthResultFinal.token,
             sessionToken: enterpriseAuthResultFinal.sessionToken,
@@ -4179,30 +4136,9 @@ export const AuthLoginCommand = cmd({
             await updateDocumentationWithEnterprise(enabledServicesFinal)
           }
 
-          // Configure MCP server
+          // Configure MCP server with JWT token (writes to all config locations)
           try {
-            const globalSnowCodeDirFinal = path.join(os.homedir(), ".snowcode")
-            const configPathFinal = path.join(globalSnowCodeDirFinal, "config.json")
-            await Bun.write(path.join(globalSnowCodeDirFinal, ".keep"), "")
-
-            const fileFinal = Bun.file(configPathFinal)
-            var configFinal: any = {}
-            if (await fileFinal.exists()) {
-              configFinal = JSON.parse(await fileFinal.text())
-            }
-            if (!configFinal.mcp) configFinal.mcp = {}
-
-            const enterpriseProxyPathFinal = await findEnterpriseProxyPath()
-            configFinal.mcp["snow-flow-enterprise"] = {
-              command: enterpriseProxyPathFinal === "npx" ? "npx" : "node",
-              args: enterpriseProxyPathFinal === "npx" ? ["snow-flow-enterprise-proxy"] : [enterpriseProxyPathFinal],
-              env: {
-                SNOW_LICENSE_KEY: enterpriseLicenseKeyFinal,
-                SNOW_ENTERPRISE_URL: enterpriseMcpUrlFinal,
-              },
-            }
-
-            await Bun.write(configPathFinal, JSON.stringify(configFinal, null, 2))
+            await updateEnterpriseMcpConfig(enterpriseAuthResultFinal.token, enterpriseMcpUrlFinal)
             prompts.log.info("Added snow-flow-enterprise MCP server to config")
           } catch (error: any) {
             prompts.log.warn(`Failed to configure MCP server: ${error.message}`)

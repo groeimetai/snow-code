@@ -66,12 +66,18 @@ interface EnterpriseTheme {
   themeConfig?: any
 }
 
+/**
+ * Enterprise configuration stored locally.
+ *
+ * SECURITY: Only the JWT token is stored locally. All credentials (Jira, Azure DevOps,
+ * Confluence, ServiceNow) are fetched server-side by the enterprise MCP server using
+ * the JWT token to authenticate with the Portal API. Credentials NEVER leave the server.
+ */
 interface EnterpriseConfig {
   token: string
   customerId: number
   customerName: string
   company: string
-  licenseKey?: string
   // Auth method: 'browser' for enterprise user login, 'license-key' for admin login
   authMethod: 'browser' | 'license-key'
   // Enterprise user info (when authMethod is 'browser')
@@ -79,34 +85,8 @@ interface EnterpriseConfig {
   username?: string
   email?: string
   role?: string
-  // Credential preferences per service
-  credentialPreferences?: CredentialPreferences
-  credentials: {
-    jira?: {
-      baseUrl: string
-      email: string
-      apiToken: string
-      enabled: boolean
-      source?: CredentialSource
-    }
-    "azure-devops"?: {
-      baseUrl: string
-      username?: string
-      apiToken: string
-      enabled: boolean
-      source?: CredentialSource
-    }
-    confluence?: {
-      baseUrl: string
-      email: string
-      apiToken: string
-      enabled: boolean
-      source?: CredentialSource
-    }
-  }
-  servicenowInstances?: ServiceNowInstanceConfig[]
   mcpServerUrl: string
-  // Theme configuration from portal
+  // Theme configuration from portal (for UI customization only, no secrets)
   theme?: EnterpriseTheme
   lastSynced: number
 }
@@ -255,6 +235,23 @@ export const AuthEnterpriseLoginCommand = cmd({
         process.exit(0)
       }
 
+      // SECURITY: Block license key admin logins - they must use a user account
+      if (isEnterpriseAdmin) {
+        prompts.log.error("")
+        prompts.log.error("⚠️  License key admin login is not allowed via CLI")
+        prompts.log.info("")
+        prompts.log.info("   Enterprise admins must create user accounts in the portal.")
+        prompts.log.info("   Each CLI login counts as a licensed seat.")
+        prompts.log.info("")
+        prompts.log.info("   To create user accounts:")
+        prompts.log.info("   1. Log in to the Snow-Flow Enterprise Portal")
+        prompts.log.info("   2. Go to Settings → Team Management")
+        prompts.log.info("   3. Invite users with their email addresses")
+        prompts.log.info("   4. Users can then log in with 'snow-code auth login'")
+        prompts.log.info("")
+        process.exit(1)
+      }
+
       // Step 5: Fetch enterprise credentials with user ID for credential selection
       prompts.log.step("Syncing enterprise credentials...")
 
@@ -353,58 +350,37 @@ export const AuthEnterpriseLoginCommand = cmd({
         }
       }
 
-      // Transform credentials array to object format for config
-      const credentialsObj: EnterpriseConfig['credentials'] = {}
+      // SECURITY: Do NOT store credentials locally - they are fetched server-side
+      // by the enterprise MCP server using the JWT token.
+      // We only show what integrations are available (read-only info).
+
+      // Parse available integrations from response (for display only)
+      const availableIntegrations: string[] = []
       const credsArray = Array.isArray(credentialsData.credentials)
         ? credentialsData.credentials
-        : []
+        : Object.keys(credentialsData.credentials || {})
 
-      for (const cred of credsArray) {
-        const serviceKey = cred.service as keyof typeof credentialsObj
-        const preferredSource = credentialPreferences[serviceKey as keyof CredentialPreferences]
-
-        // If no preference set or this is the preferred source, use it
-        if (!preferredSource || cred.source === preferredSource || !credentialsObj[serviceKey]) {
-          if (serviceKey === 'jira') {
-            credentialsObj.jira = {
-              baseUrl: cred.baseUrl,
-              email: cred.email || '',
-              apiToken: cred.apiToken || '',
-              enabled: cred.enabled !== false,
-              source: cred.source
-            }
-          } else if (serviceKey === 'azure-devops') {
-            credentialsObj['azure-devops'] = {
-              baseUrl: cred.baseUrl,
-              username: cred.username,
-              apiToken: cred.apiToken || '',
-              enabled: cred.enabled !== false,
-              source: cred.source
-            }
-          } else if (serviceKey === 'confluence') {
-            credentialsObj.confluence = {
-              baseUrl: cred.baseUrl,
-              email: cred.email || '',
-              apiToken: cred.apiToken || '',
-              enabled: cred.enabled !== false,
-              source: cred.source
-            }
+      if (Array.isArray(credentialsData.credentials)) {
+        for (const cred of credsArray) {
+          if (cred.service && cred.enabled !== false) {
+            availableIntegrations.push(cred.service)
           }
         }
+      } else if (credentialsData.credentials) {
+        // Object format
+        const creds = credentialsData.credentials
+        if (creds.jira?.enabled) availableIntegrations.push('jira')
+        if (creds['azure-devops']?.enabled) availableIntegrations.push('azure-devops')
+        if (creds.confluence?.enabled) availableIntegrations.push('confluence')
       }
 
-      // Use object format if we got that directly (for admin login)
-      if (!Array.isArray(credentialsData.credentials) && credentialsData.credentials) {
-        Object.assign(credentialsObj, credentialsData.credentials)
-      }
-
-      // Step 6: Save configuration
+      // Step 6: Save configuration (SECURITY: No credentials stored locally)
       const enterpriseConfig: EnterpriseConfig = {
         token,
         customerId: customer.id,
         customerName: customer.name,
         company: customer.company,
-        licenseKey: customer.licenseKey,
+        // NOTE: licenseKey is NOT stored - JWT token is used for authentication
         authMethod: isEnterpriseUser ? 'browser' : 'license-key',
         ...(isEnterpriseUser && user && {
           userId: String(user.id),
@@ -412,9 +388,6 @@ export const AuthEnterpriseLoginCommand = cmd({
           email: user.email,
           role: user.role
         }),
-        credentialPreferences: Object.keys(credentialPreferences).length > 0 ? credentialPreferences : undefined,
-        credentials: credentialsObj,
-        servicenowInstances: servicenowInstances || [],
         mcpServerUrl,
         theme,
         lastSynced: Date.now()
@@ -422,7 +395,7 @@ export const AuthEnterpriseLoginCommand = cmd({
 
       saveEnterpriseConfig(enterpriseConfig)
 
-      prompts.log.success("✓ Enterprise credentials synced!")
+      prompts.log.success("✓ Enterprise authentication complete!")
       prompts.log.info("")
 
       // Step 7: Show summary
@@ -437,29 +410,25 @@ export const AuthEnterpriseLoginCommand = cmd({
       prompts.log.info(`   Customer: ${customer.name}`)
       prompts.log.info(`   Company:  ${customer.company}`)
       prompts.log.info("")
-      prompts.log.info("   Available Tools:")
+      prompts.log.info("   Available Integrations (credentials fetched server-side):")
 
-      if (credentialsObj.jira?.enabled) {
-        const source = credentialsObj.jira.source ? ` [${credentialsObj.jira.source}]` : ''
-        prompts.log.info(`   ✓ Jira (${credentialsObj.jira.baseUrl})${source}`)
+      if (availableIntegrations.includes('jira')) {
+        prompts.log.info(`   ✓ Jira`)
       }
-      if (credentialsObj["azure-devops"]?.enabled) {
-        const source = credentialsObj["azure-devops"].source ? ` [${credentialsObj["azure-devops"].source}]` : ''
-        prompts.log.info(`   ✓ Azure DevOps (${credentialsObj["azure-devops"].baseUrl})${source}`)
+      if (availableIntegrations.includes('azure-devops')) {
+        prompts.log.info(`   ✓ Azure DevOps`)
       }
-      if (credentialsObj.confluence?.enabled) {
-        const source = credentialsObj.confluence.source ? ` [${credentialsObj.confluence.source}]` : ''
-        prompts.log.info(`   ✓ Confluence (${credentialsObj.confluence.baseUrl})${source}`)
+      if (availableIntegrations.includes('confluence')) {
+        prompts.log.info(`   ✓ Confluence`)
       }
 
-      // Show ServiceNow instances
+      // Show ServiceNow instances (read-only info)
       if (servicenowInstances && servicenowInstances.length > 0) {
         prompts.log.info("")
         prompts.log.info("   ServiceNow Instances:")
         for (const inst of servicenowInstances) {
           const defaultTag = inst.isDefault ? " (default)" : ""
           prompts.log.info(`   ✓ ${inst.instanceName} [${inst.environmentType}]${defaultTag}`)
-          prompts.log.info(`     ${inst.instanceUrl}`)
         }
       }
 
@@ -480,6 +449,9 @@ export const AuthEnterpriseLoginCommand = cmd({
       }
 
       prompts.log.info("")
+      prompts.log.info("   ℹ️  Note: Credentials are managed server-side by the enterprise MCP server.")
+      prompts.log.info("   ℹ️  No sensitive data is stored locally.")
+      prompts.log.info("")
       prompts.log.info("   Next: Run 'snow-code init' to configure Claude Code")
       prompts.log.info("")
 
@@ -494,14 +466,17 @@ export const AuthEnterpriseLoginCommand = cmd({
 
 /**
  * Enterprise Sync Command
- * Re-fetches credentials from portal (if they were updated)
+ * Syncs configuration (theme, MCP server URL) from portal.
+ *
+ * SECURITY: Credentials are NOT stored locally. They are fetched server-side
+ * by the enterprise MCP server using the JWT token.
  */
 export const AuthEnterpriseSyncCommand = cmd({
   command: "enterprise-sync",
-  describe: "Re-sync enterprise credentials from portal",
+  describe: "Sync enterprise configuration from portal",
   async handler() {
     prompts.log.info("")
-    prompts.log.info("🔄 Snow-Flow Enterprise Credential Sync")
+    prompts.log.info("🔄 Snow-Flow Enterprise Configuration Sync")
     prompts.log.info("")
 
     try {
@@ -515,35 +490,19 @@ export const AuthEnterpriseSyncCommand = cmd({
         process.exit(1)
       }
 
-      // Fetch fresh credentials
-      prompts.log.step("Fetching latest credentials...")
+      // Fetch configuration info from portal (not credentials - those stay server-side)
+      prompts.log.step("Fetching latest configuration...")
 
-      // For enterprise users, use fetch-for-cli to get both user and org credentials
-      const isEnterpriseUser = existingConfig.authMethod === 'browser' && existingConfig.userId
+      const configResponse = await fetch(`${API_URL}/api/auth/enterprise/credentials`, {
+        method: "GET",
+        headers: { "Authorization": `Bearer ${existingConfig.token}` }
+      })
 
-      const credentialsResponse = isEnterpriseUser && existingConfig.licenseKey
-        ? await fetch(`${API_URL}/api/credentials/fetch-for-cli`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${existingConfig.token}`
-            },
-            body: JSON.stringify({
-              licenseKey: existingConfig.licenseKey,
-              userId: existingConfig.userId,
-              serviceSelection: existingConfig.credentialPreferences
-            })
-          })
-        : await fetch(`${API_URL}/api/auth/enterprise/credentials`, {
-            method: "GET",
-            headers: { "Authorization": `Bearer ${existingConfig.token}` }
-          })
-
-      if (!credentialsResponse.ok) {
-        const error = await credentialsResponse.json()
+      if (!configResponse.ok) {
+        const error = await configResponse.json()
 
         // If unauthorized, token might be expired
-        if (credentialsResponse.status === 401) {
+        if (configResponse.status === 401) {
           prompts.log.error("❌ Authentication token expired")
           prompts.log.info("")
           prompts.log.info("   Run 'snow-code auth enterprise-login' to re-authenticate")
@@ -551,63 +510,18 @@ export const AuthEnterpriseSyncCommand = cmd({
           process.exit(1)
         }
 
-        throw new Error(error.error || "Failed to fetch enterprise credentials")
+        throw new Error(error.error || "Failed to fetch enterprise configuration")
       }
 
-      const credentialsData = await credentialsResponse.json()
+      const configData = await configResponse.json()
 
-      // Transform credentials based on format
-      let credentialsObj: EnterpriseConfig['credentials'] = {}
-      const servicenowInstances = credentialsData.servicenowInstances || []
-      const mcpServerUrl = credentialsData.mcpServerUrl || ""
-      // Extract theme from response
-      const theme: EnterpriseTheme | undefined = credentialsData.theme || undefined
+      // Extract non-sensitive configuration
+      const mcpServerUrl = configData.mcpServerUrl || existingConfig.mcpServerUrl || ""
+      const theme: EnterpriseTheme | undefined = configData.theme || undefined
 
-      if (Array.isArray(credentialsData.credentials)) {
-        // Array format from fetch-for-cli - apply preferences
-        for (const cred of credentialsData.credentials) {
-          const serviceKey = cred.service as keyof typeof credentialsObj
-          const preferredSource = existingConfig.credentialPreferences?.[serviceKey as keyof CredentialPreferences]
-
-          // If this is the preferred source or no preference/no existing, use it
-          if (!preferredSource || cred.source === preferredSource || !credentialsObj[serviceKey]) {
-            if (serviceKey === 'jira') {
-              credentialsObj.jira = {
-                baseUrl: cred.baseUrl,
-                email: cred.email || '',
-                apiToken: cred.apiToken || '',
-                enabled: cred.enabled !== false,
-                source: cred.source
-              }
-            } else if (serviceKey === 'azure-devops') {
-              credentialsObj['azure-devops'] = {
-                baseUrl: cred.baseUrl,
-                username: cred.username,
-                apiToken: cred.apiToken || '',
-                enabled: cred.enabled !== false,
-                source: cred.source
-              }
-            } else if (serviceKey === 'confluence') {
-              credentialsObj.confluence = {
-                baseUrl: cred.baseUrl,
-                email: cred.email || '',
-                apiToken: cred.apiToken || '',
-                enabled: cred.enabled !== false,
-                source: cred.source
-              }
-            }
-          }
-        }
-      } else {
-        // Object format from enterprise/credentials
-        credentialsObj = credentialsData.credentials || {}
-      }
-
-      // Update config
+      // SECURITY: Only update non-sensitive configuration - NO credentials stored locally
       const updatedConfig: EnterpriseConfig = {
         ...existingConfig,
-        credentials: credentialsObj,
-        servicenowInstances: servicenowInstances || [],
         mcpServerUrl,
         theme,
         lastSynced: Date.now()
@@ -615,35 +529,35 @@ export const AuthEnterpriseSyncCommand = cmd({
 
       saveEnterpriseConfig(updatedConfig)
 
-      prompts.log.success("✓ Credentials synced successfully!")
+      prompts.log.success("✓ Configuration synced successfully!")
       prompts.log.info("")
 
-      // Show updated credentials
-      prompts.log.info("   Updated Credentials:")
+      // Show available integrations (read-only info, no credentials stored)
+      prompts.log.info("   Available Integrations (credentials fetched server-side):")
 
-      if (credentialsObj.jira?.enabled) {
-        const source = credentialsObj.jira.source ? ` [${credentialsObj.jira.source}]` : ''
-        prompts.log.info(`   ✓ Jira (${credentialsObj.jira.baseUrl})${source}`)
+      // Parse credentials to show what's available (without storing them)
+      const credentials = configData.credentials || {}
+      if (credentials.jira?.enabled || (Array.isArray(configData.credentials) && configData.credentials.some((c: any) => c.service === 'jira'))) {
+        prompts.log.info(`   ✓ Jira`)
       } else {
         prompts.log.info(`   ✗ Jira (not configured)`)
       }
 
-      if (credentialsObj["azure-devops"]?.enabled) {
-        const source = credentialsObj["azure-devops"].source ? ` [${credentialsObj["azure-devops"].source}]` : ''
-        prompts.log.info(`   ✓ Azure DevOps (${credentialsObj["azure-devops"].baseUrl})${source}`)
+      if (credentials["azure-devops"]?.enabled || (Array.isArray(configData.credentials) && configData.credentials.some((c: any) => c.service === 'azure-devops'))) {
+        prompts.log.info(`   ✓ Azure DevOps`)
       } else {
         prompts.log.info(`   ✗ Azure DevOps (not configured)`)
       }
 
-      if (credentialsObj.confluence?.enabled) {
-        const source = credentialsObj.confluence.source ? ` [${credentialsObj.confluence.source}]` : ''
-        prompts.log.info(`   ✓ Confluence (${credentialsObj.confluence.baseUrl})${source}`)
+      if (credentials.confluence?.enabled || (Array.isArray(configData.credentials) && configData.credentials.some((c: any) => c.service === 'confluence'))) {
+        prompts.log.info(`   ✓ Confluence`)
       } else {
         prompts.log.info(`   ✗ Confluence (not configured)`)
       }
 
-      // Show ServiceNow instances
-      if (servicenowInstances && servicenowInstances.length > 0) {
+      // Show ServiceNow instances (read-only info)
+      const servicenowInstances = configData.servicenowInstances || []
+      if (servicenowInstances.length > 0) {
         prompts.log.info("")
         prompts.log.info("   ServiceNow Instances:")
         for (const inst of servicenowInstances) {
@@ -668,6 +582,9 @@ export const AuthEnterpriseSyncCommand = cmd({
       }
 
       prompts.log.info("")
+      prompts.log.info("   ℹ️  Note: Credentials are fetched server-side by the enterprise MCP server.")
+      prompts.log.info("   ℹ️  No sensitive data is stored locally.")
+      prompts.log.info("")
 
     } catch (error: any) {
       prompts.log.error("")
@@ -681,6 +598,9 @@ export const AuthEnterpriseSyncCommand = cmd({
 /**
  * Enterprise Status Command
  * Show current enterprise authentication status
+ *
+ * SECURITY: Only shows locally stored info (no credentials).
+ * Credentials are fetched server-side by the enterprise MCP server.
  */
 export const AuthEnterpriseStatusCommand = cmd({
   command: "enterprise-status",
@@ -710,47 +630,11 @@ export const AuthEnterpriseStatusCommand = cmd({
     // Show status
     prompts.log.info(`   Customer: ${config.customerName}`)
     prompts.log.info(`   Company:  ${config.company}`)
-    if (config.licenseKey) {
-      prompts.log.info(`   License:  ${config.licenseKey}`)
-    }
     prompts.log.info(`   Auth:     ${config.authMethod === 'browser' ? 'Browser login' : 'License key'}`)
     prompts.log.info("")
-    prompts.log.info("   Configured Tools:")
-
-    if (config.credentials.jira?.enabled) {
-      const source = config.credentials.jira.source ? ` [${config.credentials.jira.source}]` : ''
-      prompts.log.info(`   ✓ Jira (${config.credentials.jira.baseUrl})${source}`)
-    } else {
-      prompts.log.info(`   ✗ Jira (not configured)`)
-    }
-
-    if (config.credentials["azure-devops"]?.enabled) {
-      const source = config.credentials["azure-devops"].source ? ` [${config.credentials["azure-devops"].source}]` : ''
-      prompts.log.info(`   ✓ Azure DevOps (${config.credentials["azure-devops"].baseUrl})${source}`)
-    } else {
-      prompts.log.info(`   ✗ Azure DevOps (not configured)`)
-    }
-
-    if (config.credentials.confluence?.enabled) {
-      const source = config.credentials.confluence.source ? ` [${config.credentials.confluence.source}]` : ''
-      prompts.log.info(`   ✓ Confluence (${config.credentials.confluence.baseUrl})${source}`)
-    } else {
-      prompts.log.info(`   ✗ Confluence (not configured)`)
-    }
-
-    // Show ServiceNow instances
-    if (config.servicenowInstances && config.servicenowInstances.length > 0) {
-      prompts.log.info("")
-      prompts.log.info("   ServiceNow Instances:")
-      for (const inst of config.servicenowInstances) {
-        const defaultTag = inst.isDefault ? " (default)" : ""
-        prompts.log.info(`   ✓ ${inst.instanceName} [${inst.environmentType}]${defaultTag}`)
-      }
-    }
 
     // Show theme info if available
     if (config.theme) {
-      prompts.log.info("")
       prompts.log.info("   Theme:")
       if (config.theme.brandName) {
         prompts.log.info(`   ✓ Brand: ${config.theme.brandName}`)
@@ -762,11 +646,14 @@ export const AuthEnterpriseStatusCommand = cmd({
       if (config.theme.whiteLabelEnabled) {
         prompts.log.info(`   ✓ White-Label: Enabled`)
       }
+      prompts.log.info("")
     }
 
-    prompts.log.info("")
     prompts.log.info(`   MCP Server: ${config.mcpServerUrl}`)
     prompts.log.info(`   Last Synced: ${new Date(config.lastSynced).toLocaleString()}`)
+    prompts.log.info("")
+    prompts.log.info("   ℹ️  Note: Credentials are managed server-side by the enterprise MCP server.")
+    prompts.log.info("   ℹ️  Run 'snow-code auth enterprise-sync' to check available integrations.")
     prompts.log.info("")
   }
 })

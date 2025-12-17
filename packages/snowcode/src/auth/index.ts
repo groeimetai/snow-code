@@ -49,17 +49,26 @@ export namespace Auth {
     })
     .meta({ ref: "ServiceNowBasic" })
 
+  /**
+   * Enterprise authentication.
+   * SECURITY: Only JWT token is stored. All credentials (Jira, Azure DevOps, Confluence)
+   * are fetched server-side by the enterprise MCP server.
+   */
   export const Enterprise = z
     .object({
       type: z.literal("enterprise"),
-      licenseKey: z.string(),
+      // NOTE: licenseKey is now optional - we use JWT token for authentication
+      licenseKey: z.string().optional(),
       enterpriseUrl: z.string().optional(),
+      // JWT token from device authorization flow
       token: z.string().optional(),
       sessionToken: z.string().optional(),
       username: z.string().optional(),
       email: z.string().optional(),
       role: z.string().optional(),
       machineId: z.string().optional(),
+      // DEPRECATED: These credential fields are no longer used
+      // Credentials are fetched server-side by the enterprise MCP server
       jiraBaseUrl: z.string().optional(),
       confluenceUrl: z.string().optional(),
       atlassianEmail: z.string().optional(),
