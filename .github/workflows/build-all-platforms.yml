@@ -160,12 +160,18 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     permissions:
-      contents: write  # Required for creating GitHub releases
-      packages: write  # Optional: for GitHub Packages
+      contents: write   # Required for creating GitHub releases
+      id-token: write   # Required for npm provenance/OIDC
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -176,10 +182,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: packages/snowcode/dist/@groeimetai/
-
-      - name: Setup npm authentication
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
       - name: Get version
         id: version
@@ -215,22 +217,22 @@ jobs:
             fi
           done
 
-      - name: Publish platform binaries
+      - name: Publish platform binaries with provenance (OIDC)
         run: |
           cd packages/snowcode/dist/@groeimetai
           for dir in snow-code-*; do
             if [ -d "$dir" ]; then
               echo "Publishing $dir..."
               cd "$dir"
-              npm publish --access public || echo "Failed to publish $dir (may already exist)"
+              npm publish --provenance --access public || echo "Failed to publish $dir (may already exist)"
               cd ..
             fi
           done
 
-      - name: Publish main package
+      - name: Publish main package with provenance (OIDC)
         run: |
           cd packages/snowcode
-          npm publish --access public || echo "Failed to publish main package (may already exist)"
+          npm publish --provenance --access public || echo "Failed to publish main package (may already exist)"
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
