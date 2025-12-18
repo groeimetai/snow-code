@@ -173,6 +173,18 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Upgrade npm to latest (required for OIDC)
+        run: npm install -g npm@latest
+
+      - name: Debug npm and OIDC setup
+        run: |
+          echo "=== npm version ==="
+          npm --version
+          echo "=== .npmrc contents ==="
+          cat ~/.npmrc || echo "No .npmrc found"
+          echo "=== OIDC available? ==="
+          [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ] && echo "✅ OIDC token available" || echo "❌ No OIDC token"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
@@ -217,22 +229,28 @@ jobs:
             fi
           done
 
-      - name: Publish platform binaries with provenance (OIDC)
+      - name: Remove .npmrc for pure OIDC auth
+        run: |
+          echo "Removing .npmrc to force OIDC authentication"
+          rm -f ~/.npmrc
+          echo "✅ .npmrc removed"
+
+      - name: Publish platform binaries (OIDC trusted publishing)
         run: |
           cd packages/snowcode/dist/@groeimetai
           for dir in snow-code-*; do
             if [ -d "$dir" ]; then
               echo "Publishing $dir..."
               cd "$dir"
-              npm publish --provenance --access public || echo "Failed to publish $dir (may already exist)"
+              npm publish --access public || echo "Failed to publish $dir (may already exist)"
               cd ..
             fi
           done
 
-      - name: Publish main package with provenance (OIDC)
+      - name: Publish main package (OIDC trusted publishing)
         run: |
           cd packages/snowcode
-          npm publish --provenance --access public || echo "Failed to publish main package (may already exist)"
+          npm publish --access public || echo "Failed to publish main package (may already exist)"
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
