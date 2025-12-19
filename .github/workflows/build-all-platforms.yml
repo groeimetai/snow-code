@@ -242,7 +242,8 @@ jobs:
             if [ -d "$dir" ]; then
               echo "Publishing $dir..."
               cd "$dir"
-              npm publish --access public || echo "Failed to publish $dir (may already exist)"
+              # Use --tag latest to force the latest tag even if higher versions exist
+              npm publish --access public --tag latest || echo "Failed to publish $dir (may already exist)"
               cd ..
             fi
           done
@@ -250,7 +251,8 @@ jobs:
       - name: Publish main package (OIDC trusted publishing)
         run: |
           cd packages/snowcode
-          npm publish --access public || echo "Failed to publish main package (may already exist)"
+          # Use --tag latest to force the latest tag even if higher versions exist
+          npm publish --access public --tag latest || echo "Failed to publish main package (may already exist)"
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
