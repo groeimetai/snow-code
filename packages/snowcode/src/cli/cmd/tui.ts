@@ -204,7 +204,8 @@ export const TuiCommand = cmd({
         })
 
         ;(async () => {
-          // if (Installation.isLocal()) return
+          // Skip auto-update in local development mode
+          if (Installation.isLocal()) return
           const config = await Config.get()
           if (config.autoupdate === false || Flag.SNOWCODE_DISABLE_AUTOUPDATE) return
           const latest = await Installation.latest().catch(() => {})
