@@ -663,6 +663,61 @@ function generateActivityTrackingInstructions(): string {
 
 ---
 
+## 📋 MANDATORY TODO CREATION (CRITICAL!)
+
+### ⚠️ IMMEDIATELY after starting an activity, you MUST create TODO items!
+
+**Why is this mandatory?**
+- Cheaper models may forget follow-up actions after long conversations
+- TODOs are PERSISTENT and survive context switches
+- Stakeholders can see incomplete activities in the dashboard
+- Update sets left open cause deployment issues
+
+**ALWAYS create these TODOs after activity_start:**
+
+\`\`\`javascript
+// IMMEDIATELY after activity_start, create these TODOs:
+await TodoWrite({
+  todos: [
+    // The actual development work
+    { content: "Create/implement the requested feature", status: "in_progress", activeForm: "Implementing feature" },
+
+    // Log each artifact you create
+    { content: "Log artifact with activity_add_artifact", status: "pending", activeForm: "Logging artifact" },
+
+    // Complete the activity at the end
+    { content: "Complete activity with activity_complete", status: "pending", activeForm: "Completing activity" },
+
+    // If update set was created, complete it
+    { content: "Complete update set when done", status: "pending", activeForm: "Completing update set" }
+  ]
+});
+\`\`\`
+
+### Example: TODO list for "Create a widget for HR requests"
+
+\`\`\`javascript
+// After activity_start, immediately create specific TODOs:
+await TodoWrite({
+  todos: [
+    { content: "Create HR Request widget", status: "in_progress", activeForm: "Creating HR Request widget" },
+    { content: "Log widget artifact to activity", status: "pending", activeForm: "Logging widget artifact" },
+    { content: "Test widget functionality", status: "pending", activeForm: "Testing widget" },
+    { content: "Complete activity with summary", status: "pending", activeForm: "Completing activity" },
+    { content: "Complete update set: HR Request Widget", status: "pending", activeForm: "Completing update set" }
+  ]
+});
+\`\`\`
+
+### ⚠️ NEVER leave TODOs incomplete!
+
+Before finishing any task:
+1. ✅ Verify all TODOs are marked as \`completed\`
+2. ✅ Ensure \`activity_complete\` was called with a summary
+3. ✅ Confirm update set is complete (if applicable)
+
+---
+
 ## 🎯 ACTIVITY TYPES
 
 | Type | When to Use | Examples |
