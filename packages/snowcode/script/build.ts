@@ -109,6 +109,10 @@ try {
         version: pkg.version,  // Use package.json version, not Script.version
         os: [os === "windows" ? "win32" : os],
         cpu: [arch],
+        repository: {
+          type: "git",
+          url: "https://github.com/groeimetai/snow-code"
+        },
         ...(os !== "windows" && {
           scripts: {
             postinstall: "node postinstall.cjs || true"
