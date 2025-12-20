@@ -1,4 +1,52 @@
 <p align="center">
+  <img src="https://img.shields.io/badge/⚠️_DEPRECATED-This_repository_has_been_merged_into_snow--flow-red?style=for-the-badge" alt="Deprecated">
+</p>
+
+<p align="center">
+  <strong>🚨 This repository is now deprecated and will no longer receive updates. 🚨</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/groeimetai/snow-flow">
+    <img src="https://img.shields.io/badge/➡️_Migrate_to-snow--flow_v9.0.0-blue?style=for-the-badge" alt="Migrate to snow-flow">
+  </a>
+</p>
+
+---
+
+## ⚠️ Deprecation Notice
+
+**As of December 2024, snow-code has been merged into the [snow-flow](https://github.com/groeimetai/snow-flow) monorepo.**
+
+### Migration Guide
+
+```bash
+# Remove old snow-code
+npm uninstall -g @groeimetai/snow-code
+
+# Install the new unified package
+npm install -g @snow-flow/snowcode
+
+# Or use npx
+npx @snow-flow/snowcode
+```
+
+### What Changed?
+
+- **All snow-code functionality is preserved** in the new package
+- **Same CLI commands** work as before
+- **Configuration files are compatible**
+- **New features** will only be added to snow-flow
+
+### Links
+
+- **New Repository**: [github.com/groeimetai/snow-flow](https://github.com/groeimetai/snow-flow)
+- **New Package**: [@snow-flow/snowcode](https://www.npmjs.com/package/@snow-flow/snowcode)
+- **Release Notes**: [Snow-Flow v9.0.0](https://github.com/groeimetai/snow-flow/releases/tag/v9.0.0)
+
+---
+
+<p align="center">
 <pre>
     ▲  ▲  ▲     █▀▀▀ █▀▀▄ █▀▀█ █   █   █▀▀▀ █▀▀█ █▀▀▄ █▀▀▀
    ▲ ▼▲ ▼▲      ▀▀▀█ █  █ █  █ █ █ █   █    █  █ █  █ █▀▀
@@ -6,7 +54,7 @@
 </pre>
 </p>
 
-<h1 align="center">Snow-Code</h1>
+<h1 align="center">Snow-Code (Deprecated)</h1>
 <h3 align="center">AI-Powered ServiceNow Development IDE</h3>
 <p align="center"><strong>Part of the Snow-Flow Enterprise Suite</strong></p>
 
